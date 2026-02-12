@@ -171,7 +171,7 @@ export default function TimelinePage() {
             </div>
             <div className="text-center sm:text-left mt-2 mb-1 sm:mt-3 sm:mb-1">
               <h1 className="text-sm sm:text-base md:text-lg lg:text-xl font-semibold text-gray-300 leading-relaxed tracking-tight">
-                택배 라우트 분석 - 택배 관련 찬반 투표 <br className="sm:hidden" /> - 용카 AI가 만들어 드립니다.
+                택배 라우트 분석 - 택배 관련 갑질 투표 <br className="sm:hidden" /> - 용카 AI가 만들어 드립니다.
               </h1>
             </div>
           </div>
@@ -221,7 +221,7 @@ export default function TimelinePage() {
               분석 결과
             </div>
             <Link
-              href="/"
+              href="/analyze"
               className="px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold text-xs sm:text-sm text-gray-400 hover:text-white transition-all"
             >
               분석하기

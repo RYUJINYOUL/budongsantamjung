@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db } from '../../lib/firebase-client';
 
 // 갑질 제보 카테고리
 const REPORT_CATEGORIES = [
@@ -117,7 +117,7 @@ export default function AbuseReportPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return '방금 전';
     if (diffInHours < 24) return `${diffInHours}시간 전`;
     if (diffInHours < 48) return '어제';
@@ -145,9 +145,9 @@ export default function AbuseReportPage() {
         <div className="text-center mb-8">
           <div className="inline-block mb-6">
             <div className="flex flex-col sm:flex-row items-center justify-center mb-6 sm:mb-8 gap-4 sm:gap-6">
-              <img 
-                src="/logo512.png" 
-                alt="용카 로고" 
+              <img
+                src="/logo512.png"
+                alt="용카 로고"
                 className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 rounded-3xl shadow-2xl ring-2 ring-white/10"
               />
               <div className="text-center sm:text-left">
@@ -168,14 +168,14 @@ export default function AbuseReportPage() {
             <div className="flex justify-center mb-6">
               <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl p-2 border border-slate-700/50">
                 <div className="flex space-x-1">
-                  <Link 
-                    href="/"
+                  <Link
+                    href="/analyze"
                     className="px-6 py-3 text-sm font-medium text-gray-400 hover:text-white hover:bg-slate-700/50 rounded-xl transition-all duration-200"
                   >
                     분석하기
                   </Link>
-                  <Link 
-                    href="/timeline"
+                  <Link
+                    href="/"
                     className="px-6 py-3 text-sm font-medium text-gray-400 hover:text-white hover:bg-slate-700/50 rounded-xl transition-all duration-200"
                   >
                     분석 결과
@@ -196,7 +196,7 @@ export default function AbuseReportPage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-red-400 mb-2">용카 고객 갑질 제보 투표</h3>
                 <p className="text-sm text-gray-400 mb-4">고객 갑질 내용을 업로드하여 투표로 만들어 보세요</p>
-            
+
               </div>
               <div className="lg:ml-4">
                 <Link
@@ -219,11 +219,10 @@ export default function AbuseReportPage() {
                 <button
                   key={category.id}
                   onClick={() => setSelectedCategory(category.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    selectedCategory === category.id
-                      ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
-                      : 'bg-slate-700/50 text-gray-300 hover:bg-slate-600/50'
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedCategory === category.id
+                    ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
+                    : 'bg-slate-700/50 text-gray-300 hover:bg-slate-600/50'
+                    }`}
                 >
                   {category.label}
                 </button>
@@ -294,15 +293,15 @@ export default function AbuseReportPage() {
                     {report.title}
                   </h3>
 
-                  <p className="text-gray-400 text-sm mb-4 line-clamp-2">
+                  {/* <p className="text-gray-400 text-sm mb-4 line-clamp-2">
                     {report.summary}
-                  </p>
+                  </p> */}
 
                   {/* AI 총평 표시 */}
                   {report.ai_summary && (
                     <div className="bg-red-600/10 border border-red-500/20 rounded-lg p-3 mb-4">
                       <p className="text-red-300 text-sm">
-                        {report.ai_summary.length > 100 ? `${report.ai_summary.substring(0, 100)}...` : report.ai_summary}
+                        {report.ai_summary.length > 500 ? `${report.ai_summary.substring(0, 500)}...` : report.ai_summary}
                       </p>
                     </div>
                   )}
@@ -317,7 +316,7 @@ export default function AbuseReportPage() {
                         👁️ {report.view_count}
                       </span>
                     </div>
-                    
+
                     {report.vote_options && report.total_votes > 0 && (
                       <div className="flex items-center gap-2 text-xs">
                         {report.vote_options.map((option, index) => {
@@ -346,14 +345,14 @@ export default function AbuseReportPage() {
           >
             용카 앱 다운로드
           </button>
-          
-          <Link 
+
+          <Link
             href="https://yongcar.com/"
             className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 text-center"
           >
-            용카 홈페이지 
+            용카 홈페이지
           </Link>
-          
+
           <button className="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
             용카 대리점
           </button>
@@ -364,15 +363,15 @@ export default function AbuseReportPage() {
           <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 rounded-2xl p-6 max-w-md w-full border border-blue-600/30 shadow-2xl">
               <div className="text-center mb-6">
-                <img 
-                  src="/logo512.png" 
-                  alt="용카 로고" 
+                <img
+                  src="/logo512.png"
+                  alt="용카 로고"
                   className="w-16 h-16 mx-auto rounded-2xl shadow-lg mb-4"
                 />
                 <h3 className="text-2xl font-bold text-white mb-2">용카 앱 다운로드</h3>
                 <p className="text-gray-400 text-sm">택배기사 필수 앱을 다운로드하세요</p>
               </div>
-              
+
               <div className="space-y-3 mb-6">
                 <a
                   href="https://play.google.com/store/apps/details?id=com.yongcar.app&pcampaignid=web_share"
@@ -381,11 +380,11 @@ export default function AbuseReportPage() {
                   className="flex items-center justify-center w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl"
                 >
                   <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.61 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.92 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
+                    <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.61 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.92 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z" />
                   </svg>
                   Android 다운로드
                 </a>
-                
+
                 <a
                   href="https://apps.apple.com/kr/app/%EC%9A%A9%EC%B9%B4/id6758199533"
                   target="_blank"
@@ -393,12 +392,12 @@ export default function AbuseReportPage() {
                   className="flex items-center justify-center w-full bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl border border-gray-600"
                 >
                   <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M18.71,19.5C17.88,20.74 17,21.95 15.66,21.97C14.32,22 13.89,21.18 12.37,21.18C10.84,21.18 10.37,21.95 9.1,22C7.79,22.05 6.8,20.68 5.96,19.47C4.25,17 2.94,12.45 4.7,9.39C5.57,7.87 7.13,6.91 8.82,6.88C10.1,6.86 11.32,7.75 12.11,7.75C12.89,7.75 14.37,6.68 15.92,6.84C16.57,6.87 18.39,7.1 19.56,8.82C19.47,8.88 17.39,10.1 17.41,12.63C17.44,15.65 20.06,16.66 20.09,16.67C20.06,16.74 19.67,18.11 18.71,19.5M13,3.5C13.73,2.67 14.94,2.04 15.94,2C16.07,3.17 15.6,4.35 14.9,5.19C14.21,6.04 13.07,6.7 11.95,6.61C11.8,5.46 12.36,4.26 13,3.5Z"/>
+                    <path d="M18.71,19.5C17.88,20.74 17,21.95 15.66,21.97C14.32,22 13.89,21.18 12.37,21.18C10.84,21.18 10.37,21.95 9.1,22C7.79,22.05 6.8,20.68 5.96,19.47C4.25,17 2.94,12.45 4.7,9.39C5.57,7.87 7.13,6.91 8.82,6.88C10.1,6.86 11.32,7.75 12.11,7.75C12.89,7.75 14.37,6.68 15.92,6.84C16.57,6.87 18.39,7.1 19.56,8.82C19.47,8.88 17.39,10.1 17.41,12.63C17.44,15.65 20.06,16.66 20.09,16.67C20.06,16.74 19.67,18.11 18.71,19.5M13,3.5C13.73,2.67 14.94,2.04 15.94,2C16.07,3.17 15.6,4.35 14.9,5.19C14.21,6.04 13.07,6.7 11.95,6.61C11.8,5.46 12.36,4.26 13,3.5Z" />
                   </svg>
                   iPhone 다운로드
                 </a>
               </div>
-              
+
               <button
                 onClick={() => setShowDownloadDialog(false)}
                 className="w-full py-2 px-4 text-gray-400 hover:text-white transition-colors"

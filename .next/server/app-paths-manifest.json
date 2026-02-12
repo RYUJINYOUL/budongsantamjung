@@ -1,8 +1,10 @@
 {
-  "/not-found": "app/not-found.js",
   "/page": "app/page.js",
-  "/timeline/page": "app/timeline/page.js",
+  "/analyze/page": "app/analyze/page.js",
+  "/api/timeline/route": "app/api/timeline/route.js",
+  "/api/upload/route": "app/api/upload/route.js",
+  "/api/analyze/route": "app/api/analyze/route.js",
   "/vote/page": "app/vote/page.js",
-  "/vote/[id]/page": "app/vote/[id]/page.js",
-  "/vote/submit/page": "app/vote/submit/page.js"
+  "/vote/submit/page": "app/vote/submit/page.js",
+  "/vote/[id]/page": "app/vote/[id]/page.js"
 }

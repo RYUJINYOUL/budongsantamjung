@@ -4,9 +4,7 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../../lib/firebase';
-// Firebase Storage 연동을 위한 import (실제 환경에서 활성화)
-// import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db } from '../../../lib/firebase-client';
 
 // 갑질 및 이슈 제보 카테고리
 const REPORT_CATEGORIES = [
@@ -20,7 +18,8 @@ export default function SubmitAbuseReportPage() {
   const [title, setTitle] = useState('');
   const [originalUrl, setOriginalUrl] = useState('');
   const [content, setContent] = useState('');
-  const [category, setCategory] = useState(REPORT_CATEGORIES[0]?.id || '');
+  const [additionalContent, setAdditionalContent] = useState('');
+  const [category, setCategory] = useState('abuse_power'); // 기본값: 고객갑질
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
@@ -28,105 +27,87 @@ export default function SubmitAbuseReportPage() {
   const [analyzingUrl, setAnalyzingUrl] = useState(false);
   const [urlAnalysis, setUrlAnalysis] = useState<string>('');
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [analyzingImages, setAnalyzingImages] = useState(false);
   const [imageAnalysis, setImageAnalysis] = useState<string>('');
-  
+  const [showAnalyzingDialog, setShowAnalyzingDialog] = useState(false);
+
   // 영상 및 음성 파일 상태 추가
   const [uploadedVideos, setUploadedVideos] = useState<File[]>([]);
   const [uploadedAudios, setUploadedAudios] = useState<File[]>([]);
-  
+
   // 유튜브 제보 동의 여부 상태 추가
   const [youtubeConsent, setYoutubeConsent] = useState(false);
 
-  // AI 갑질 판독 미리보기 로직 (실제 내용 기반 분석)
-  const generateSmartAISummary = () => {
-    if (!title.trim()) return '';
+  // AI 제보 내용 정리 기능 - 간단하고 읽기 쉽게
+  const generateContentSummary = () => {
+    if (!title.trim() && !content.trim() && !additionalContent.trim()) return '';
 
-    const categoryLabel = REPORT_CATEGORIES.find(c => c.id === category)?.label;
-    const titleLower = title.toLowerCase();
-    const contentLower = content.toLowerCase();
-    
-    // 키워드 기반 상황 분석
-    let situationAnalysis = '';
-    let legalIssue = '';
-    let severity = '';
-    
-    // 아파트 출입료/사용료 관련
-    if (titleLower.includes('아파트') && (titleLower.includes('출입') || titleLower.includes('사용료') || contentLower.includes('사용료'))) {
-      situationAnalysis = '아파트 출입 및 엘리베이터 사용료 부과 문제';
-      legalIssue = '**부당한 비용 전가** 및 **택배 서비스 접근권 침해**';
-      severity = '심각';
-      
-      if (contentLower.includes('33,000') || contentLower.includes('297,000')) {
-        situationAnalysis += ' (월 33,000원, 9개 단지 총 297,000원)';
-      }
-    }
-    // 폭언/욕설 관련
-    else if (titleLower.includes('폭언') || titleLower.includes('욕설') || contentLower.includes('폭언')) {
-      situationAnalysis = '고객의 폭언 및 인격모독 발언';
-      legalIssue = '**인격권 침해** 및 **모욕죄** 해당 가능성';
-      severity = '심각';
-    }
-    // 하차 강요 관련
-    else if (titleLower.includes('하차') || titleLower.includes('강요') || contentLower.includes('하차')) {
-      situationAnalysis = '부당한 하차 강요 및 업무 방해';
-      legalIssue = '**근로권 침해** 및 **업무방해죄** 해당 가능성';
-      severity = '매우 심각';
-    }
-    // 지입사기 관련
-    else if (titleLower.includes('지입') || titleLower.includes('사기') || contentLower.includes('지입')) {
-      situationAnalysis = '지입 계약 관련 사기 의혹';
-      legalIssue = '**사기죄** 및 **계약 위반** 해당 가능성';
-      severity = '매우 심각';
-    }
-    // 일반적인 갑질
-    else {
-      situationAnalysis = '택배 업무 관련 부당 대우';
-      legalIssue = '**갑질 행위** 및 **업무 방해** 소지';
-      severity = '보통';
+    let summary = '';
+
+    // 제목이 있으면 표시
+    if (title.trim()) {
+      summary += `${title}\n\n`;
     }
 
-    return `🤖 용카 AI 긴급 판독 결과: 
+    // 메인 내용 정리
+    if (content.trim()) {
+      summary += `${content}\n\n`;
+    }
 
-📋 **상황 분석**: ${situationAnalysis}
-📂 **카테고리**: [${categoryLabel}]
-⚖️ **법적 쟁점**: ${legalIssue}
-🚨 **심각도**: ${severity}
+    // 추가 내용이 있으면 추가
+    if (additionalContent.trim()) {
+      summary += `${additionalContent}\n\n`;
+    }
 
-이 사례는 택배기사의 정당한 업무 수행을 방해하는 부당한 행위로 판단됩니다. 전국 기사님들의 투표를 통해 이런 사례가 얼마나 일반적인지 확인하고, 필요시 공론화를 진행합니다.`;
+    // 링크가 있으면 출처 표시
+    if (originalUrl.trim()) {
+      summary += `출처: ${originalUrl}`;
+    }
+
+    return summary.trim();
   };
 
   useEffect(() => {
-    setAiSummary(generateSmartAISummary());
-  }, [title, category, content]);
+    // URL 분석이나 이미지 분석 결과가 있으면 그것을 우선적으로 표시
+    if (urlAnalysis || imageAnalysis) {
+      setAiSummary(urlAnalysis || imageAnalysis);
+    } else {
+      setAiSummary(generateContentSummary());
+    }
+  }, [title, category, content, additionalContent, originalUrl, uploadedImages, uploadedVideos, uploadedAudios, urlAnalysis, imageAnalysis]);
 
   // URL 분석 함수
   const analyzeUrl = async (url: string) => {
     if (!url.trim()) return;
-    
+
     setAnalyzingUrl(true);
+    setShowAnalyzingDialog(true);
     setError(null);
-    
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const analysis = `📰 링크 분석 결과:
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      });
 
-🔗 **출처**: ${url}
-📋 **제목**: ${title || '택배 관련 이슈'}
+      if (!response.ok) throw new Error('분석 요청 실패');
 
-📄 **주요 내용 요약**:
-${content ? content.substring(0, 200) + '...' : '• 택배 업계 관련 이슈 및 현장 상황 분석\n• 택배기사들의 권익 및 근무환경 관련 내용\n• 업계 개선 방안 및 대응책 논의'}
+      const data = await response.json();
 
-🤖 **용카 AI 분석**: 해당 링크는 택배 현장의 실제 문제를 다루고 있으며, 업계 개선을 위한 의견 수렴이 필요한 중요한 사안으로 판단됩니다.`;
-      
-      setUrlAnalysis(analysis);
-      setContent(analysis);
-      
-    } catch (err) {
-      setError('URL 분석 중 오류가 발생했습니다. 다시 시도해주세요.');
+      if (data.error) throw new Error(data.error);
+
+      setUrlAnalysis(data.yongcaSummary);
+      setContent(data.extractedText);
+
+    } catch (err: any) {
+      setError(err.message || 'URL 분석 중 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setAnalyzingUrl(false);
+      setShowAnalyzingDialog(false);
     }
   };
 
@@ -144,42 +125,69 @@ ${content ? content.substring(0, 200) + '...' : '• 택배 업계 관련 이슈
   const handleImageUpload = async (files: FileList) => {
     if (files.length === 0) return;
 
-    const selectedFiles = Array.from(files).slice(0, 10);
-    setUploadedImages(selectedFiles);
+    const newFiles = Array.from(files);
+    const remainingSlots = 10 - uploadedImages.length;
+    const selectedFiles = newFiles.slice(0, remainingSlots);
+
+    if (selectedFiles.length === 0) {
+      alert('최대 10장까지만 업로드할 수 있습니다.');
+      return;
+    }
+
+    setUploadedImages(prev => [...prev, ...selectedFiles]);
     setAnalyzingImages(true);
+    setShowAnalyzingDialog(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      // 1. 이미지를 Base64로 변환
+      const filePromises = selectedFiles.map(async (file) => {
+        return new Promise<{ name: string; data: string }>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({ name: file.name, data: reader.result as string });
+          reader.readAsDataURL(file);
+        });
+      });
 
-      const ocrResults = selectedFiles.map((file, index) => {
-        const fileName = file.name.toLowerCase();
+      const base64Files = await Promise.all(filePromises);
 
-        // 갑질 관련 키워드가 있을 때 실제 제보 내용에 집중
-        if (fileName.includes('갑질') || fileName.includes('폭언') || fileName.includes('사기')) {
-          return `📷 이미지 ${index + 1} (${file.name}) 분석:
-[제보 확인] 갑질 및 부당 대우 관련 증거 자료
+      // 2. API를 통해 Firebase Storage에 업로드
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: base64Files }),
+      });
 
-[주요 쟁점]
-• 고객 또는 본사의 부당한 요구 및 폭언
-• 계약서상 명시되지 않은 추가 업무 강요
-• 정당한 수수료 미지급 또는 부당 공제
-• 택배기사 인격 모독 및 권익 침해 사례`;
-        } 
-        return `📷 이미지 ${index + 1} (${file.name}) 분석: 택배 갑질 관련 증거 자료 확인됨.`;
-      }).join('\n\n');
+      if (!uploadResponse.ok) throw new Error('이미지 업로드 실패');
 
-      const analysis = `🔍 이미지 분석 결과:
+      const { urls } = await uploadResponse.json();
+      setImageUrls(prev => [...prev, ...urls]);
 
-${ocrResults}
+      // 2. AI 분석 요청
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: `이미지 데이터가 업로드되었습니다. ${selectedFiles.length}장의 사진 내용을 분석해 주세요.`,
+          imageUrl: urls[0]
+        }),
+      });
 
-🤖 **용카 AI 종합 판단**: 업로드된 이미지들을 분석한 결과, 택배 현장의 실제 문제 상황이 확인됩니다. 이는 업계 개선을 위한 중요한 증거 자료로 활용될 수 있으며, 전국 기사님들의 의견 수렴을 통해 해결 방안을 모색할 필요가 있습니다.`;
+      if (!response.ok) throw new Error('AI 분석 요청 실패');
 
-      setImageAnalysis(analysis);
-      setContent(analysis);
-    } catch (err) {
-      setError('분석 중 오류 발생');
+      const data = await response.json();
+
+      if (data.error) throw new Error(data.error);
+
+      setImageAnalysis(data.yongcaSummary);
+      setContent(prev => (prev ? prev + '\n\n' + data.extractedText : data.extractedText));
+    } catch (err: any) {
+      console.error('이미지 처리 오류:', err);
+      setError(err.message || '이미지 처리 중 오류가 발생했습니다.');
     } finally {
       setAnalyzingImages(false);
+      setShowAnalyzingDialog(false);
     }
   };
 
@@ -245,7 +253,7 @@ ${ocrResults}
     setSubmissionLoading(true);
     setError(null);
 
-    if (!originalUrl.trim() && !content.trim() && uploadedImages.length === 0 && uploadedVideos.length === 0 && uploadedAudios.length === 0) {
+    if (!originalUrl.trim() && !content.trim() && !additionalContent.trim() && uploadedImages.length === 0 && uploadedVideos.length === 0 && uploadedAudios.length === 0) {
       setError('제보 내용(링크, 사진, 영상, 음성, 혹은 글)을 하나 이상 입력해 주세요.');
       setSubmissionLoading(false);
       return;
@@ -274,11 +282,11 @@ ${ocrResults}
         image_count: uploadedImages.length,
         video_count: uploadedVideos.length,
         audio_count: uploadedAudios.length,
-        // 실제 환경에서는 Firebase Storage에 업로드 후 URL 저장
-        // image_urls: await uploadImagesToStorage(uploadedImages),
-        // video_urls: await uploadVideosToStorage(uploadedVideos),
-        // audio_urls: await uploadAudiosToStorage(uploadedAudios),
+        image_urls: imageUrls,
+        video_urls: uploadedVideos.map((_, index) => `placeholder_video_${index + 1}.mp4`),
+        audio_urls: uploadedAudios.map((_, index) => `placeholder_audio_${index + 1}.mp3`),
         full_content: content || null,
+        additional_content: additionalContent || null,
         // 유튜브 콘텐츠 제작 희망 여부 저장
         is_youtube_candidate: youtubeConsent,
         status: 'pending_review' // 관리자 검토 후 노출
@@ -298,7 +306,7 @@ ${ocrResults}
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-red-900/20 to-indigo-900 text-white">
       <div className="max-w-2xl mx-auto px-4 py-10">
-        
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-4 mb-4">
@@ -307,7 +315,7 @@ ${ocrResults}
             </div>
             <h1 className="text-2xl font-bold text-white">용카 갑질·사기 제보 센터</h1>
           </div>
-          <p className="text-sm text-gray-300">억울한 일, 지입사기 의심 사례를 제보해 주세요. <br/>익명을 철저히 보장하며 필요 시 유튜브 숏츠를 지원합니다.</p>
+          <p className="text-sm text-gray-300">억울한 일, 지입사기 의심 사례를 제보해 주세요. <br />익명을 철저히 보장하며 필요 시 유튜브 숏츠를 지원합니다.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-slate-800/50 backdrop-blur-md border border-red-500/20 rounded-2xl p-6 space-y-6 shadow-2xl">
@@ -333,9 +341,8 @@ ${ocrResults}
                   key={cat.id}
                   type="button"
                   onClick={() => setCategory(cat.id)}
-                  className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                    category === cat.id ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
-                  }`}
+                  className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${category === cat.id ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'
+                    }`}
                 >
                   {cat.label}
                 </button>
@@ -346,7 +353,7 @@ ${ocrResults}
           {/* 이미지/URL 업로드 */}
           <div className="bg-slate-900/30 p-4 rounded-xl border border-slate-700">
             <p className="text-xs text-gray-400 mb-3"> 증거 사진(문자, 공문)이나 관련 링크를 첨부하면 AI 분석이 더 정확해집니다.</p>
-            
+
             {/* URL 입력 */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-300 mb-2">관련 링크 (선택)</label>
@@ -364,7 +371,9 @@ ${ocrResults}
 
             {/* 이미지 업로드 */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">📷 증거 사진 (최대 10장)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                📷 증거 사진 ({uploadedImages.length}/10장)
+              </label>
               <div className="upload-area p-4 text-center">
                 <input
                   type="file"
@@ -373,14 +382,18 @@ ${ocrResults}
                   onChange={(e) => e.target.files && handleImageUpload(e.target.files)}
                   className="hidden"
                   id="image-upload"
+                  disabled={uploadedImages.length >= 10}
                 />
-                <label htmlFor="image-upload" className="cursor-pointer">
+                <label htmlFor="image-upload" className={`cursor-pointer ${uploadedImages.length >= 10 ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   <div className="text-gray-400 text-sm">
-                    📷 클릭하여 이미지 업로드 (JPG, PNG, WEBP)
+                    {uploadedImages.length >= 10
+                      ? '📷 최대 10장까지 업로드 가능'
+                      : '📷 클릭하여 이미지 업로드 (JPG, PNG, WEBP)'
+                    }
                   </div>
                 </label>
               </div>
-              
+
               {/* 업로드된 이미지 미리보기 */}
               {uploadedImages.length > 0 && (
                 <div className="mt-3 grid grid-cols-5 gap-2">
@@ -402,7 +415,7 @@ ${ocrResults}
                   ))}
                 </div>
               )}
-              
+
               {analyzingImages && (
                 <p className="text-xs text-blue-400 mt-2">🔍 이미지 분석 중...</p>
               )}
@@ -426,7 +439,7 @@ ${ocrResults}
                   </div>
                 </label>
               </div>
-              
+
               {/* 업로드된 영상 목록 */}
               {uploadedVideos.length > 0 && (
                 <div className="mt-3 space-y-2">
@@ -472,7 +485,7 @@ ${ocrResults}
                   </div>
                 </label>
               </div>
-              
+
               {/* 업로드된 음성 목록 */}
               {uploadedAudios.length > 0 && (
                 <div className="mt-3 space-y-2">
@@ -508,9 +521,22 @@ ${ocrResults}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={5}
-              placeholder="억울한 상황을 상세히 적어주세요. 용카 AI가 법 위반 여부를 분석합니다."
+              placeholder="억울한 상황을 상세히 적어주세요. 용카 AI가 내용을 정리해드립니다."
               className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none text-white"
             />
+          </div>
+
+          {/* 추가 제보 내용 입력 */}
+          <div>
+            <label className="block text-white font-medium mb-2">추가 작성 제보 내용</label>
+            <textarea
+              value={additionalContent}
+              onChange={(e) => setAdditionalContent(e.target.value)}
+              rows={4}
+              placeholder="추가로 전하고 싶은 내용이나 보충 설명을 작성해주세요. (선택사항)"
+              className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none text-white"
+            />
+            <p className="text-xs text-gray-400 mt-2">💡 추가 상황 설명, 요청사항, 기타 의견 등을 자유롭게 작성하세요.</p>
           </div>
 
           {/* 유튜브 제보 체크박스 - 핵심! */}
@@ -535,8 +561,8 @@ ${ocrResults}
           )}
 
           {/* 제출 버튼 */}
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={submissionLoading}
             className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold py-4 rounded-xl shadow-xl transition-all disabled:opacity-50"
           >
@@ -544,11 +570,11 @@ ${ocrResults}
           </button>
         </form>
 
-        {/* AI Summary Section */}
+        {/* AI Content Summary Section */}
         {aiSummary && (
-          <div className="mt-6 bg-slate-800 border-l-4 border-red-500 rounded-r-xl p-5 shadow-lg">
-            <h3 className="flex items-center gap-2 font-bold text-red-400 mb-3">
-              <span className="text-xl">⚖️</span> 용카 AI 사건 판독기
+          <div className="mt-6 bg-slate-800 border-l-4 border-blue-500 rounded-r-xl p-5 shadow-lg">
+            <h3 className="flex items-center gap-2 font-bold text-blue-400 mb-3">
+              용카 AI 제보 내용 정리
             </h3>
             <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{aiSummary}</p>
           </div>
@@ -562,18 +588,41 @@ ${ocrResults}
           >
             용카 앱
           </button>
-          
-          <Link 
+
+          <Link
             href="https://yongcar.com/"
             className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 text-center"
           >
             용카 홈페이지
           </Link>
-          
+
           <button className="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
             용카 대리점
           </button>
         </div>
+
+        {/* AI 분석 중 다이얼로그 */}
+        {showAnalyzingDialog && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+            <div className="bg-slate-800 border border-red-500/30 rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-300">
+              <div className="relative mb-6">
+                <div className="w-20 h-20 border-4 border-red-500/20 border-t-red-600 rounded-full animate-spin mx-auto"></div>
+                <div className="absolute inset-0 flex items-center justify-center text-2xl animate-pulse">
+                  🤖
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">용카 AI 분석 중...</h3>
+              <p className="text-gray-400 text-sm">
+                이미지와 링크의 내용을 분석하여<br />핵심 내용을 정리하고 있습니다.
+              </p>
+              <div className="mt-6 flex justify-center gap-1">
+                <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-1.5 h-1.5 bg-red-600 rounded-full animate-bounce"></div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 앱 다운로드 다이얼로그 */}
         {showDownloadDialog && (

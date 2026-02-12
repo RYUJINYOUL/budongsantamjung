@@ -2,16 +2,36 @@ rules_version='2'
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // This rule allows anyone with your database reference to view, edit,
+    // and delete all data in your database. It is useful for getting
+    // started, but it is configured to expire after 30 days because it
+    // leaves your app open to attackers. At that time, all client
+    // requests to your database will be denied.
+    //
+    // Make sure to write security rules for your app before that time, or
+    // else all client requests to your database will be denied until you
+    // update your rules.
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
+      // abuse_reports 폴더 (갑질 제보 파일들)
+      match /abuse_reports/{fileName} {
+        
+        // 1. 읽기: 누구나 가능
+        allow read: if true;
+        
+        // 2. 생성: 누구나 가능 (10MB 제한, 멀티미디어 파일 허용)
+        allow create: if request.resource.size < 10 * 1024 * 1024
+                     && (
+                       // 이미지 파일
+                       request.resource.contentType.matches('image/.*') ||
+                       // 비디오 파일
+                       request.resource.contentType.matches('video/.*') ||
+                       // 오디오 파일
+                       request.resource.contentType.matches('audio/.*')
+                     );
+        
+        // 3. 수정 및 삭제: 절대 불가 (박제 컨셉)
+        allow update, delete: if false;
+      }
       allow read, write: if request.time < timestamp.date(2026, 2, 19);
     }
   }
