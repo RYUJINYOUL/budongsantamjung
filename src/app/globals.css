@@ -2,127 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 :root {
-  --primary-blue: #3b82f6;
-  --primary-purple: #8b5cf6;
-  --background-black: #000000;
-  --background-card: rgba(15, 15, 15, 0.8);
-  --background-result: rgba(20, 20, 25, 0.9);
-  --text-white: #ffffff;
-  --text-gray-300: #d1d5db;
-  --text-gray-400: #9ca3af;
-  --text-gray-500: #6b7280;
-  --border-white-10: rgba(255, 255, 255, 0.1);
-  --border-white-15: rgba(255, 255, 255, 0.15);
-  --border-blue-15: rgba(100, 150, 255, 0.15);
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 15, 23, 42; /* slate-900 */
+  --background-end-rgb: 30, 58, 138; /* blue-900 */
 }
 
-@layer base {
-  * {
-    box-sizing: border-box;
-    padding: 0;
-    margin: 0;
-  }
-  body {
-    background: var(--background-black);
-    color: var(--text-white);
-    font-family: 'Inter', sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    min-height: 100vh;
-  }
-}
-
-/* Custom card styles */
-.card {
-  border-radius: 1.5rem;
-  padding: 1.5rem;
-  transition: all 0.3s ease;
-  background: var(--background-card);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-white-10);
-}
-
-.card:hover {
-  border-color: var(--border-white-15);
-}
-
-.result-card {
-  border-radius: 1.5rem;
-  padding: 1.5rem;
-  transition: all 0.3s ease;
-  background: var(--background-result);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-blue-15);
-}
-
-/* Button styles */
-.btn-primary {
-  padding: 1rem 2rem;
-  border-radius: 0.75rem;
-  font-weight: 600;
-  color: var(--text-white);
-  transition: all 0.3s ease;
-  background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
-  border: 1px solid rgba(100, 150, 255, 0.3);
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px rgba(100, 150, 255, 0.25);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Upload area styles */
-.upload-area {
-  border: 2px dashed var(--border-white-15);
-  border-radius: 1.5rem;
-  padding: 2rem;
-  text-align: center;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  background: rgba(10, 10, 10, 0.5);
-}
-
-.upload-area:hover {
-  border-color: rgba(100, 150, 255, 0.4);
-  background: rgba(20, 20, 30, 0.5);
-}
-
-/* Loading pulse animation */
-.loading-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(to bottom right, rgb(var(--background-start-rgb)), rgb(30, 64, 175), rgb(67, 56, 202));
+  font-weight: 500; /* 기본 폰트를 조금 두껍게 */
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Custom button styles */
+.btn-primary {
+  @apply bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5;
+}
+
+.card {
+  @apply bg-slate-800/30 backdrop-blur-sm border border-slate-600/30 rounded-2xl p-6 sm:p-8;
+}
+
+.upload-area {
+  @apply bg-slate-700/30 border-2 border-dashed border-slate-500 rounded-lg hover:border-blue-400 hover:bg-slate-700/40 transition-all;
 }
