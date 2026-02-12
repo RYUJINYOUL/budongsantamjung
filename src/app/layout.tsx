@@ -53,6 +53,11 @@ export const metadata: Metadata = {
     description: '택배 일자리 AI 분석, 갑질 제보, 지입사기 방지',
     images: ['/logo512.png'],
   },
+  icons: {
+    icon: '/logo512.png',
+    shortcut: '/logo512.png',
+    apple: '/logo512.png',
+  },
   robots: {
     index: true,
     follow: true,

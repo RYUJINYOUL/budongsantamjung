@@ -11,6 +11,9 @@ export default function AnalyzePage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
 
   const handleWarningChange = (warning: string, checked: boolean) => {
     if (checked) {
@@ -29,6 +32,58 @@ export default function AnalyzePage() {
 
   const removeImage = (index: number) => {
     setUploadedImages(uploadedImages.filter((_, i) => i !== index));
+  };
+
+  const handleAnalyze = async () => {
+    if (!isFormValid) return;
+
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+
+    try {
+      // 이미지를 base64로 변환
+      const imagePromises = uploadedImages.map(file => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      });
+
+      const base64Images = await Promise.all(imagePromises);
+
+      // API 호출
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          company: selectedCompany,
+          startAddress,
+          terminalAddress,
+          jobInfo,
+          warnings,
+          images: base64Images,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('분석 요청에 실패했습니다.');
+      }
+
+      const data = await response.json();
+
+      // 결과 데이터를 상태에 반영하여 UI에 표시
+      setAnalysisResult(data);
+
+    } catch (error) {
+      console.error('Analysis error:', error);
+      setAnalysisError(error instanceof Error ? error.message : '분석 중 오류가 발생했습니다.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const isFormValid = selectedCompany && uploadedImages.length > 0;
@@ -279,25 +334,201 @@ export default function AnalyzePage() {
 
             {/* Submit Button */}
             <button
-              disabled={!isFormValid}
-              className={`w-full text-base sm:text-lg lg:text-xl px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-semibold transition-all duration-300 ${isFormValid
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+              onClick={handleAnalyze}
+              disabled={!isFormValid || isAnalyzing}
+              className={`w-full text-base sm:text-lg lg:text-xl px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-semibold transition-all duration-300 ${isFormValid && !isAnalyzing
+                ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                 }`}
             >
-              <span>스마트 분석 시작하기</span>
+              <span>{isAnalyzing ? 'AI 분석 중...' : '스마트 분석 시작하기'}</span>
             </button>
           </div>
 
           {/* Right Column - Analysis Result */}
           <div className="space-y-6">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl text-center py-12 sm:py-16 lg:py-20">
-              <h3 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-5">AI 분석 대기 중</h3>
-              <p className="text-gray-400 text-base sm:text-lg max-w-md mx-auto leading-relaxed px-4">
-                지도 이미지와 구인 정보를 입력하시면<br />
-                <span className="font-semibold text-blue-400">AI가 라우트를 분석</span>해드립니다
-              </p>
-            </div>
+            {isAnalyzing ? (
+              <div className="bg-white/5 backdrop-blur-sm border border-blue-500/30 rounded-2xl text-center py-12 sm:py-16 lg:py-20 h-full min-h-[400px] flex flex-col justify-center animate-pulse">
+                <div className="relative w-20 h-20 mx-auto mb-8">
+                  <div className="absolute inset-0 border-4 border-blue-500/20 rounded-2xl"></div>
+                  <div className="absolute inset-0 border-4 border-blue-500 border-t-transparent rounded-2xl animate-spin"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <img src="/logo512.png" alt="용카" className="w-12 h-12 rounded-xl" />
+                  </div>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">용카 AI 분석 중</h3>
+                <p className="text-blue-400 font-medium mb-4">지형 및 정보를 정밀 분석 중입니다</p>
+                <div className="max-w-xs mx-auto w-full px-6">
+                  <div className="h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 animate-[progress_2s_ease-in-out_infinite] w-1/3"></div>
+                  </div>
+                  <div className="flex justify-between mt-3 text-[10px] text-slate-500 font-mono tracking-widest uppercase">
+                    <span>Analyzing</span>
+                    <span>Processing</span>
+                  </div>
+                </div>
+              </div>
+            ) : !analysisResult ? (
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl text-center py-12 sm:py-16 lg:py-20 h-full min-h-[400px] flex flex-col justify-center">
+                <div className="mb-6">
+                  <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+                    <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-bold text-white mb-4">AI 분석 대기 중</h3>
+                <p className="text-gray-400 text-base sm:text-lg max-w-md mx-auto leading-relaxed px-4">
+                  지도 이미지와 구인 정보를 바탕으로<br />
+                  <span className="font-semibold text-blue-400">용카 AI가 라우트를 정밀 분석</span>해드립니다
+                </p>
+                <div className="mt-8 flex justify-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse delay-75"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse delay-150"></span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white/5 backdrop-blur-md border border-white/20 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+                {/* Result Header */}
+                <div className="bg-blue-600/20 border-b border-white/10 p-6 sm:p-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="px-3 py-1 bg-blue-500/20 text-blue-300 text-xs font-bold rounded-full border border-blue-500/30">
+                      분석 완료
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                    {analysisResult.deliveryCompany} 라우트 리포트
+                  </h3>
+                  <p className="text-blue-400 font-medium flex items-center gap-2 text-sm sm:text-base">
+                    <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                    </svg>
+                    {analysisResult.location?.name}
+                  </p>
+                </div>
+
+                <div className="p-6 sm:p-8 space-y-8">
+                  {/* Highlights */}
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
+                      <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center shrink-0">
+                        <span className="text-xl">💬</span>
+                      </div>
+                      <p className="text-slate-200 text-sm sm:text-base italic leading-relaxed pt-1">
+                        "{analysisResult.oneLiner}"
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-4 p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center shrink-0">
+                        <span className="text-xl">✨</span>
+                      </div>
+                      <p className="text-indigo-100 font-bold text-base sm:text-lg pt-1">
+                        {analysisResult.catchphrase}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Metrics Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-slate-800/50 p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-xs mb-3 flex items-center gap-1">
+                        <span>📊 종합 난이도</span>
+                      </p>
+                      <p className="text-amber-400 font-bold text-lg mb-2">{analysisResult.routeGrade?.overall}</p>
+                      <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-amber-400 h-full rounded-full"
+                          style={{ width: `${analysisResult.routeGrade?.fatigueScore}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-slate-500 text-[10px] mt-2 leading-tight">
+                        {analysisResult.routeGrade?.reason}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-800/50 p-5 rounded-2xl border border-white/5">
+                      <p className="text-slate-400 text-xs mb-3">💰 실질 수익 (예상)</p>
+                      <p className="text-emerald-400 font-bold text-lg mb-1">{analysisResult.realIncome}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <span>⛽ 유류비: {analysisResult.fuelCost?.dailyFuelCost}</span>
+                      </div>
+                      {analysisResult.fuelCost?.details && (
+                        <p className="text-[10px] text-slate-600 mt-1 line-clamp-1 italic">{analysisResult.fuelCost.details}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* District Mix */}
+                  <div className="bg-slate-800/30 p-5 rounded-xl border border-white/5">
+                    <p className="text-slate-400 text-xs mb-4 uppercase tracking-widest font-semibold">House District Mix</p>
+                    <div className="flex items-center gap-6">
+                      <div className="flex-1 text-center">
+                        <div className="text-xl font-bold text-blue-300 mb-1">{analysisResult.zoneRatio?.villa}%</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">빌라/지번</div>
+                      </div>
+                      <div className="w-px h-8 bg-white/10"></div>
+                      <div className="flex-1 text-center">
+                        <div className="text-xl font-bold text-indigo-300 mb-1">{analysisResult.zoneRatio?.apartment}%</div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">아파트</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Deep Analysis */}
+                  <div>
+                    <h4 className="text-white text-sm font-bold mb-3 flex items-center gap-2">
+                      <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
+                      용카 AI 상세 리포트
+                    </h4>
+                    <div className="bg-slate-900/40 rounded-xl p-4 border border-white/5 max-h-[240px] overflow-y-auto custom-scrollbar">
+                      <p className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed">
+                        {analysisResult.cafeText}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Hazards */}
+                  <div className="grid grid-cols-1 gap-2">
+                    {analysisResult.warningPoints && Object.values(analysisResult.warningPoints).map((point: any, idx: number) => (
+                      point && (
+                        <div key={idx} className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 flex gap-3">
+                          <span className="text-red-400 shrink-0 select-none italic text-[10px] font-bold uppercase tracking-widest mt-0.5">Warning</span>
+                          <p className="text-xs text-slate-300 leading-normal">{point.replace(/^⚠️\s*/, '')}</p>
+                        </div>
+                      )
+                    ))}
+                  </div>
+
+                  {/* New Analysis Trigger */}
+                  <button
+                    onClick={() => {
+                      setAnalysisResult(null);
+                      setAnalysisError(null);
+                    }}
+                    className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-sm font-semibold rounded-xl border border-white/5 transition-all duration-200"
+                  >
+                    새로운 라우트 분석하기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isAnalyzing && analysisError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-center animate-in fade-in zoom-in duration-300">
+                <span className="text-2xl mb-2 block">⚠️</span>
+                <p className="text-red-400 text-sm mb-4">{analysisError}</p>
+                <button
+                  onClick={() => setAnalysisError(null)}
+                  className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-500 text-xs font-bold rounded-lg transition-colors"
+                >
+                  확인
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -354,4 +585,5 @@ export default function AnalyzePage() {
     </div>
   );
 }
+
 
