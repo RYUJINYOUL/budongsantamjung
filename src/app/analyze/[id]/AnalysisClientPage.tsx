@@ -761,7 +761,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         <div>
                             <div className="flex flex-wrap items-center gap-2 mb-4">
                                 <span className="px-2 py-1 bg-[#0ea5e9]/10 border border-[#0ea5e9]/20 text-[#0ea5e9] text-[10px] font-bold uppercase tracking-[1.5px] rounded-[12px]">
-                                    부동산탐정 분석 사례 {report.id.substring(0, 6).toUpperCase()}
+                                    부동산탐정 분석 사례 {String(report?.id || '').substring(0, 6).toUpperCase()}
                                 </span>
                             </div>
                             <h1 className="text-[25px] sm:text-[32px] font-[800] text-white tracking-[-0.5px] mb-4 leading-[1.2]">
