@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = 'https://route-test-fe6fc.web.app'
+    const baseUrl = 'https://budongsantamjung.vercel.app'
 
     return [
         {
@@ -11,27 +11,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
             priority: 1,
         },
         {
+            url: `${baseUrl}/discover`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.9,
+        },
+        {
             url: `${baseUrl}/analyze`,
             lastModified: new Date(),
             changeFrequency: 'daily',
-            priority: 0.9,
-        },
-        {
-            url: `${baseUrl}/vote`,
-            lastModified: new Date(),
-            changeFrequency: 'hourly',
-            priority: 0.9,
-        },
-        {
-            url: `${baseUrl}/vote/submit`,
-            lastModified: new Date(),
-            changeFrequency: 'weekly',
             priority: 0.8,
         },
         {
-            url: `${baseUrl}/timeline`,
+            url: `${baseUrl}/profile`,
             lastModified: new Date(),
-            changeFrequency: 'daily',
+            changeFrequency: 'weekly',
             priority: 0.7,
         },
     ]

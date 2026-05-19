@@ -19,6 +19,6 @@ export default function robots(): MetadataRoute.Robots {
                 disallow: ['/api/', '/temp/'],
             },
         ],
-        sitemap: 'https://route-test-fe6fc.web.app/sitemap.xml',
+        sitemap: 'https://budongsantamjung.vercel.app/sitemap.xml',
     }
 }
