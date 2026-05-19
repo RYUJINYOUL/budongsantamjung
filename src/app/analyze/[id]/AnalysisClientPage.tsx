@@ -284,7 +284,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const [shareToast, setShareToast] = useState<string | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState<
-        'report' | 'land' | 'building' | 'market' | 'regulatory' | 'population' | 'amenities' | 'properties'
+        'report' | 'land' | 'building' | 'market' | 'regulatory' | 'commercial' | 'population' | 'amenities' | 'properties'
     >('report');
     const [isFavorited, setIsFavorited] = useState(false);
     const [selectedChartFilter, setSelectedChartFilter] = useState('전체');
@@ -760,20 +760,16 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                     >
                         <div>
                             <div className="flex flex-wrap items-center gap-2 mb-4">
-                                <span className="px-3 py-1 bg-sky-500/10 border border-sky-500/20 text-sky-500 text-[10px] font-black uppercase tracking-widest rounded-full">
-                                    부동산탐정 분석 사례{report.id}
+                                <span className="px-2 py-1 bg-[#0ea5e9]/10 border border-[#0ea5e9]/20 text-[#0ea5e9] text-[10px] font-bold uppercase tracking-[1.5px] rounded-[12px]">
+                                    부동산탐정 분석 사례 {report.id.substring(0, 6).toUpperCase()}
                                 </span>
-
                             </div>
-                            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-6 leading-tight">
+                            <h1 className="text-[25px] sm:text-[32px] font-[800] text-white tracking-[-0.5px] mb-4 leading-[1.2]">
                                 {reportData?.propertyTitle || report.address}
                             </h1>
                             <div className="flex flex-wrap items-center gap-3">
-                                <span className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/10 text-sm font-bold text-slate-300">
-                                    <MapPin className="w-4 h-4 text-sky-500" /> {report.dong || '주소지'}
-                                </span>
-                                <span className="flex items-center gap-2 px-4 py-2 bg-white/5 rounded-xl border border-white/10 text-sm font-bold text-slate-300">
-                                    <Building2 className="w-4 h-4 text-emerald-500" /> {report.category === 'land' ? '토지' : report.category === 'apartment' ? '아파트' : '상업용'}
+                                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 rounded-lg border border-transparent text-xs font-bold text-white/70">
+                                    <Building2 className="w-3.5 h-3.5 text-[#10b981]" /> {report.category === 'land' ? '토지' : report.category === 'apartment' ? '아파트' : report.category === 'house' ? '주택' : '상가'}
                                 </span>
                             </div>
                         </div>
@@ -797,10 +793,10 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                     </motion.div>
                 </header>
 
-                {/* 고도화된 탭 네비게이션 */}
-                <div className="flex items-center justify-start md:justify-center gap-2 mb-10 p-1.5 bg-white/5 rounded-2xl w-full border border-white/10 overflow-x-auto no-scrollbar scroll-smooth">
+                {/* 모바일 스타일 탭 네비게이션 */}
+                <div className="flex items-center justify-start gap-2 mb-6 overflow-x-auto no-scrollbar scroll-smooth w-full">
                     {[
-                        { id: 'report', label: 'AI 분석' },
+                        { id: 'report', label: '탐정 요약' },
                         { id: 'land', label: '토지 상세' },
                         { id: 'building', label: '건물 상세' },
                         { id: 'market', label: '시장 동향' },
@@ -808,18 +804,24 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         { id: 'population', label: '인구 현황' },
                         { id: 'amenities', label: '주변 시설' },
                         { id: 'properties', label: '주변 매물' },
-                    ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex-1 md:flex-initial text-center px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === tab.id
-                                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
-                                : 'text-slate-400 hover:text-white hover:bg-white/5'
-                                }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+                    ].map((tab) => {
+                        const isActive = activeTab === tab.id;
+                        const isCompleted = (report?.ai_analysis_status || analysisData?.ai_analysis_status) === 'completed';
+                        const displayLabel = (tab.id === 'report' && isCompleted) ? 'AI 분석' : tab.label;
+
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`shrink-0 h-[44px] px-4 py-2.5 rounded-xl text-sm transition-all whitespace-nowrap border flex items-center justify-center ${isActive
+                                    ? 'bg-[#0ea5e9] border-[#0ea5e9] text-white font-bold shadow-lg shadow-[#0ea5e9]/20'
+                                    : 'bg-transparent border-white/10 text-white/50 hover:text-white font-bold'
+                                    }`}
+                            >
+                                {displayLabel}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 <AnimatePresence mode="wait">
@@ -1778,6 +1780,13 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         </motion.div>
                     )}
 
+                    {activeTab === 'commercial' && (
+                        <motion.div key="commercial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center p-20 opacity-50 bg-white/5 rounded-3xl border border-white/10 mt-10">
+                            <h3 className="text-xl font-bold mb-2">상권 분석</h3>
+                            <p className="text-sm font-bold text-white/50">해당 지역의 상권 분석 데이터는 현재 준비 중입니다.</p>
+                        </motion.div>
+                    )}
+
                     {activeTab === 'population' && (
                         <motion.div key="population" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
                             <h3 className="text-2xl font-black">인구 및 수요 데이터 실황</h3>
@@ -1955,44 +1964,29 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md px-4"
+                        className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/75 backdrop-blur-xl px-4"
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            className="bg-gradient-to-b from-slate-900 to-slate-800 border border-slate-700 rounded-[40px] p-8 sm:p-10 max-w-sm w-full shadow-2xl flex flex-col items-center relative overflow-hidden"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-sky-900/20 via-transparent to-orange-900/10 pointer-events-none" />
-                            <div className="flex items-center gap-2 mb-6 z-10">
-                                <div className="w-2 h-2 bg-sky-500 rounded-full animate-pulse" />
-                                <span className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em]">AI Detective Engine Active</span>
+                        <div className="relative flex items-center justify-center mb-12">
+                            <div className="w-[140px] h-[140px] rounded-full border-2 border-[#0ea5e9] shadow-[0_0_30px_10px_rgba(14,165,233,0.3)] animate-pulse" />
+                            <div className="absolute inset-0 flex items-center justify-center text-[60px]">
+                                {aiSteps[aiStep]?.icon}
                             </div>
-                            <div className="relative w-24 h-24 mb-6 z-10">
-                                <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+                        </div>
+                        <h3 className="text-2xl font-[900] text-white tracking-[-0.5px] mb-4 text-center">{aiSteps[aiStep]?.label}</h3>
+                        <p className="text-base text-white/70 text-center px-12 mb-16 font-bold leading-relaxed">{aiSteps[aiStep]?.desc}</p>
+                        <div className="w-full max-w-[280px] z-10">
+                            <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
                                 <motion.div
-                                    className="absolute inset-0 rounded-full border-4 border-t-sky-500"
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                                    className="h-full bg-[#0ea5e9]"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${Math.min((aiElapsed / 30) * 100, 100)}%` }}
+                                    transition={{ duration: 0.5 }}
                                 />
-                                <div className="absolute inset-0 flex items-center justify-center text-3xl">{aiSteps[aiStep]?.icon}</div>
                             </div>
-                            <h3 className="text-xl font-black text-white mb-2 z-10">{aiSteps[aiStep]?.label}</h3>
-                            <p className="text-sm text-slate-400 mb-8 text-center px-4 z-10 leading-relaxed font-medium">{aiSteps[aiStep]?.desc}</p>
-                            <div className="w-full z-10">
-                                <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/10">
-                                    <motion.div
-                                        className="h-full bg-gradient-to-r from-sky-500 to-sky-400 shadow-[0_0_15px_rgba(14,165,233,0.5)]"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${((aiStep + 1) / aiSteps.length) * 100}%` }}
-                                        transition={{ duration: 0.5 }}
-                                    />
-                                </div>
-                                <div className="flex justify-between text-[11px] font-black text-slate-500 mt-3 tabular-nums uppercase tracking-widest">
-                                    <span>Phase {aiStep + 1} / {aiSteps.length}</span>
-                                    <span>{aiElapsed}s</span>
-                                </div>
+                            <div className="text-[13px] font-bold text-white/50 mt-5 text-center">
+                                심층 분석이 진행 중입니다... ({aiElapsed}초)
                             </div>
-                        </motion.div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
