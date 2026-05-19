@@ -19,6 +19,6 @@ export default function robots(): MetadataRoute.Robots {
                 disallow: ['/api/', '/temp/'],
             },
         ],
-        sitemap: 'https://budongsantamjung.vercel.app/sitemap.xml',
+        sitemap: 'https://tamjung.me/sitemap.xml',
     }
 }
