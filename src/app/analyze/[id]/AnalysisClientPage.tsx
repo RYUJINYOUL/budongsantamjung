@@ -801,6 +801,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         { id: 'building', label: '건물 상세' },
                         { id: 'market', label: '시장 동향' },
                         { id: 'regulatory', label: '주변 호재' },
+                        { id: 'commercial', label: '상권 분석' },
                         { id: 'population', label: '인구 현황' },
                         { id: 'amenities', label: '주변 시설' },
                         { id: 'properties', label: '주변 매물' },
