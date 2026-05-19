@@ -25,6 +25,11 @@ export default function UnifiedAnalyzePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
 
+  // 정식 경로로 리다이렉트
+  useEffect(() => {
+    router.replace('/?panel=analyze');
+  }, [router]);
+
   // 1단계: 카테고리 및 위치
   const [selectedCategory, setSelectedCategory] = useState('');
   const [address, setAddress] = useState('');
@@ -434,11 +439,12 @@ export default function UnifiedAnalyzePage() {
               <h2 className="text-xs font-extrabold text-emerald-600 mb-4 uppercase tracking-wider">
                 카테고리 선택
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {[
                   { id: 'land', label: '토지', icon: '/land.svg' },
                   { id: 'house', label: '주택', icon: '/jutack.svg' },
                   { id: 'apartment', label: '아파트', icon: '/apart.svg' },
+                  { id: 'store', label: '상가', icon: '/cshop.svg' },
                   { id: 'building', label: '빌딩', icon: '/build.svg' },
                 ].map((cat) => (
                   <button

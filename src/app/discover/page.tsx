@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import SideNav from '../../components/SideNav';
 import { auth } from '../../lib/firebase';
@@ -59,6 +60,7 @@ const CATEGORIES = [
   { id: 'land', label: '토지' },
   { id: 'house', label: '주택' },
   { id: 'apartment', label: '아파트' },
+  { id: 'store', label: '상가' },
   { id: 'building', label: '빌딩' }
 ];
 const BUDGET_CHIPS = [
@@ -98,6 +100,8 @@ const catIconMap: Record<string, string> = {
   '주택': '/jutack.svg',
   'apartment': '/apart.svg',
   '아파트': '/apart.svg',
+  'store': '/cshop.svg',
+  '상가': '/cshop.svg',
   'building': '/build.svg',
   '빌딩': '/build.svg'
 };
@@ -276,15 +280,7 @@ function DiscoverPageContent() {
           </div>
 
           {/* 발굴 폼 내용 */}
-          {!user ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[300px]">
-              <p className="text-xs font-bold text-slate-800 mb-4">로그인이 필요한 서비스입니다</p>
-              <button onClick={() => router.push('/login')} className="px-6 py-2.5 bg-slate-900 text-white font-extrabold rounded-2xl text-xs hover:bg-slate-800 transition-all shadow-sm">
-                로그인하기
-              </button>
-            </div>
-          ) : (
-            <div className="p-5 space-y-6 flex-1">
+          <div className="p-5 space-y-6 flex-1">
 
               {/* 1단계: 투자 지역 */}
               <div>
@@ -390,19 +386,27 @@ function DiscoverPageContent() {
 
               {/* 발굴 실행 버튼 */}
               <div className="pt-2">
-                <button
-                  onClick={runDiscover}
-                  disabled={dRunning || !dAddress || !dBudget}
-                  className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl text-xs transition-all shadow-md shadow-emerald-500/10 tracking-wide"
-                >
-                  {dRunning ? 'AI 투자처 탐색 중...' : 'AI 투자처 발굴 시작'}
-                </button>
+                {!user ? (
+                  <Link
+                    href="/login"
+                    className="block w-full py-4 bg-slate-900 hover:bg-slate-850 text-white font-extrabold rounded-2xl text-center text-xs tracking-wide transition-all shadow-sm"
+                  >
+                    로그인 후 진행
+                  </Link>
+                ) : (
+                  <button
+                    onClick={runDiscover}
+                    disabled={dRunning || !dAddress || !dBudget}
+                    className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl text-xs transition-all shadow-md shadow-emerald-500/10 tracking-wide"
+                  >
+                    {dRunning ? 'AI 투자처 탐색 중...' : 'AI 투자처 발굴 시작'}
+                  </button>
+                )}
                 <p className="text-[10px] text-slate-400 text-center mt-2.5 font-semibold leading-relaxed">
                   ※ 선택한 지역의 최적 매물을 AI가 자동 분석 및 추천합니다.
                 </p>
               </div>
             </div>
-          )}
         </div>
 
         {/* ── 우측 패널: 발굴 결과 리스트 (w-full lg:w-[60%]) ── */}

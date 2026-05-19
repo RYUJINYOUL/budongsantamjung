@@ -33,8 +33,12 @@ const CATEGORIES = [
   { id: 'land', label: '토지', icon: '/land.svg' },
   { id: 'house', label: '주택', icon: '/jutack.svg' },
   { id: 'apartment', label: '아파트', icon: '/apart.svg' },
+  { id: 'store', label: '상가', icon: '/cshop.svg' },
   { id: 'building', label: '빌딩', icon: '/build.svg' },
 ];
+
+interface AdditionalParcel { address: string; lat: number; lng: number; pnu: string | null; isLoadingPnu: boolean; }
+interface Industry { code: string; name: string; middle?: { code: string; name: string; small?: { code: string; name: string }[] }[] }
 
 export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   const router = useRouter();
@@ -49,6 +53,22 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // 다중 필지
+  const [isMultiParcel, setIsMultiParcel] = useState(false);
+  const [additionalParcels, setAdditionalParcels] = useState<AdditionalParcel[]>([]);
+  const [parcelSearchQuery, setParcelSearchQuery] = useState('');
+  const [parcelSearchResults, setParcelSearchResults] = useState<SearchResult[]>([]);
+  const [isParcelSearching, setIsParcelSearching] = useState(false);
+
+  // 업종
+  const [allIndustries, setAllIndustries] = useState<Industry[]>([]);
+  const [selectedLarge, setSelectedLarge] = useState<string | null>(null);
+  const [selectedMedium, setSelectedMedium] = useState<string | null>(null);
+  const [selectedSmall, setSelectedSmall] = useState<string | null>(null);
+  const [industrySearch, setIndustrySearch] = useState('');
+  const [industryResults, setIndustryResults] = useState<{large:string;medium:string;small:string;display:string}[]>([]);
+  const [desiredBusiness, setDesiredBusiness] = useState('');
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
@@ -66,6 +86,64 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   }, []);
 
   useEffect(() => {
+    fetch('/industry_master.json').then(r => r.json()).then(setAllIndustries).catch(() => {});
+  }, []);
+
+  const getPnuFromCoords = async (latV: number, lngV: number): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/vworld?lat=${latV}&lng=${lngV}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.response?.result?.featureCollection?.features?.[0]?.properties?.pnu?.toString() || null;
+    } catch { return null; }
+  };
+
+  const handleParcelSearch = (q: string) => {
+    setParcelSearchQuery(q);
+    if (!q || q.length < 2) { setParcelSearchResults([]); return; }
+    if (typeof window === 'undefined' || !window.kakao?.maps?.services) return;
+    setIsParcelSearching(true);
+    const geocoder = new (window as any).kakao.maps.services.Geocoder();
+    geocoder.addressSearch(q, (result: any, status: any) => {
+      setIsParcelSearching(false);
+      if (status === (window as any).kakao.maps.services.Status.OK && result.length > 0) {
+        setParcelSearchResults(result.slice(0, 5).map((p: any) => ({ address_name: p.address_name, road_address_name: p.road_address?.address_name || '', x: p.x, y: p.y })));
+      } else setParcelSearchResults([]);
+    });
+  };
+
+  const selectParcelResult = async (r: SearchResult) => {
+    const addr = r.road_address_name || r.address_name;
+    const latV = parseFloat(r.y); const lngV = parseFloat(r.x);
+    setParcelSearchQuery(''); setParcelSearchResults([]);
+    if (additionalParcels.some(p => p.address === addr)) return;
+    const entry: AdditionalParcel = { address: addr, lat: latV, lng: lngV, pnu: null, isLoadingPnu: true };
+    setAdditionalParcels(prev => [...prev, entry]);
+    const pnu = await getPnuFromCoords(latV, lngV);
+    setAdditionalParcels(prev => prev.map(p => p.address === addr ? { ...p, pnu, isLoadingPnu: false } : p));
+  };
+
+  const searchIndustry = (q: string) => {
+    setIndustrySearch(q);
+    if (!q || q.length < 1) { setIndustryResults([]); return; }
+    const results: {large:string;medium:string;small:string;display:string}[] = [];
+    for (const large of allIndustries) {
+      for (const mid of (large.middle || [])) {
+        for (const sm of (mid.small || [])) {
+          if (sm.name.includes(q) || mid.name.includes(q)) {
+            results.push({ large: large.name, medium: mid.name, small: sm.name, display: `${large.name} > ${mid.name} > ${sm.name}` });
+          }
+        }
+        if (mid.name.includes(q) && !(mid.small || []).some(s => s.name.includes(q))) {
+          results.push({ large: large.name, medium: mid.name, small: '', display: `${large.name} > ${mid.name}` });
+        }
+      }
+      if (results.length >= 8) break;
+    }
+    setIndustryResults(results.slice(0, 8));
+  };
+
+  useEffect(() => {
     if (!isAnalyzing) return;
     const timer = setInterval(() => setElapsedSeconds(p => p + 1), 1000);
     const stepTimer = setInterval(() => setAnalysisStep(p => (p < ANALYSIS_STEPS.length - 1 ? p + 1 : p)), 3000);
@@ -80,15 +158,6 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
     } catch { /* ignore */ }
   };
 
-  const getPnuFromCoords = async (latVal: number, lngVal: number): Promise<string | null> => {
-    try {
-      const res = await fetch(`/api/vworld?lat=${latVal}&lng=${lngVal}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const features = data?.response?.result?.featureCollection?.features;
-      return features?.[0]?.properties?.pnu?.toString() || null;
-    } catch { return null; }
-  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -147,8 +216,14 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
 
     try {
       const idToken = await user.getIdToken();
+      const allParcels = [{ address, lat, lng, pnu: primaryPnu }];
+      if (isMultiParcel && (selectedCategory === 'land' || selectedCategory === 'building')) {
+        additionalParcels.forEach(p => { if (p.pnu) allParcels.push(p); });
+      }
+      const pnuList = allParcels.map(p => p.pnu).filter(Boolean);
       const payload: any = { category: selectedCategory, address, lat: lat.toString(), lng: lng.toString() };
-      if (primaryPnu) { payload.primaryPnu = primaryPnu; payload.pnuList = [primaryPnu]; }
+      if (pnuList.length > 0) { payload.primaryPnu = primaryPnu; payload.pnuList = pnuList; }
+      if (desiredBusiness) payload.desiredBusiness = desiredBusiness;
 
       const res = await fetch(`${BACKEND_URL}/api/land/detective/analyze-with-report`, {
         method: 'POST',
@@ -181,18 +256,18 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
         {/* 카테고리 선택 */}
         <div>
           <p className="text-[11px] font-extrabold text-emerald-600 tracking-wider mb-2.5 uppercase">카테고리 선택</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             {CATEGORIES.map(cat => (
               <button
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`group flex flex-col items-center justify-center p-3.5 rounded-2xl border-2 transition-all gap-2 ${selectedCategory === cat.id
+                onClick={() => { setSelectedCategory(cat.id); setIsMultiParcel(false); setAdditionalParcels([]); }}
+                className={`group flex flex-col items-center justify-center p-2.5 rounded-2xl border-2 transition-all gap-1.5 ${selectedCategory === cat.id
                   ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
                   : 'border-slate-100 bg-slate-50/50 hover:border-emerald-200/70 hover:bg-white'
                   }`}
               >
-                <img src={cat.icon} alt={cat.label} className="w-7 h-7 object-contain transition-transform group-hover:scale-105" />
-                <span className={`text-xs font-bold ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>{cat.label}</span>
+                <img src={cat.icon} alt={cat.label} className="w-6 h-6 object-contain transition-transform group-hover:scale-105" />
+                <span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>{cat.label}</span>
               </button>
             ))}
           </div>
@@ -240,6 +315,121 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
             </div>
           )}
         </div>
+
+        {/* 다중 필지 (토지/빌딩) */}
+        {(selectedCategory === 'land' || selectedCategory === 'building') && address && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold text-slate-800">다중 필지 일괄매매</p>
+                  <p className="text-[10px] text-slate-500 font-semibold">토지 전용 · 최대 4필지 추가</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={isMultiParcel} onChange={e => { setIsMultiParcel(e.target.checked); if (!e.target.checked) setAdditionalParcels([]); }} />
+                <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+            {isMultiParcel && (
+              <div className="space-y-2">
+                <div className="bg-white rounded-xl px-3 py-2 border border-emerald-100 flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                  <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{address}</span>
+                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-md shrink-0">주필지</span>
+                </div>
+                {additionalParcels.map((p, i) => (
+                  <div key={i} className="bg-white rounded-xl px-3 py-2 border border-slate-100 flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 shrink-0">#{i+1}</span>
+                    <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{p.address}</span>
+                    {p.isLoadingPnu ? <div className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin shrink-0" /> : p.pnu ? <span className="text-[9px] text-emerald-600 font-mono shrink-0">PNU✓</span> : <span className="text-[9px] text-rose-500 shrink-0">PNU없음</span>}
+                    <button onClick={() => setAdditionalParcels(prev => prev.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500 text-sm font-bold shrink-0">✕</button>
+                  </div>
+                ))}
+                {additionalParcels.length < 4 && (
+                  <div className="relative mt-2">
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-emerald-400 transition-all">
+                      <svg className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                      <input type="text" placeholder="추가 필지 주소 검색" className="flex-1 bg-transparent outline-none text-xs font-bold text-slate-700 placeholder:text-slate-400" value={parcelSearchQuery} onChange={e => handleParcelSearch(e.target.value)} />
+                      {isParcelSearching && <div className="w-3 h-3 border border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />}
+                    </div>
+                    {parcelSearchResults.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                        {parcelSearchResults.map((r, i) => (
+                          <button key={i} onClick={() => selectParcelResult(r)} className="w-full px-3 py-2.5 text-left hover:bg-emerald-50 border-b border-slate-50 last:border-0">
+                            <p className="text-[11px] font-bold text-slate-800">{r.road_address_name || r.address_name}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 상가 희망 업종 */}
+        {selectedCategory === 'store' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-xl bg-orange-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+              </div>
+              <div>
+                <p className="text-xs font-extrabold text-slate-800">상가 희망 업종</p>
+                <p className="text-[10px] text-orange-500 font-bold">선택사항</p>
+              </div>
+            </div>
+            {/* 업종 검색 */}
+            <div className="relative">
+              <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-orange-400 transition-all">
+                <svg className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input type="text" placeholder="업종 검색 (예: 카페, 편의점)" className="flex-1 bg-transparent outline-none text-xs font-bold text-slate-700 placeholder:text-slate-400" value={industrySearch} onChange={e => searchIndustry(e.target.value)} />
+                {industrySearch && <button onClick={() => { setIndustrySearch(''); setIndustryResults([]); }} className="text-slate-300 hover:text-slate-500 text-sm font-black shrink-0">✕</button>}
+              </div>
+              {industryResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                  {industryResults.map((r, i) => (
+                    <button key={i} onClick={() => { setSelectedLarge(r.large); setSelectedMedium(r.medium); setSelectedSmall(r.small || null); setDesiredBusiness(r.small || r.medium); setIndustrySearch(r.small || r.medium); setIndustryResults([]); }} className="w-full px-3 py-2.5 text-left hover:bg-orange-50 border-b border-slate-50 last:border-0">
+                      <p className="text-[11px] font-bold text-slate-800">{r.small || r.medium}</p>
+                      <p className="text-[10px] text-slate-400">{r.display}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* 드롭다운 */}
+            <div className="mt-3 space-y-2">
+              {allIndustries.length === 0 ? (
+                <p className="text-[11px] text-slate-400 font-semibold text-center py-2">업종 데이터 로딩 중...</p>
+              ) : (
+                <>
+                  <select value={selectedLarge || ''} onChange={e => { setSelectedLarge(e.target.value || null); setSelectedMedium(null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
+                    <option value="">대분류 선택</option>
+                    {allIndustries.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
+                  </select>
+                  {selectedLarge && (() => { const midList = (allIndustries.find(l => l.name === selectedLarge)?.middle || []); return midList.length > 0 ? (
+                    <select value={selectedMedium || ''} onChange={e => { setSelectedMedium(e.target.value || null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
+                      <option value="">중분류 선택</option>
+                      {midList.map(m => <option key={m.code} value={m.name}>{m.name}</option>)}
+                    </select>
+                  ) : null; })()}
+                  {selectedMedium && (() => { const smallList = (allIndustries.find(l => l.name === selectedLarge)?.middle?.find(m => m.name === selectedMedium)?.small || []); return smallList.length > 0 ? (
+                    <select value={selectedSmall || ''} onChange={e => { setSelectedSmall(e.target.value || null); setDesiredBusiness(e.target.value || selectedMedium || ''); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
+                      <option value="">소분류 선택</option>
+                      {smallList.map(s => <option key={s.code} value={s.name}>{s.name}</option>)}
+                    </select>
+                  ) : null; })()}
+                  {desiredBusiness && <p className="text-[11px] text-orange-600 font-extrabold">✓ 선택: {desiredBusiness}</p>}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 분석 시작 버튼 */}
         <div className="pt-3">
