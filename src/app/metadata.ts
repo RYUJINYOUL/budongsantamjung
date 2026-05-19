@@ -1,13 +1,13 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    metadataBase: new URL('https://yongcar.com'),
-    title: '용카 - 택배 일자리 분석 | 쿠팡택배 CJ대한통운 롯데택배 구인정보',
-    description: '택배기사 필수 앱 용카! 택배 일자리 분석, 쿠팡택배 후기, 택배 갑질 제보, 지입사기 방지. 실시간 구인정보와 AI 분석으로 안전한 택배 일자리를 찾으세요.',
-    keywords: ['택배 일자리', '쿠팡택배', '택배기사', '택배 구인', '택배 사기', '지입사기', '택배 갑질', 'CJ대한통운', '롯데택배', '한진택배', '택배 어때요', '택배기사 후기'],
-    authors: [{ name: '용카' }],
-    creator: '용카',
-    publisher: '용카',
+    metadataBase: new URL('https://route-analyzer.vercel.app'),
+    title: '부동산 매물 분석 AI | 토지 주택 상가 프랜차이즈 지옥',
+    description: '안전한 거래를 위한 필수 도구! 토지 지옥, 주택 지옥, 점포 지옥 분석 및 기획부동산, 권리금 사기 방지. 실시간 매물 정보와 AI 분석으로 안심하고 거래하세요.',
+    keywords: ['부동산', '토지', '주택', '점포', '프랜차이즈', '부동산 매물 분석', '허위매물', '권리금사기', '기획부동산', '부동산 사기 방지', '상권 분석'],
+    authors: [{ name: '부동산 분석 AI' }],
+    creator: '부동산 분석 AI',
+    publisher: '부동산 분석 AI',
     formatDetection: {
         email: false,
         address: false,
@@ -16,25 +16,24 @@ export const metadata: Metadata = {
     openGraph: {
         type: 'website',
         locale: 'ko_KR',
-        url: 'https://yongcar.com',
-        siteName: '용카 - 택배기사 필수 앱',
-        title: '용카 - 택배 일자리 분석 | 쿠팡택배 CJ대한통운 구인정보',
-        description: '택배 일자리 AI 분석, 갑질 제보, 지입사기 방지. 배달 기사를 위한 스마트 플랫폼',
+        url: 'https://route-analyzer.vercel.app',
+        siteName: '부동산 매물 분석 AI',
+        title: '부동산 매물 분석 AI | 토지 주택 상가 권리금',
+        description: '부동산 매물 AI 분석, 사기 탐지, 허위 방지. 안전한 거래를 위한 스마트 플랫폼',
         images: [
             {
                 url: '/logo512.png',
                 width: 512,
                 height: 512,
-                alt: '용카 로고',
+                alt: '부동산 분석 AI 로고',
             },
         ],
     },
     twitter: {
         card: 'summary_large_image',
-        title: '용카 - 택배 일자리 분석',
-        description: '택배 일자리 AI 분석, 갑질 제보, 지입사기 방지',
+        title: '부동산 매물 분석 AI',
+        description: '부동산 매물 AI 분석, 사기 탐지, 허위매물 방지',
         images: ['/logo512.png'],
-        creator: '@yongcar',
     },
     robots: {
         index: true,

@@ -1,11 +1,12 @@
 {
   "firestore": {
-    "database": "(default)",
+    "database": "tomtom",
     "location": "asia-northeast3",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
+    "site": "yongcar-4377c",
     "source": ".",
     "ignore": [
       "firebase.json",
@@ -13,8 +14,10 @@
       "**/node_modules/**"
     ],
     "frameworksBackend": {
-      "region": "asia-east1"
-      }
+      "region": "asia-northeast3",
+      "timeoutSeconds": 300,
+      "memory": "1GiB"
+    }
   },
   "storage": {
     "rules": "storage.rules"

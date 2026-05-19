@@ -1,20 +1,20 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-    title: '택배 일자리 AI 분석 | 지입사기 방지 - 용카',
-    description: 'AI로 택배 구인정보를 분석하여 숨겨진 사기와 함정을 찾아냅니다. 쿠팡택배, CJ대한통운, 롯데택배 등 모든 택배사 구인정보 검증. 차량 할부 유도, 선입금 요구, 비현실적 고수익 등 사기 패턴 자동 감지.',
-    keywords: ['택배 일자리 분석', '지입사기', '택배 사기', '구인정보 검증', '쿠팡택배 구인', 'CJ대한통운 구인', '택배 AI 분석', '택배 갑질', '택배 어때요'],
+    title: '부동산 매물 AI 분석 | 허위매물 및 사기 탐지 - 부동산탐정',
+    description: 'AI 기술로 부동산 매물 정보를 분석하여 숨겨진 리스크와 허위 정보를 찾아냅니다. 아파트, 토지, 빌딩 등 모든 부동산 매물의 가치와 안전성을 전문가 수준으로 판독합니다.',
+    keywords: ['부동산 분석', '허위매물 탐지', '부동산 사기 방지', '매물 검증', '아파트 분석', '토지 분석', '부동산 AI', '부동산탐정'],
     openGraph: {
-        title: '택배 일자리 AI 분석 | 지입사기 방지 - 용카',
-        description: 'AI로 택배 구인정보의 숨겨진 사기와 함정을 자동으로 찾아냅니다',
+        title: '부동산 매물 AI 분석 | 허위매물 및 사기 탐지 - 부동산탐정',
+        description: 'AI로 부동산 매물 정보의 숨겨진 리스크와 사기 패턴을 자동으로 찾아냅니다',
         type: 'website',
-        url: 'https://yongcar.com/analyze',
+        url: 'https://tomjungup.web.app/',
         images: ['/logo512.png'],
     },
     twitter: {
         card: 'summary_large_image',
-        title: '택배 일자리 AI 분석 - 용카',
-        description: 'AI로 택배 구인정보의 사기 패턴을 자동 감지',
+        title: '부동산 매물 AI 분석 - 부동산탐정',
+        description: '부동산 탐정 AI',
         images: ['/logo512.png'],
     },
 }

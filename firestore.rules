@@ -1,38 +1,192 @@
-rules_version='2'
-
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This rule allows anyone with your database reference to view, edit,
-    // and delete all data in your database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or
-    // else all client requests to your database will be denied until you
-    // update your rules.
-    match /{document=**} {
-      // abuse_reports 폴더 (갑질 제보 파일들)
-      match /abuse_reports/{fileName} {
-        
-        // 1. 읽기: 누구나 가능
-        allow read: if true;
-        
-        // 2. 생성: 누구나 가능 (10MB 제한, 멀티미디어 파일 허용)
-        allow create: if request.resource.size < 10 * 1024 * 1024
-                     && (
-                       // 이미지 파일
-                       request.resource.contentType.matches('image/.*') ||
-                       // 비디오 파일
-                       request.resource.contentType.matches('video/.*') ||
-                       // 오디오 파일
-                       request.resource.contentType.matches('audio/.*')
-                     );
-        
-        // 3. 수정 및 삭제: 절대 불가 (박제 컨셉)
-        allow update, delete: if false;
+  
+    // 부동산 탐정 정밀 분석 컬렉션 (새로운 기능)
+    match /real_estate_analyses/{docId} {
+      // 누구나 결과물 조회 가능
+      allow read: if true;
+      // 생성은 현재 API Route(Client SDK)에서 수행하므로 한시적 허용
+      allow create: if true;
+      // 수정/삭제는 본인 또는 관리자만 (추후 확장 가능)
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    match /architectRecruit/{document} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || request.auth.uid == document.split('-')[0]);
+    }
+
+    match /recruitAuthoArchi/{document} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+    }
+  
+    match /firesale/{document} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+    }
+    
+    match /recruitCons/{document} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+    }
+    
+    match /applicant/{docId} {
+      allow read: if request.auth != null && (
+        resource.data.userKey == request.auth.uid || 
+        resource.data.proApplyId.split('_')[0] == request.auth.uid ||
+        resource.data.proApplyId.split('-')[0] == request.auth.uid ||
+        resource.data.professionalsId.split('_')[0] == request.auth.uid ||
+        resource.data.professionalsId.split('-')[0] == request.auth.uid
+      );
+      allow create: if request.auth != null && 
+        request.resource.data.userKey == request.auth.uid;
+      allow update: if request.auth != null && (
+        resource.data.userKey == request.auth.uid || 
+        resource.data.proApplyId.split('_')[0] == request.auth.uid ||
+        resource.data.proApplyId.split('-')[0] == request.auth.uid ||
+        resource.data.professionalsId.split('_')[0] == request.auth.uid ||
+        resource.data.professionalsId.split('-')[0] == request.auth.uid
+      );
+      allow delete: if request.auth != null && 
+        resource.data.userKey == request.auth.uid;
+    }
+
+    match /ad_management/{docId} {
+      allow read: if true; 
+      allow write: if false; 
+    }
+
+    match /proApply/{userId} {
+      allow read: if request.auth != null; 
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /applications/{proApplyId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+      match /applicants/{applicantId} {
+        allow read: if request.auth != null && (
+          resource.data.userKey == request.auth.uid || 
+          proApplyId.split('-')[0] == request.auth.uid ||
+          proApplyId.split('_')[0] == request.auth.uid
+        );
+        allow update: if request.auth != null && (
+          proApplyId.split('-')[0] == request.auth.uid ||
+          proApplyId.split('_')[0] == request.auth.uid ||
+          resource.data.userKey == request.auth.uid
+        );
+        allow create: if request.auth != null;
+        allow delete: if request.auth != null && resource.data.userKey == request.auth.uid;
       }
-      allow read, write: if request.time < timestamp.date(2026, 2, 19);
+    }
+    
+    match /users/{userId} {
+      allow read: if request.auth != null; 
+      allow write: if request.auth != null && request.auth.uid == userId;
+      match /private_info/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /push/{pushId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+    
+    match /professionals/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+    }
+    
+    match /proApply/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+      match /quotations/{quotationId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && 
+          request.auth.uid == resource.data.uid;
+      }
+    }
+    
+    match /construction/{docId} {
+      allow read: if true; 
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+    }
+    
+    match /conApply/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+      match /quotations/{quotationId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null;
+      }
+    }
+    
+    match /equipment/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+    }
+    
+    match /equipApply/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userKey || 
+         request.auth.uid == docId.split('-')[0]);
+      match /quotations/{quotationId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null && 
+          request.auth.uid == resource.data.uid;
+      }
+    }
+    
+    match /apply/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.userKey ||
+         request.auth.uid == docId.split('-')[0]);
+    }
+
+    match /community/{postId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.authorId;
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow delete: if request.auth != null && request.auth.uid == resource.data.authorId;
+      }
+    }
+    
+    match /notifications/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }

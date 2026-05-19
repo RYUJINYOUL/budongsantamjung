@@ -19,6 +19,6 @@ export default function robots(): MetadataRoute.Robots {
                 disallow: ['/api/', '/temp/'],
             },
         ],
-        sitemap: 'https://yongcar.com/sitemap.xml',
+        sitemap: 'https://route-test-fe6fc.web.app/sitemap.xml',
     }
 }

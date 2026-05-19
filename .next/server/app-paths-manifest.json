@@ -1,6 +1,11 @@
 {
-  "/page": "app/page.js",
-  "/analyze/page": "app/analyze/page.js",
-  "/vote/submit/page": "app/vote/submit/page.js",
-  "/vote/page": "app/vote/page.js"
+  "/api/user/usage/route": "app/api/user/usage/route.js",
+  "/api/land/detective/discoveries/route": "app/api/land/detective/discoveries/route.js",
+  "/discover/page": "app/discover/page.js",
+  "/api/land/detective/timeline/route": "app/api/land/detective/timeline/route.js",
+  "/profile/page": "app/profile/page.js",
+  "/api/land/detective/my-reports/route": "app/api/land/detective/my-reports/route.js",
+  "/api/land/detective/my-discoveries/route": "app/api/land/detective/my-discoveries/route.js",
+  "/api/land/detective/my-favorites/route": "app/api/land/detective/my-favorites/route.js",
+  "/page": "app/page.js"
 }
