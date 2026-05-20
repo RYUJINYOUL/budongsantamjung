@@ -225,7 +225,7 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
       if (pnuList.length > 0) { payload.primaryPnu = primaryPnu; payload.pnuList = pnuList; }
       if (desiredBusiness) payload.desiredBusiness = desiredBusiness;
 
-      const res = await fetch(`${BACKEND_URL}/api/land/detective/analyze-with-report`, {
+      const res = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify(payload),

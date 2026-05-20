@@ -359,7 +359,7 @@ export default function UnifiedAnalyzePage() {
         payload.pnuList = pnuList;
       }
 
-      const response = await fetch(`${BACKEND_URL}/api/land/detective/analyze-with-report`, {
+      const response = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

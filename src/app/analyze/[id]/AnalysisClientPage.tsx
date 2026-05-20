@@ -31,7 +31,7 @@ import {
     Stethoscope, Trees, Train, Car, Tag, Clock
 } from 'lucide-react';
 
-
+import AiReportView from '../../../components/AiReportView';
 
 // 타입 정의
 interface ComprehensiveRisk {
@@ -506,9 +506,8 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         setIsCheckingAccess(true);
         try {
             const idToken = await user.getIdToken();
-            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
             const res = await fetch(
-                `${backendUrl}/api/payment/check-access?userId=${user.uid}&propertyId=${propertyId}`,
+                `/api/payment/check-access?userId=${user.uid}&propertyId=${propertyId}`,
                 { headers: { Authorization: `Bearer ${idToken}` } }
             );
             const data = await res.json();
@@ -834,381 +833,17 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             exit={{ opacity: 0, y: -10 }}
                             className="space-y-8"
                         >
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                {/* 메인 리포트 영역 */}
-                                <div className="lg:col-span-2 space-y-8">
-
-                                    {/* 종합 리스크 분석 */}
-                                    <section className="relative overflow-hidden rounded-[40px] border border-white/5 bg-slate-900/40 p-8 sm:p-10 ring-1 ring-white/10">
-                                        {(report?.ai_analysis_status || analysisData?.ai_analysis_status) !== 'completed' ? (
-                                            <div className="flex flex-col items-center justify-center py-10 text-center">
-                                                <div className="w-20 h-20 bg-sky-500/10 rounded-full flex items-center justify-center mb-6 border border-sky-500/20">
-                                                    <Zap className="w-10 h-10 text-sky-500" />
-                                                </div>
-                                                <h3 className="text-2xl font-black text-white mb-2">AI 정밀 판독 준비 완료</h3>
-                                                <p className="text-slate-400 mb-8 max-w-md">
-                                                    기초 데이터 수집이 완료되었습니다. <br />
-                                                    AI 탐정을 가동하여 수익성, 리스크, 네고 전략을 분석하시겠습니까?
-                                                </p>
-                                                <button
-                                                    onClick={handleAiAnalysisClick}
-                                                    disabled={isCheckingAccess}
-                                                    className="px-10 py-5 bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-white font-black rounded-3xl shadow-2xl shadow-sky-500/40 transition-all flex items-center gap-3 active:scale-95"
-                                                >
-                                                    {isCheckingAccess ? (
-                                                        <><div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" /><span>결제 확인 중...</span></>
-                                                    ) : (
-                                                        <><Zap className="w-6 h-6" /><span>AI 심층 판독 시작하기 🔥</span></>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-                                                <div className="md:col-span-4 flex justify-center">
-                                                    <RiskGauge
-                                                        score={reportData?.['1_comprehensiveRisk']?.totalScore || 0}
-                                                        grade={reportData?.['5_priceReasonableness']?.conclusion || "분석중"}
-                                                    />
-                                                </div>
-                                                <div className="md:col-span-8">
-                                                    <div className="flex items-center gap-3 mb-6">
-                                                        <div className="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center border border-sky-500/20">
-                                                            <Search className="w-5 h-5 text-sky-500" />
-                                                        </div>
-                                                        <h3 className="text-xl font-black text-white">부동산탐정 AI 요약</h3>
-                                                    </div>
-                                                    <div className="text-lg text-slate-200 leading-relaxed font-medium min-h-[100px]">
-                                                        {reportData?.['1_comprehensiveRisk']?.coreJudgement ? (
-                                                            <Typewriter text={reportData['1_comprehensiveRisk'].coreJudgement} delay={40} />
-                                                        ) : (
-                                                            <span className="text-slate-500 italic">판독 데이터를 불러오는 중입니다...</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </section>
-
-                                    {/* 세부 항목 스코어링 */}
-                                    {reportData?.['1_comprehensiveRisk']?.scoreItems && (
-                                        <section className="bg-slate-900/40 rounded-[40px] border border-white/5 p-8 sm:p-10 backdrop-blur-md">
-                                            <h3 className="text-xl font-black text-white mb-8">세부 리스크 평가 항목</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {Object.entries(reportData['1_comprehensiveRisk'].scoreItems).map(([key, item]: [string, any], idx) => {
-                                                    if (!item.score) return null;
-                                                    const labelMap: Record<string, string> = {
-                                                        'nearbySales': '인근 실거래가',
-                                                        'tradeVolume': '거래량',
-                                                        'amenities': '생활 편의시설',
-                                                        'regulatoryOutlook': '규제 전망',
-                                                        'population': '인구 현황',
-                                                        'landRegulation': '토지 이용 규제',
-                                                        'landShape': '토지 형상',
-                                                        'buildingAgePhoto': '건물 노후도(사진)',
-                                                        'buildingAgeRegister': '건물 노후도(대장)',
-                                                        'rentProfitability': '임대 수익성'
-                                                    };
-                                                    const label = labelMap[key] || key;
-                                                    return (
-                                                        <div key={idx} className="bg-white/[0.02] p-5 rounded-2xl border border-white/5 group hover:bg-white/5 transition-all">
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <span className="text-sm font-bold text-slate-300 uppercase tracking-wide">{label}</span>
-                                                            </div>
-                                                            <MiniBar score={item.score} />
-                                                            <p className="text-xs text-slate-400 mt-3 leading-relaxed group-hover:text-slate-300 transition-colors">{item.reason}</p>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </section>
-                                    )}
-
-                                    {/* 가격 분석 및 적정성 */}
-                                    <section className="bg-slate-900/40 rounded-[40px] border border-white/5 p-8 sm:p-10">
-                                        <h3 className="text-xl font-black mb-6 flex items-center gap-3">
-                                            <Gavel className="w-6 h-6 text-sky-500" />
-                                            <span>가격 타당성 검증</span>
-                                            {reportData?.analysisMetadata && (
-                                                <span className={`ml-auto px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${reportData.analysisMetadata.confidenceGrade === 'A' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                                                    reportData.analysisMetadata.confidenceGrade === 'B' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                                                        'bg-red-500/20 text-red-400 border border-red-500/30'
-                                                    }`}>
-                                                    신뢰도 {reportData.analysisMetadata.confidenceGrade}
-                                                </span>
-                                            )}
-                                        </h3>
-                                        <div className="mb-6 p-6 bg-red-500/10 border border-red-500/20 rounded-3xl">
-                                            <div className="text-red-400 font-bold mb-2 flex items-center gap-2">
-                                                <AlertCircle className="w-4 h-4" /> 판독 결론: {reportData?.['5_priceReasonableness']?.conclusion}
-                                            </div>
-                                            <p className="text-slate-200 leading-relaxed text-sm">
-                                                {reportData?.['5_priceReasonableness']?.opinion}
-                                            </p>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            <div className="p-6 bg-white/5 rounded-3xl border border-white/5">
-                                                <p className="text-sm font-bold text-slate-400 mb-2">실거래가 비교 요약</p>
-                                                <p className="text-sm text-slate-300 leading-relaxed">
-                                                    {reportData?.['3_priceAnalysisReport']?.landFiresaleSummary}
-                                                </p>
-                                            </div>
-                                            {reportData?.['3_priceAnalysisReport']?.comparableAnalysis && (
-                                                <div className="p-6 bg-sky-500/5 rounded-3xl border border-sky-500/10">
-                                                    <p className="text-sm font-bold text-sky-400 mb-2 flex items-center gap-2">
-                                                        <Layers className="w-4 h-4" /> 비교사례 보정 분석
-                                                    </p>
-                                                    <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
-                                                        {reportData['3_priceAnalysisReport'].comparableAnalysis}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </section>
-
-                                    {/* 토지 및 현장 분석 */}
-                                    <section className="bg-slate-900/40 rounded-[40px] border border-white/5 p-8 sm:p-10">
-                                        <h3 className="text-xl font-black mb-6 flex items-center gap-3">
-                                            <MapPin className="w-6 h-6 text-sky-500" />
-                                            <span>토지 형태 및 개발 잠재력</span>
-                                        </h3>
-                                        <div className="space-y-4">
-                                            <div className="p-5 bg-white/5 rounded-3xl">
-                                                <p className="text-xs text-slate-500 font-bold mb-1">개발 활용성</p>
-                                                <p className="text-sm text-slate-200">{reportData?.['2_landShapeAnalysis']?.developmentUtility}</p>
-                                            </div>
-                                            <div className="p-5 bg-white/5 rounded-3xl">
-                                                <p className="text-xs text-slate-500 font-bold mb-1">입지 및 소견</p>
-                                                <p className="text-sm text-slate-200">{reportData?.['2_landShapeAnalysis']?.shapeDescription}</p>
-                                            </div>
-                                        </div>
-                                    </section>
-
-                                    {/* 심층 리포트 */}
-                                    {reportData?.['7_inDepthReport'] && (
-                                        <div className="grid gap-6 mt-8">
-                                            {[
-                                                { icon: DollarSign, title: "경제성 및 수익성 분석", content: reportData['7_inDepthReport'].economy, accent: "#22c55e" },
-                                                { icon: Layers, title: "구조 및 하자 분석", content: reportData['7_inDepthReport'].defects, accent: "#f59e0b" },
-                                                { icon: TrendingUp, title: "미래 가치 및 전망", content: reportData['7_inDepthReport'].outlook, accent: "#38bdf8" },
-                                            ].map((section, i) => (
-                                                <section key={i} className="bg-slate-900/40 rounded-[40px] border border-white/5 p-8 sm:p-10 backdrop-blur-md hover:bg-slate-800/40 transition-all">
-                                                    <div className="flex items-center gap-4 mb-6">
-                                                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: section.accent + '20', border: `1px solid ${section.accent}40` }}>
-                                                            <section.icon className="w-6 h-6" style={{ color: section.accent }} />
-                                                        </div>
-                                                        <h3 className="text-xl font-black text-white">{section.title}</h3>
-                                                    </div>
-                                                    <p className="text-sm md:text-base font-medium text-slate-300 leading-loose">{section.content}</p>
-                                                </section>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                </div>
-
-                                {/* 사이드바 영역 */}
-                                <aside className="space-y-8">
-                                    <div className="sticky top-24 space-y-8">
-
-                                        {/* 최종 판결 */}
-                                        <div className="bg-gradient-to-b from-red-500/20 to-transparent p-px rounded-[40px]">
-                                            <div className="bg-[#111114] p-8 rounded-[40px] border border-white/5 shadow-2xl relative overflow-hidden">
-                                                <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
-                                                <h3 className="text-xs font-black text-red-500 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                                                    <ShieldAlert className="w-4 h-4" /> 종합 분석 결과
-                                                </h3>
-                                                <div className="text-sm text-slate-200 leading-relaxed font-medium py-2">
-                                                    {(() => {
-                                                        const fv = reportData?.['8_finalVerdict'];
-                                                        if (!fv) return '최종 판결 대기중...';
-                                                        if (typeof fv === 'string') return fv;
-                                                        // 오브젝트 형태로 저장된 경우
-                                                        return (
-                                                            <div className="space-y-3">
-                                                                {fv.verdict && (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">판정</span>
-                                                                        <span className={`px-2.5 py-1 rounded-lg text-xs font-black border ${fv.verdict === '매수' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : fv.verdict === '보류' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-rose-500/20 text-rose-300 border-rose-500/30'}`}>{fv.verdict}</span>
-                                                                        {fv.investmentGrade && <span className="text-xs font-bold text-slate-400">등급 {fv.investmentGrade}</span>}
-                                                                    </div>
-                                                                )}
-                                                                {fv.reason && (
-                                                                    <p className="text-sm text-slate-200 leading-relaxed">{fv.reason}</p>
-                                                                )}
-                                                                {fv.condition && (
-                                                                    <div className="mt-2 p-3 bg-white/5 rounded-xl border border-white/10">
-                                                                        <p className="text-[10px] font-black text-amber-400 mb-1">투자 조건</p>
-                                                                        <p className="text-xs text-slate-300 leading-relaxed">{fv.condition}</p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* 분석 메타데이터 (신뢰도 배지) */}
-                                        {reportData?.analysisMetadata && (
-                                            <div className="bg-slate-900 border border-white/5 p-6 rounded-[40px] shadow-2xl">
-                                                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                                    <ShieldCheck className="w-4 h-4" /> 데이터 출처
-                                                </h3>
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs text-slate-500">분석 방식</span>
-                                                        <span className="text-xs font-bold text-white">{reportData.analysisMetadata.method}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs text-slate-500">비교사례</span>
-                                                        <span className="text-xs font-bold text-white">{reportData.analysisMetadata.comparableCount}건</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs text-slate-500">신뢰도</span>
-                                                        <span className={`text-xs font-black px-2 py-0.5 rounded-full ${reportData.analysisMetadata.confidenceGrade === 'A' ? 'bg-emerald-500/20 text-emerald-400' :
-                                                            reportData.analysisMetadata.confidenceGrade === 'B' ? 'bg-amber-500/20 text-amber-400' :
-                                                                'bg-red-500/20 text-red-400'
-                                                            }`}>
-                                                            {reportData.analysisMetadata.confidenceGrade}등급
-                                                        </span>
-                                                    </div>
-                                                    {reportData.analysisMetadata.conditionRelaxLevel > 0 && (
-                                                        <div className="mt-2 p-3 bg-amber-500/5 rounded-xl border border-amber-500/10">
-                                                            <p className="text-[10px] text-amber-400 font-bold">
-                                                                ⚠️ 조건 완화 Level {reportData.analysisMetadata.conditionRelaxLevel}
-                                                            </p>
-                                                            <p className="text-[10px] text-slate-400 mt-1">
-                                                                {reportData.analysisMetadata.confidenceNote}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    {reportData.analysisMetadata.officialPriceRatio?.medianRatio && (
-                                                        <div className="mt-3 p-3 bg-sky-500/5 rounded-xl border border-sky-500/10">
-                                                            <p className="text-[10px] text-sky-400 font-bold mb-2">
-                                                                📊 공시가격 배율 분석
-                                                            </p>
-                                                            <div className="space-y-1.5">
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-[10px] text-slate-500">배율 (중앙값)</span>
-                                                                    <span className="text-[10px] font-bold text-white">{reportData.analysisMetadata.officialPriceRatio.medianRatio}배</span>
-                                                                </div>
-                                                                {reportData.analysisMetadata.officialPriceRatio.estimatedPerPyeong && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-[10px] text-slate-500">추정 평당가</span>
-                                                                        <span className="text-[10px] font-bold text-white">{reportData.analysisMetadata.officialPriceRatio.estimatedPerPyeong?.toLocaleString()}만원</span>
-                                                                    </div>
-                                                                )}
-                                                                {reportData.analysisMetadata.officialPriceRatio.estimatedPrice && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-[10px] text-slate-500">추정 시세</span>
-                                                                        <span className="text-[10px] font-bold text-white">{(reportData.analysisMetadata.officialPriceRatio.estimatedPrice / 10000).toLocaleString()}만원</span>
-                                                                    </div>
-                                                                )}
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-[10px] text-slate-500">샘플 수</span>
-                                                                    <span className="text-[10px] font-bold text-white">{reportData.analysisMetadata.officialPriceRatio.sampleCount}건</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* 리스크 레이더 (사이드바로 이동) */}
-                                        {reportData?.['1_comprehensiveRisk']?.scoreItems && (
-                                            <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] shadow-2xl flex flex-col items-center">
-                                                <h3 className="text-xs font-black text-sky-500 uppercase tracking-widest self-start mb-6 flex items-center gap-2">
-                                                    <Activity className="w-4 h-4" /> 위험 진단
-                                                </h3>
-                                                <div className="w-full h-[240px]">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <RadarChart data={Object.entries(reportData['1_comprehensiveRisk'].scoreItems).map(([key, item]: any) => {
-                                                            const labelMap: Record<string, string> = {
-                                                                'nearbySales': '실거래',
-                                                                'tradeVolume': '거래량',
-                                                                'amenities': '편의',
-                                                                'regulatoryOutlook': '규제',
-                                                                'population': '인구',
-                                                                'landRegulation': '토지규제',
-                                                                'landShape': '형상',
-                                                                'buildingAgePhoto': '노후도(사진)',
-                                                                'buildingAgeRegister': '노후도(대장)',
-                                                                'rentProfitability': '수익성'
-                                                            };
-                                                            return { subject: labelMap[key] || key, value: item.score || 0, fullMark: 10 };
-                                                        })}>
-                                                            <PolarGrid stroke="rgba(255,255,255,0.06)" />
-                                                            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 9, fill: "rgba(255,255,255,0.6)", fontWeight: 700 }} />
-                                                            <Radar name="Score" dataKey="value" stroke="#38bdf8" fill="#38bdf8" fillOpacity={0.15} strokeWidth={2} />
-                                                        </RadarChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* 필수 확인 체크리스트 */}
-                                        {reportData?.['6_mustCheckList'] && (
-                                            <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] shadow-2xl">
-                                                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-2">
-                                                    <CheckCircle2 className="w-4 h-4" /> 체크리스트
-                                                </h3>
-                                                <div className="space-y-4">
-                                                    {reportData?.['6_mustCheckList'].map((question: string, i: number) => (
-                                                        <div key={i} className="group relative">
-                                                            <div className="flex items-start gap-3 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:border-sky-500/30 transition-all">
-                                                                <div className="mt-0.5 w-5 h-5 bg-sky-500/10 rounded flex items-center justify-center shrink-0">
-                                                                    <span className="text-xs font-black text-sky-500">{i + 1}</span>
-                                                                </div>
-                                                                <span className="text-xs text-slate-300 font-medium leading-relaxed">{question}</span>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    navigator.clipboard.writeText(question);
-                                                                    alert('복사되었습니다.');
-                                                                }}
-                                                                className="absolute right-3 top-4 opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 p-1.5 rounded-lg"
-                                                            >
-                                                                <Copy className="w-3.5 h-3.5 text-slate-300" />
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* 기본 면적 정보 */}
-                                        <div className="bg-slate-900 border border-white/5 p-8 rounded-[40px] shadow-2xl">
-                                            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">면적 정보</h3>
-                                            <div className="space-y-4">
-                                                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
-                                                    <span className="text-xs font-bold text-slate-400">대지 면적</span>
-                                                    <div className="text-right">
-                                                        <span className="text-sm font-black text-white block">
-                                                            {report.area ? `${report.area} ㎡` : (reportData?.['4_areaInfo']?.landArea || rawData?.vitals?.land?.characteristics?.area || '-')}
-                                                            {report.area && <span className="ml-1 text-[10px] text-sky-500 font-bold">(제보)</span>}
-                                                        </span>
-                                                        {report.area && rawData?.vitals?.land?.characteristics?.area && report.area !== rawData.vitals.land.characteristics.area && (
-                                                            <span className="text-[10px] text-slate-500 line-through">공식: {rawData.vitals.land.characteristics.area} ㎡</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl">
-                                                    <span className="text-xs font-bold text-slate-400">연면적</span>
-                                                    <span className="text-sm font-black text-white">{reportData?.['4_areaInfo']?.floorArea || rawData?.vitals?.building?.title?.[0]?.totArea || '-'} ㎡</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </aside>
-                            </div>
+                            <AiReportView
+                                ai={reportData || {}}
+                                mergedData={report}
+                                onTriggerAnalysis={handleAiAnalysisClick}
+                                isCheckingAccess={isCheckingAccess}
+                            />
                         </motion.div>
                     )}
-
                     {activeTab === 'land' && (
                         <motion.div key="land" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-                            <h3 className="text-2xl font-black">토지 상세지표</h3>
+                            {/* <h3 className="text-2xl font-black">토지 상세지표</h3> */}
                             {(() => {
                                 const multiPnu = rawData?.vitals?.multiPnu;
                                 const isMulti = multiPnu && multiPnu.parcelCount > 1;
@@ -1232,11 +867,25 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                             const pnu = parcel.pnu || '';
                                             const isPrimary = !isMulti || parcel.isPrimary;
 
-                                            let officialLandPriceRaw = isMulti && parcel.landPriceHistory
-                                                ? Object.entries(parcel.landPriceHistory).map(([year, price]) => ({ year, price }))
-                                                : (rawData?.officialLandPrice || rawData?.vitals?.land?.officialLandPrice || []);
+                                            let officialLandPriceRaw = [];
+                                            if (isMulti && parcel?.landPriceHistory) {
+                                                officialLandPriceRaw = Object.entries(parcel.landPriceHistory).map(([year, price]) => ({ year, price }));
+                                            } else {
+                                                const list = rawData?.officialLandPrice || 
+                                                             rawData?.vitals?.officialLandPrice || 
+                                                             rawData?.vitals?.land?.officialLandPrice || 
+                                                             rawData?.vitals?.officialPrice || 
+                                                             [];
+                                                officialLandPriceRaw = list.map((item: any) => {
+                                                    const year = item.year || item.stdrYear || '';
+                                                    const price = item.price !== undefined ? item.price : (item.pblntfPclnd || item.housePc || 0);
+                                                    return { year, price };
+                                                });
+                                            }
 
-                                            const officialLandPrice = [...officialLandPriceRaw].sort((a: any, b: any) => String(a.year).localeCompare(String(b.year)));
+                                            const officialLandPrice = [...officialLandPriceRaw]
+                                                .filter((d: any) => d.year)
+                                                .sort((a: any, b: any) => String(a.year).localeCompare(String(b.year)));
 
                                             return (
                                                 <div key={idx} className="space-y-8 pb-12 mb-12 border-b border-white/5 last:border-0 last:pb-0 last:mb-0">
@@ -1264,7 +913,16 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                                                 { label: '지형지세', value: parcel.topography },
                                                                 { label: '도로접면', value: parcel.roadConnection },
                                                                 { label: '형상', value: parcel.landShape },
-                                                                { label: '공시지가', value: formatPrice(parcel.pnuPrice || parcel.latestOfficialPrice) },
+                                                                {
+                                                                    label: '공시지가', value: (() => {
+                                                                        const raw = parcel.pnuPrice || parcel.latestOfficialPrice || (officialLandPrice.length > 0 ? officialLandPrice[officialLandPrice.length - 1].price : 0);
+                                                                        if (!raw) return '정보없음';
+                                                                        const num = typeof raw === 'string' ? parseInt(raw.replace(/,/g, '')) : Number(raw);
+                                                                        // 1000 이상이면 원 단위로 간주 → 만원으로 변환
+                                                                        const inMan = num >= 10000000 ? Math.round(num / 10000) : num;
+                                                                        return formatPrice(inMan);
+                                                                    })()
+                                                                },
                                                             ].map((item, i) => (
                                                                 <div key={i} className="bg-[#0a0a0c] p-8">
                                                                     <p className="text-[10px] text-slate-500 font-bold uppercase mb-2">{item.label}</p>
@@ -1427,6 +1085,87 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Data Intensity: Maximum</span>
                                 </div>
                             </div>
+
+                            {/* 시장 동향 공식지표 — Flutter market_indicators_section.dart 동일 구조 */}
+                            {rawData?.marketIndicators && Object.keys(rawData.marketIndicators).length > 0 && (() => {
+                                const CATEGORY_LABELS: Record<string, { title: string; color: string }> = {
+                                    land: { title: '토지 시장 지표', color: '#8B5CF6' },
+                                    apartment: { title: '아파트 시장 지표', color: '#0EA5E9' },
+                                    house: { title: '주택 시장 지표', color: '#10B981' },
+                                    building: { title: '오피스 시장 지표', color: '#F59E0B' },
+                                    store: { title: '상가 시장 지표', color: '#EF4444' },
+                                };
+                                const IND_LABELS: Record<string, string> = {
+                                    priceIndex: '가격지수', jeonseIndex: '전세지수', wolseIndex: '월세지수',
+                                    tradeVolume: '거래량', supplyDemand: '수급지수', conversionRate: '전월세전환율',
+                                    vacancyRate: '공실률', rentAmount: '임대료', premiumMoney: '권리금유비율',
+                                    quintile: '5분위배율', changeRateByRegion: '지가변동률(지역)',
+                                    changeRateByUse: '지가변동률(용도)', saleIndex: '실거래지수',
+                                };
+
+                                // summary 추출 헬퍼 (data/summary 구조 or 직접 summary 구조 모두 지원)
+                                const getSummary = (series: any): any | null => {
+                                    if (!series) return null;
+                                    if (series.summary) return series.summary;
+                                    if (Array.isArray(series) && series.length > 0) {
+                                        const last = series[series.length - 1];
+                                        return { latest: last?.value ?? last, trend: '', change: 0 };
+                                    }
+                                    if (series.data && Array.isArray(series.data) && series.data.length > 0) {
+                                        const last = series.data[series.data.length - 1];
+                                        return { latest: last?.value ?? last, trend: '', change: 0 };
+                                    }
+                                    return null;
+                                };
+
+                                return Object.entries(rawData.marketIndicators).map(([cat, ind]: [string, any]) => {
+                                    if (!ind || typeof ind !== 'object') return null;
+                                    const meta = CATEGORY_LABELS[cat] || { title: `${cat} 시장 지표`, color: '#64748B' };
+
+                                    const cards: { key: string; label: string; summary: any }[] = [];
+                                    Object.entries(ind).forEach(([k, v]) => {
+                                        if (k === 'category' || k === 'txType' || k === 'yieldRates' || k === 'supplyDemand') return;
+                                        const s = getSummary(v);
+                                        if (s) cards.push({ key: k, label: IND_LABELS[k] || k, summary: s });
+                                    });
+
+                                    if (cards.length === 0) return null;
+
+                                    return (
+                                        <section key={cat} className="bg-slate-900 border border-white/5 rounded-[32px] overflow-hidden shadow-xl">
+                                            <div className="px-8 py-5 flex items-center justify-between" style={{ background: `${meta.color}12`, borderBottom: `1px solid ${meta.color}22` }}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${meta.color}25` }}>
+                                                        <TrendingUp className="w-4 h-4" style={{ color: meta.color }} />
+                                                    </div>
+                                                    <span className="text-sm font-black text-white">{meta.title}</span>
+                                                </div>
+                                                <span className="text-[9px] font-black px-2 py-1 rounded-full" style={{ background: `${meta.color}20`, color: meta.color, border: `1px solid ${meta.color}40` }}>R-ONE</span>
+                                            </div>
+                                            <div className="p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                {cards.map(({ key, label, summary }) => {
+                                                    const isUp = summary.trend === '상승';
+                                                    const isDown = summary.trend === '하락';
+                                                    const trendColor = isUp ? '#f87171' : isDown ? '#60a5fa' : '#64748b';
+                                                    const latest = typeof summary.latest === 'number' ? summary.latest.toFixed(2) : (summary.latest || '-');
+                                                    const change = typeof summary.change === 'number' ? summary.change.toFixed(2) : (summary.change ?? '');
+                                                    return (
+                                                        <div key={key} className="p-4 rounded-2xl border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: `${meta.color}20` }}>
+                                                            <p className="text-[10px] font-bold text-slate-400 mb-2 truncate">{label}</p>
+                                                            <p className="text-xl font-black text-white mb-1">{latest}</p>
+                                                            <div className="flex items-center gap-1">
+                                                                <span style={{ color: trendColor }} className="text-[10px] font-bold">
+                                                                    {isUp ? '▲' : isDown ? '▼' : '─'} {change}{change ? '%' : summary.trend}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </section>
+                                    );
+                                });
+                            })()}
 
                             {/* 지목별 거래량 (Volume Stats) - 상단 강조 */}
                             <section className="bg-slate-900 border border-white/5 rounded-[40px] p-8 shadow-2xl">
@@ -1782,9 +1521,183 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                     )}
 
                     {activeTab === 'commercial' && (
-                        <motion.div key="commercial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center p-20 opacity-50 bg-white/5 rounded-3xl border border-white/10 mt-10">
-                            <h3 className="text-xl font-bold mb-2">상권 분석</h3>
-                            <p className="text-sm font-bold text-white/50">해당 지역의 상권 분석 데이터는 현재 준비 중입니다.</p>
+                        <motion.div key="commercial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                            {(() => {
+                                const commercial = rawData?.commercialData;
+                                if (!commercial) return (
+                                    <div className="p-20 text-center text-slate-500 bg-white/5 rounded-3xl border border-white/10">
+                                        <ShoppingBag className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                        <p className="italic">상권 데이터가 존재하지 않습니다.</p>
+                                    </div>
+                                );
+
+                                const storeOverview = commercial.storeOverview;
+                                const stores = commercial.stores;
+                                const within500m = stores?.within500m;
+                                const within1km = stores?.within1km;
+                                const within2km = stores?.within2km;
+                                const household = commercial.household;
+                                const populationAge = commercial.populationAge;
+                                const housingType = commercial.housingType;
+                                const workingPop = commercial.workingPopulation;
+                                const tenants: any[] = commercial.buildingTenants || [];
+
+                                const SectionCard = ({ title, icon: Icon, color, children }: { title: string; icon: any; color: string; children: React.ReactNode }) => (
+                                    <section className="rounded-[28px] overflow-hidden border" style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)', borderColor: `${color}18` }}>
+                                        <div className="px-6 py-5 flex items-center gap-3" style={{ background: `${color}0d` }}>
+                                            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${color}25` }}>
+                                                <Icon className="w-5 h-5" style={{ color }} />
+                                            </div>
+                                            <span className="text-sm font-bold text-white">{title}</span>
+                                        </div>
+                                        <div className="p-6 space-y-3">{children}</div>
+                                    </section>
+                                );
+
+                                const DataRow = ({ label, value, color = '#94a3b8' }: { label: string; value: any; color?: string }) => (
+                                    <div className="flex items-center gap-3 p-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${color}18` }}>
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-bold text-slate-400 mb-0.5">{label}</p>
+                                            <p className="text-base font-black text-white">{value ?? '-'}</p>
+                                        </div>
+                                    </div>
+                                );
+
+                                const ZoneCard = ({ title, data, color }: { title: string; data: any; color: string }) => {
+                                    if (!data) return null;
+                                    return (
+                                        <div className="p-4 rounded-2xl border" style={{ background: `${color}08`, borderColor: `${color}20` }}>
+                                            <p className="text-xs font-bold mb-3" style={{ color }}>{title}</p>
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: `${color}20` }}>
+                                                    <ShoppingBag className="w-3.5 h-3.5" style={{ color }} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] text-slate-400">총 점포수</p>
+                                                    <p className="text-lg font-black text-white">{data.totalStores ?? 0}개</p>
+                                                </div>
+                                            </div>
+                                            {data.categories && (data.categories as any[]).slice(0, 3).map((c: any, i: number) => (
+                                                <div key={i} className="flex justify-between items-center py-1.5 px-3 rounded-xl mb-1" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                                                    <span className="text-[11px] text-slate-300">{c.name}</span>
+                                                    <span className="text-[11px] font-bold text-white">{c.count}개</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                };
+
+                                return (
+                                    <>
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-2xl font-black">상권 분석 지표</h3>
+                                            <span className="text-[10px] font-black px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">실시간</span>
+                                        </div>
+
+                                        {/* 1. 반경 500m 상권 현황 */}
+                                        {storeOverview && (
+                                            <SectionCard title="반경 500m 상권 현황" icon={ShoppingBag} color="#3b82f6">
+                                                <DataRow label="총 점포 수" value={`${storeOverview.totalStores ?? 0}개`} color="#3b82f6" />
+                                                {storeOverview.categories && (storeOverview.categories as any[]).slice(0, 5).map((c: any, i: number) => (
+                                                    <DataRow key={i} label={c.name} value={`${c.count ?? 0}개`} color="#60a5fa" />
+                                                ))}
+                                            </SectionCard>
+                                        )}
+
+                                        {/* 2. 희망업종 경쟁 현황 */}
+                                        {(within500m || within1km || within2km) && (
+                                            <section className="rounded-[28px] overflow-hidden border" style={{ background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderColor: '#f8717120' }}>
+                                                <div className="px-6 py-5 flex items-center gap-3" style={{ background: '#f871710d' }}>
+                                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-red-500/20">
+                                                        <Activity className="w-5 h-5 text-red-400" />
+                                                    </div>
+                                                    <span className="text-sm font-bold text-white">희망업종 경쟁 현황</span>
+                                                </div>
+                                                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <ZoneCard title="500m 이내 (도보권)" data={within500m} color="#f87171" />
+                                                    <ZoneCard title="1km 이내 (핵심 경쟁권)" data={within1km} color="#fca5a5" />
+                                                    <ZoneCard title="1~2km (배달/확장 경쟁권)" data={within2km} color="#fb923c" />
+                                                </div>
+                                            </section>
+                                        )}
+
+                                        {/* 3. 배후세대 */}
+                                        {household && (
+                                            <SectionCard title="배후세대" icon={Users} color="#10b981">
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <DataRow label="세대수" value={`${(household.householdCount ?? 0).toLocaleString()}가구`} color="#10b981" />
+                                                    <DataRow label="인구" value={`${(household.totalPopulation ?? 0).toLocaleString()}명`} color="#34d399" />
+                                                    <DataRow label="평균 가구원" value={`${household.avgFamilyMembers ?? '-'}명`} color="#6ee7b7" />
+                                                </div>
+                                            </SectionCard>
+                                        )}
+
+                                        {/* 4. 연령별 인구 */}
+                                        {populationAge && (populationAge.ages as any[])?.length > 0 && (
+                                            <SectionCard title="연령별 인구 특성" icon={Users} color="#f97316">
+                                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                                    <DataRow label="주요 연령대" value={populationAge.mainAge} color="#f97316" />
+                                                    <DataRow label="20~40대 비율" value={`${populationAge.youngRatio ?? '-'}%`} color="#fb923c" />
+                                                </div>
+                                                {(populationAge.ages as any[]).slice(0, 5).map((a: any, i: number) => (
+                                                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.025)' }}>
+                                                        <span className="text-xs font-bold text-slate-300 w-16 shrink-0">{a.label}</span>
+                                                        <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                                                            <div className="h-full rounded-full bg-orange-500" style={{ width: `${Math.min((a.ratio || 0) * 4, 100)}%` }} />
+                                                        </div>
+                                                        <span className="text-xs font-black text-orange-400 w-10 text-right">{a.ratio}%</span>
+                                                    </div>
+                                                ))}
+                                            </SectionCard>
+                                        )}
+
+                                        {/* 5. 거주 형태 */}
+                                        {housingType && (housingType.breakdown as any[])?.length > 0 && (
+                                            <SectionCard title="거주 형태 (거처 종류)" icon={Building2} color="#a855f7">
+                                                {(housingType.breakdown as any[]).slice(0, 4).map((h: any, i: number) => (
+                                                    <DataRow key={i} label={h.name} value={`${h.ratio}%`} color="#c084fc" />
+                                                ))}
+                                            </SectionCard>
+                                        )}
+
+                                        {/* 6. 직장 인구 */}
+                                        {workingPop && (
+                                            <SectionCard title="직장 인구 (서울시 한정)" icon={Users} color="#06b6d4">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <DataRow label="총 직장 인구" value={`${(workingPop.total ?? '-').toLocaleString()}명`} color="#06b6d4" />
+                                                    <DataRow label="주요 연령대" value={workingPop.mainAge} color="#22d3ee" />
+                                                    <DataRow label="점심 수요" value={workingPop.lunchDemand} color="#67e8f9" />
+                                                </div>
+                                            </SectionCard>
+                                        )}
+
+                                        {/* 7. 건물 입점 현황 */}
+                                        {tenants.length > 0 && (
+                                            <section className="rounded-[28px] overflow-hidden border" style={{ background: 'linear-gradient(135deg,#0f172a,#1e293b)', borderColor: '#2dd4bf18' }}>
+                                                <div className="px-6 py-5 flex items-center gap-3" style={{ background: '#2dd4bf0d' }}>
+                                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-teal-500/20">
+                                                        <Building2 className="w-5 h-5 text-teal-400" />
+                                                    </div>
+                                                    <span className="text-sm font-bold text-white">건물 내 입점 현황</span>
+                                                </div>
+                                                <div className="p-6 space-y-3">
+                                                    {tenants.slice(0, 10).map((t: any, i: number) => (
+                                                        <div key={i} className="flex items-center gap-4 p-4 rounded-2xl border" style={{ background: 'rgba(255,255,255,0.025)', borderColor: '#2dd4bf18' }}>
+                                                            <div className="w-12 h-8 flex items-center justify-center rounded-lg shrink-0 bg-teal-500/15">
+                                                                <span className="text-[11px] font-bold text-teal-400">{t.floor ?? '-'}층</span>
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-white truncate">{t.business ?? '-'}</p>
+                                                                <p className="text-[10px] text-slate-400 truncate">{t.name ?? '-'}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </section>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </motion.div>
                     )}
 
@@ -2280,7 +2193,7 @@ function PaymentModal({ propertyId, propertyAddress, user, onClose, onSuccess }:
             if (result?.paymentKey) {
                 // 서버 승인
                 const idToken = await user.getIdToken();
-                const res = await fetch(`${BACKEND_URL}/api/payment/confirm`, {
+                const res = await fetch('/api/payment/confirm', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

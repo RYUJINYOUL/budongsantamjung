@@ -17,6 +17,14 @@ const nextConfig = {
         }
         return config;
     },
+    async rewrites() {
+        return [
+            {
+                source: '/api/:path*',
+                destination: `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40'}/api/:path*`,
+            },
+        ];
+    },
 };
 
 module.exports = nextConfig;
