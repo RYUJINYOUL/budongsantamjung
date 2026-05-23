@@ -67,7 +67,7 @@ function DiscoverDetailContent() {
     const load = async () => {
       try {
         const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
-        const res = await fetch(`/api/land/detective/discovery/${id}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+        const res = await fetch(`/api/land/detective/discovery/global/${id}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
         const json = await res.json();
         if (json.success) setData(json);
         else setError(json.error || '데이터를 불러올 수 없습니다.');
