@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import SideNav from '../../../components/SideNav';
 import { auth } from '../../../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import CategoryDetailModal from './CategoryDetailModal';
 
 interface DiscoveryResult {
   success: boolean;
@@ -61,6 +62,7 @@ function DiscoverDetailContent() {
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState(0);
   const [rankTab, setRankTab] = useState('apartment');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -199,25 +201,33 @@ function DiscoverDetailContent() {
 
               {/* 유형별 분석 요약 */}
               {/* 유형별 분석 요약 */}
-              {CATEGORY_TABS.filter(c => analysis[c.key as keyof typeof analysis]).length > 0 && (
+              {CATEGORY_TABS.length > 0 && (
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <h3 className="font-black text-slate-800 text-sm">유형별 AI 분석</h3>
+                    <h3 className="font-black text-slate-800 text-sm">유형별 정밀 분석</h3>
                   </div>
                   <div className="divide-y divide-slate-50">
-                    {CATEGORY_TABS.filter(c => analysis[c.key as keyof typeof analysis]).map(cat => {
+                    {CATEGORY_TABS.map(cat => {
                       const catData = analysis[cat.key as keyof typeof analysis] as any;
-                      const grade = catData?.investmentGrade || catData?.grade || 'B';
-                      const strategy = catData?.strategy || catData?.summary || '';
+                      const hasAnalysis = !!catData;
+                      const grade = catData?.investmentGrade || catData?.grade || '';
+                      const strategy = catData?.strategy || catData?.summary || 'AI 정밀 분석 데이터가 없습니다.';
                       const outlookDesc = catData?.outlook || '';
                       return (
                         <div key={cat.key} className="px-4 py-4">
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <span className="font-black text-sm text-slate-800">{cat.icon} {cat.label}</span>
-                            <Badge text={`등급 ${grade}`} color={gradeColor(grade)} />
+                            {grade ? <Badge text={`등급 ${grade}`} color={gradeColor(grade)} /> : <Badge text="분석 대기" color="bg-slate-100 text-slate-500 border-slate-200" />}
                           </div>
                           {strategy && <p className="text-sm text-slate-700 leading-relaxed font-semibold mb-2">{strategy}</p>}
                           {outlookDesc && <p className="text-xs text-slate-500 leading-relaxed font-medium">{outlookDesc}</p>}
+                          <button
+                            onClick={() => setSelectedCategory(cat.key)}
+                            className="mt-3 w-full py-2.5 bg-teal-50 text-teal-700 font-black text-xs rounded-xl hover:bg-teal-100 transition-colors border border-teal-100 flex items-center justify-center gap-1.5"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            {cat.label} 정밀 분석 보기
+                          </button>
                         </div>
                       );
                     })}
@@ -282,7 +292,7 @@ function DiscoverDetailContent() {
 
                 {rankRows.length > 0 ? (
                   <div className="divide-y divide-slate-100 border-t border-slate-100 pt-2">
-                    {rankRows.slice(0, 5).map((row: any, i: number) => (
+                    {rankRows.slice(0, 10).map((row: any, i: number) => (
                       <div key={i} className={`flex items-center gap-3 py-2.5 ${i < 3 ? 'bg-teal-50/30 -mx-5 px-5' : ''}`}>
                         <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-black shrink-0 ${i === 0 ? 'bg-amber-400 text-white' : i === 1 ? 'bg-slate-400 text-white' : i === 2 ? 'bg-amber-700 text-white' : 'bg-slate-100 text-slate-400'}`}>
                           {row.rank || i + 1}
@@ -620,6 +630,14 @@ function DiscoverDetailContent() {
                 </div>
               )}
             </div>
+          )}
+
+          {selectedCategory && data && (
+            <CategoryDetailModal 
+              category={selectedCategory} 
+              data={data} 
+              onClose={() => setSelectedCategory(null)} 
+            />
           )}
         </main>
       </div>
