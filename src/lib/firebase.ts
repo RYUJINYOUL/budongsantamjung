@@ -13,10 +13,12 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Firebase 앱 초기화
+const firestoreDatabaseId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID || 'tomtom';
+
+// Firebase 앱 초기화 (yongcar-4377c — yongcar 앱과 동일 프로젝트)
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = getFirestore(app, firestoreDatabaseId);
 
 // Analytics 초기화 (클라이언트 사이드에서만)
 let analytics = null;

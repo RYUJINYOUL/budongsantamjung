@@ -160,11 +160,11 @@ export default function PropertyCard({
 
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">
-              판독완료
+              분석완료
             </span>
             {riskScore && (
               <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">RISK</span>
+                <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
                 <span
                   className={[
                     'text-[11px] font-black px-1.5 py-0.5 rounded-md border',

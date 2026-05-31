@@ -49,6 +49,7 @@ function SideNavInner() {
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/profile') return pathname.startsWith('/profile');
+    if (href === '/reviews') return pathname.startsWith('/reviews');
     return false;
   };
 
@@ -57,7 +58,7 @@ function SideNavInner() {
       {/* ── 사이드바 본체 ── */}
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-50 flex flex-col',
+          'fixed inset-y-0 left-0 z-[100] flex flex-col',
           'bg-white shadow-xl border-r border-slate-100',
           'transform transition-transform duration-300 ease-in-out',
           isOpen ? 'translate-x-0 w-56' : '-translate-x-full w-56',
@@ -122,6 +123,36 @@ function SideNavInner() {
           </ul>
         </nav>
 
+        {/* 리뷰 — 프로필 위 */}
+        <div className="p-3 lg:p-2 shrink-0">
+          <Link
+            href="/reviews"
+            onClick={() => setIsOpen(false)}
+            title="리뷰"
+            className={[
+              'w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all',
+              'lg:flex-col lg:gap-1 lg:py-3 lg:px-1',
+              isActive('/reviews')
+                ? 'bg-emerald-50 text-emerald-700 font-bold'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800',
+            ].join(' ')}
+          >
+            <span>
+              <img
+                src="/a6.png"
+                alt="리뷰"
+                className="w-5 h-5 lg:w-6 lg:h-6 object-contain transition-all"
+                style={
+                  isActive('/reviews')
+                    ? { filter: 'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)' }
+                    : undefined
+                }
+              />
+            </span>
+            <span className="font-medium text-sm lg:text-[10px] lg:tracking-tight">리뷰</span>
+          </Link>
+        </div>
+
         {/* 사용자 프로필 */}
         <div className="border-t border-slate-100 p-3 lg:p-2 shrink-0">
           {user ? (
@@ -177,7 +208,7 @@ function SideNavInner() {
       {/* 모바일 오버레이 */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-[90] lg:hidden"
           onClick={() => setIsOpen(false)}
           aria-hidden="true"
         />
@@ -187,7 +218,7 @@ function SideNavInner() {
       <button
         onClick={() => setIsOpen(true)}
         className={[
-          'fixed top-2 left-3 z-40 p-2 rounded-lg bg-white shadow-md border border-slate-200',
+          'fixed top-2 left-3 z-[80] p-2 rounded-lg bg-white shadow-md border border-slate-200',
           'hover:bg-slate-50 transition-colors lg:hidden',
           isOpen ? 'invisible' : 'visible',
         ].join(' ')}

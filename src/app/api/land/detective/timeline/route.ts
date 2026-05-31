@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
     try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40';
         const searchParams = new URLSearchParams(request.nextUrl.searchParams);
 
         if (!searchParams.has('limit')) {
-            searchParams.set('limit', '10');
+            searchParams.set('limit', '100');
         }
 
         const url = `${backendUrl}/api/land/detective/timeline?${searchParams.toString()}`;

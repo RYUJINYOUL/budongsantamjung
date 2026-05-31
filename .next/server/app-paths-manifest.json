@@ -1,8 +1,0 @@
-{
-  "/page": "app/page.js",
-  "/api/land/detective/timeline/route": "app/api/land/detective/timeline/route.js",
-  "/analyze/[id]/page": "app/analyze/[id]/page.js",
-  "/discover/page": "app/discover/page.js",
-  "/api/land/detective/discoveries/route": "app/api/land/detective/discoveries/route.js",
-  "/discover/[id]/page": "app/discover/[id]/page.js"
-}

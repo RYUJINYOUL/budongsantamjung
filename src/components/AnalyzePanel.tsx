@@ -4,6 +4,27 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { GeolocationError, getCurrentPosition, reverseGeocodeKakao } from '../lib/geolocation';
+import AnalysisDetailInputSection from './AnalysisDetailInputSection';
+import {
+  collectAnalysisInputData,
+  defaultAnalysisDetailInput,
+  type AnalysisDetailInput,
+} from '../lib/collectAnalysisInputData';
+import { parseParcelPolygonFromVworldResponse } from '../lib/parcelGeometry';
+import {
+  PANEL_CARD,
+  PANEL_CARD_INNER,
+  PANEL_SECTION_LABEL,
+  PANEL_SECTION_DESC,
+  PANEL_INPUT_WRAP,
+  PANEL_INPUT,
+  PANEL_SELECT,
+  PAGE_SUBHEADER,
+  PAGE_SUBHEADER_TITLE,
+  panelCategoryBtn,
+  panelStepBadge,
+} from './analyzePanelFormStyles';
 
 interface SearchResult {
   place_name?: string;
@@ -14,19 +35,45 @@ interface SearchResult {
 }
 
 interface AnalyzePanelProps {
-  /** 지도 위치 선택 시 외부(홈) 지도에 마커 표시용 콜백 */
-  onLocationSelect?: (lat: number, lng: number, address: string) => void;
+  /** 지도 위치 선택 시 외부(홈) 지도에 마커 및 폴리곤 표시용 콜백 */
+  onLocationSelect?: (lat: number, lng: number, address: string, polygon?: { lat: number; lng: number }[] | null) => void;
+  /** 선택된 위치 초기화 시 지도 마커/폴리곤 제거용 콜백 */
+  onLocationClear?: () => void;
+  /** 추가된 필지 목록 상태 전달 콜백 (지도 틸색 폴리곤 렌더링용) */
+  onAdditionalParcelsChange?: (
+    parcels: { lat: number; lng: number; polygon?: { lat: number; lng: number }[] | null }[]
+  ) => void;
+  /** 지도를 터치해서 얻어온 위치 정보가 AnalyzePanel로 꽂히도록 하기 위한 prop (주필지 또는 다중필지 자동 분기) */
+  externalClickParcel?: {
+    lat: number;
+    lng: number;
+    address: string;
+    pnu: string | null;
+    polygon: { lat: number; lng: number }[] | null;
+    timestamp: number;
+  } | null;
 }
 
 const ANALYSIS_STEPS = [
-  { label: '위치 데이터 매칭' },
-  { label: '국가 API 연동' },
-  { label: '주변 실거래가 수집' },
-  { label: '공시가격 조회' },
-  { label: '인허가/규제 확인' },
-  { label: '인구/통계 데이터 수집' },
-  { label: '기초 데이터 조립' },
-  { label: '수집 완료' },
+  { label: '위치 데이터 매칭', desc: '좌표를 기반으로 정확한 필지(PNU)를 식별합니다' },
+  { label: '국가 API 연동', desc: '건축물대장 및 토지특성 데이터를 수집합니다' },
+  { label: '주변 실거래가 수집', desc: '인근 지역의 최근 거래 정보를 필터링합니다' },
+  { label: '공시가격 조회', desc: '연도별 공시지가 및 주택가격을 확인합니다' },
+  { label: '인허가/규제 확인', desc: '토지이용계획 및 개발 행위 제한 사항을 검토합니다' },
+  { label: '인구/통계 데이터 수집', desc: '지역 인구 이동 및 상권 활성도를 분석합니다' },
+  { label: '기초 데이터 조립', desc: '수집된 모든 데이터를 분석용 리포트로 구성합니다' },
+  { label: '수집 완료', desc: '데이터 수집이 완료되었습니다. 상세 페이지로 이동합니다' },
+];
+
+const STEP_ICONS = [
+  '/3d/wich.svg',
+  '/3d/api.svg',
+  '/3d/sil.svg',
+  '/3d/gong.svg',
+  '/3d/inhuga.svg',
+  '/3d/ingu.svg',
+  '/3d/gicho.svg',
+  '/3d/suzip.svg',
 ];
 
 const CATEGORIES = [
@@ -37,10 +84,17 @@ const CATEGORIES = [
   { id: 'building', label: '빌딩', icon: '/build.svg' },
 ];
 
-interface AdditionalParcel { address: string; lat: number; lng: number; pnu: string | null; isLoadingPnu: boolean; }
+interface AdditionalParcel { 
+  address: string; 
+  lat: number; 
+  lng: number; 
+  pnu: string | null; 
+  isLoadingPnu: boolean; 
+  polygon?: { lat: number; lng: number }[] | null; 
+}
 interface Industry { code: string; name: string; middle?: { code: string; name: string; small?: { code: string; name: string }[] }[] }
 
-export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
+export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel }: AnalyzePanelProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [canAnalyze, setCanAnalyze] = useState(true);
@@ -53,6 +107,8 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   // 다중 필지
   const [isMultiParcel, setIsMultiParcel] = useState(false);
@@ -69,6 +125,10 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   const [industrySearch, setIndustrySearch] = useState('');
   const [industryResults, setIndustryResults] = useState<{large:string;medium:string;small:string;display:string}[]>([]);
   const [desiredBusiness, setDesiredBusiness] = useState('');
+
+  const [detailInput, setDetailInput] = useState<AnalysisDetailInput>(defaultAnalysisDetailInput);
+  const patchDetailInput = (patch: Partial<AnalysisDetailInput>) =>
+    setDetailInput((prev) => ({ ...prev, ...patch }));
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
@@ -89,13 +149,57 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
     fetch('/industry_master.json').then(r => r.json()).then(setAllIndustries).catch(() => {});
   }, []);
 
-  const getPnuFromCoords = async (latV: number, lngV: number): Promise<string | null> => {
+  // 외부(지도 터치 등)에서 위치 정보가 전달되었을 때 상태를 일치시킴 또는 추가 필지에 적층시킴
+  useEffect(() => {
+    if (!externalClickParcel) return;
+    const { lat: latVal, lng: lngVal, address: addr, pnu, polygon } = externalClickParcel;
+
+    // 만약 다중 필지 일괄매매가 활성화되어 있고 토지/빌딩 카테고리라면, 추가 필지로 처리!
+    if (isMultiParcel && (selectedCategory === 'land' || selectedCategory === 'building')) {
+      if (address === addr || (primaryPnu && primaryPnu === pnu)) return; // 주필지와 중복 방지
+      if (additionalParcels.some(p => p.address === addr || (p.pnu && p.pnu === pnu))) return; // 이미 추가된 필지 중복 방지
+      if (additionalParcels.length >= 4) return; // 최대 4개 제한
+
+      const entry: AdditionalParcel = {
+        address: addr,
+        lat: latVal,
+        lng: lngVal,
+        pnu,
+        isLoadingPnu: false,
+        polygon
+      };
+
+      setAdditionalParcels(prev => {
+        const next = [...prev, entry];
+        onAdditionalParcelsChange?.(next.map(p => ({ lat: p.lat, lng: p.lng, polygon: p.polygon })));
+        return next;
+      });
+    } else {
+      // 그 외의 경우(일반 모드)에는 대표 주필지로 변경
+      setAddress(addr);
+      setLat(latVal);
+      setLng(lngVal);
+      setPrimaryPnu(pnu);
+      onLocationSelect?.(latVal, lngVal, addr, polygon);
+    }
+  }, [externalClickParcel]);
+
+  const getPnuAndPolygonFromCoords = async (latV: number, lngV: number): Promise<{ pnu: string | null; polygon: { lat: number; lng: number }[] | null }> => {
     try {
       const res = await fetch(`/api/vworld?lat=${latV}&lng=${lngV}`);
-      if (!res.ok) return null;
+      if (!res.ok) return { pnu: null, polygon: null };
       const data = await res.json();
-      return data?.response?.result?.featureCollection?.features?.[0]?.properties?.pnu?.toString() || null;
-    } catch { return null; }
+      const pnu = data?.response?.result?.featureCollection?.features?.[0]?.properties?.pnu?.toString() || null;
+      const polygon = parseParcelPolygonFromVworldResponse(data);
+      return { pnu, polygon };
+    } catch { 
+      return { pnu: null, polygon: null }; 
+    }
+  };
+
+  const getPnuFromCoords = async (latV: number, lngV: number): Promise<string | null> => {
+    const { pnu } = await getPnuAndPolygonFromCoords(latV, lngV);
+    return pnu;
   };
 
   const handleParcelSearch = (q: string) => {
@@ -117,10 +221,20 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
     const latV = parseFloat(r.y); const lngV = parseFloat(r.x);
     setParcelSearchQuery(''); setParcelSearchResults([]);
     if (additionalParcels.some(p => p.address === addr)) return;
-    const entry: AdditionalParcel = { address: addr, lat: latV, lng: lngV, pnu: null, isLoadingPnu: true };
-    setAdditionalParcels(prev => [...prev, entry]);
-    const pnu = await getPnuFromCoords(latV, lngV);
-    setAdditionalParcels(prev => prev.map(p => p.address === addr ? { ...p, pnu, isLoadingPnu: false } : p));
+    const entry: AdditionalParcel = { address: addr, lat: latV, lng: lngV, pnu: null, isLoadingPnu: true, polygon: null };
+    
+    setAdditionalParcels(prev => {
+      const next = [...prev, entry];
+      onAdditionalParcelsChange?.(next.map(p => ({ lat: p.lat, lng: p.lng, polygon: p.polygon })));
+      return next;
+    });
+
+    const { pnu, polygon } = await getPnuAndPolygonFromCoords(latV, lngV);
+    setAdditionalParcels(prev => {
+      const next = prev.map(p => p.address === addr ? { ...p, pnu, polygon, isLoadingPnu: false } : p);
+      onAdditionalParcelsChange?.(next.map(p => ({ lat: p.lat, lng: p.lng, polygon: p.polygon })));
+      return next;
+    });
   };
 
   const searchIndustry = (q: string) => {
@@ -202,9 +316,51 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
     setLng(lngVal);
     setSearchQuery('');
     setSearchResults([]);
-    onLocationSelect?.(latVal, lngVal, addr);
-    const pnu = await getPnuFromCoords(latVal, lngVal);
+    setLocationError(null);
+    const { pnu, polygon } = await getPnuAndPolygonFromCoords(latVal, lngVal);
     setPrimaryPnu(pnu);
+    onLocationSelect?.(latVal, lngVal, addr, polygon);
+  };
+
+  const handleMyLocation = async () => {
+    if (isLocating || isSearching) return;
+    setIsLocating(true);
+    setLocationError(null);
+    try {
+      const { lat: latVal, lng: lngVal } = await getCurrentPosition();
+      const addr = await reverseGeocodeKakao(latVal, lngVal);
+      await selectResult({
+        place_name: addr,
+        address_name: addr,
+        road_address_name: addr,
+        x: String(lngVal),
+        y: String(latVal),
+      });
+      setSearchQuery(addr);
+    } catch (err) {
+      const message =
+        err instanceof GeolocationError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : '현재 위치를 가져올 수 없습니다.';
+      setLocationError(message);
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const clearSelectedLocation = () => {
+    setAddress('');
+    setLat(null);
+    setLng(null);
+    setPrimaryPnu(null);
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsMultiParcel(false);
+    setAdditionalParcels([]);
+    onAdditionalParcelsChange?.([]);
+    onLocationClear?.();
   };
 
   const handleAnalyze = async () => {
@@ -221,9 +377,25 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
         additionalParcels.forEach(p => { if (p.pnu) allParcels.push(p); });
       }
       const pnuList = allParcels.map(p => p.pnu).filter(Boolean);
-      const payload: any = { category: selectedCategory, address, lat: lat.toString(), lng: lng.toString() };
-      if (pnuList.length > 0) { payload.primaryPnu = primaryPnu; payload.pnuList = pnuList; }
-      if (desiredBusiness) payload.desiredBusiness = desiredBusiness;
+      const storeData = collectAnalysisInputData(selectedCategory, {
+        ...detailInput,
+        desiredBusiness: desiredBusiness || detailInput.desiredBusiness,
+      });
+
+      const payload: Record<string, unknown> = {
+        category: selectedCategory,
+        address,
+        lat: lat.toString(),
+        lng: lng.toString(),
+        storeData,
+      };
+      if (pnuList.length > 0) {
+        payload.primaryPnu = primaryPnu;
+        payload.pnuList = pnuList;
+      }
+      Object.entries(storeData).forEach(([key, value]) => {
+        if (value != null) payload[key] = value;
+      });
 
       const res = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
@@ -242,125 +414,205 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* 패널 헤더 */}
-      <div className="px-4 lg:px-6 py-5 border-b border-slate-100 bg-white">
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <h2 className="text-sm font-extrabold text-slate-900 tracking-tight">기초 데이터 수집</h2>
-        </div>
-        <p className="text-[11px] text-slate-400 font-semibold tracking-tight">분석을 진행할 카테고리와 위치를 선택해 주세요</p>
+    <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
+      {/* 헤더 */}
+      <div className={PAGE_SUBHEADER}>
+        <h2 className={PAGE_SUBHEADER_TITLE}>공공데이터 수집</h2>
+        <p className={PANEL_SECTION_DESC}>카테고리와 위치를 선택한 뒤 리포트를 생성하세요</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 lg:px-6 py-5 pb-24 space-y-5">
-        {/* 카테고리 선택 */}
-        <div>
-          <p className="text-[11px] font-extrabold text-emerald-600 tracking-wider mb-2.5 uppercase">카테고리 선택</p>
-          <div className="grid grid-cols-5 gap-1.5">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => { setSelectedCategory(cat.id); setIsMultiParcel(false); setAdditionalParcels([]); }}
-                className={`group flex flex-col items-center justify-center p-2.5 rounded-2xl border-2 transition-all gap-1.5 ${selectedCategory === cat.id
-                  ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
-                  : 'border-slate-100 bg-slate-50/50 hover:border-emerald-200/70 hover:bg-white'
-                  }`}
-              >
-                <img src={cat.icon} alt={cat.label} className="w-6 h-6 object-contain transition-transform group-hover:scale-105" />
-                <span className={`text-[10px] font-bold ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>{cat.label}</span>
-              </button>
-            ))}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-5 py-4 space-y-3">
+        {/* ① 카테고리 */}
+        <section className={PANEL_CARD}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className={panelStepBadge(1)}>1</span>
+            <div>
+              <p className={PANEL_SECTION_LABEL}>카테고리</p>
+              <p className={PANEL_SECTION_DESC}>분석할 매물 유형</p>
+            </div>
           </div>
-        </div>
+          <div className="space-y-1.5">
+            <div className="grid grid-cols-3 gap-1.5">
+              {CATEGORIES.slice(0, 3).map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setIsMultiParcel(false);
+                    setAdditionalParcels([]);
+                    setDetailInput(defaultAnalysisDetailInput());
+                  }}
+                  className={panelCategoryBtn(selectedCategory === cat.id)}
+                >
+                  <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
+                  <span className={`text-[10px] font-bold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    {cat.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {CATEGORIES.slice(3).map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setIsMultiParcel(false);
+                    setAdditionalParcels([]);
+                    setDetailInput(defaultAnalysisDetailInput());
+                  }}
+                  className={panelCategoryBtn(selectedCategory === cat.id)}
+                >
+                  <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
+                  <span className={`text-[10px] font-bold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-500'}`}>
+                    {cat.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
 
-        {/* 주소 검색 */}
-        <div>
-          <p className="text-[11px] font-extrabold text-emerald-600 tracking-wider mb-2.5 uppercase">매물 위치 선택</p>
+        {/* ② 위치 */}
+        <section className={PANEL_CARD}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className={panelStepBadge(2)}>2</span>
+            <div>
+              <p className={PANEL_SECTION_LABEL}>매물 위치</p>
+              <p className={PANEL_SECTION_DESC}>주소 검색 또는 지도에서 선택</p>
+            </div>
+          </div>
+
           <div className="relative">
-            <div className="flex items-center bg-slate-50/50 border border-slate-200/80 rounded-2xl px-4 py-3 focus-within:border-emerald-400 focus-within:bg-white transition-all">
+            <div className={PANEL_INPUT_WRAP}>
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 placeholder="지번 또는 도로명 주소 검색"
-                className="flex-1 bg-transparent border-none outline-none text-xs font-bold text-slate-800 placeholder:text-slate-400"
+                className={PANEL_INPUT}
                 value={searchQuery}
                 onChange={e => handleSearch(e.target.value)}
               />
-              {isSearching ? (
-                <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
+              {isSearching || isLocating ? (
+                <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
               ) : (
-                <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <button
+                  type="button"
+                  onClick={handleMyLocation}
+                  aria-label="내 위치"
+                  title="내 위치"
+                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-emerald-600 hover:bg-emerald-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+                    <circle cx="12" cy="12" r="4" strokeWidth={2.5} />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  </svg>
+                </button>
               )}
             </div>
 
+            {locationError && (
+              <p className="mt-1.5 text-[10px] font-semibold text-rose-600">{locationError}</p>
+            )}
+
             {searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200/80 rounded-2xl shadow-xl overflow-hidden">
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
                 {searchResults.map((r, i) => (
-                  <button key={i} onClick={() => selectResult(r)} className="w-full px-4 py-3 text-left hover:bg-emerald-50/50 border-b border-slate-100 last:border-0 transition-colors">
-                    <div className="text-xs font-bold text-slate-800">{r.place_name || r.address_name}</div>
-                    <div className="text-[10px] text-slate-400 font-semibold mt-0.5">{r.road_address_name || r.address_name}</div>
+                  <button key={i} onClick={() => selectResult(r)} className="w-full px-3.5 py-2.5 text-left hover:bg-emerald-50/60 border-b border-slate-50 last:border-0 transition-colors">
+                    <div className="text-xs font-semibold text-slate-800">{r.place_name || r.address_name}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{r.road_address_name || r.address_name}</div>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* 선택된 주소 표시 */}
           {address && (
-            <div className="mt-3 bg-emerald-50/40 border border-emerald-100/50 rounded-2xl p-4">
-              <p className="text-[10px] font-extrabold text-emerald-600 tracking-wider uppercase mb-1.5">선택된 위치</p>
-              <p className="text-xs font-bold text-slate-800 leading-snug">{address}</p>
-              {primaryPnu && <p className="text-[10px] text-slate-400 font-mono mt-1">PNU: {primaryPnu}</p>}
+            <div className={`${PANEL_CARD_INNER} mt-2.5 flex items-start gap-2`}>
+              <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-slate-800 leading-snug">{address}</p>
+                {primaryPnu && (
+                  <p className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">{primaryPnu}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={clearSelectedLocation}
+                className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors text-xs"
+                aria-label="위치 삭제"
+              >
+                ✕
+              </button>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* 다중 필지 (토지/빌딩) */}
+        {/* 다중 필지 */}
         {(selectedCategory === 'land' || selectedCategory === 'building') && address && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-emerald-600 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                </div>
-                <div>
-                  <p className="text-xs font-extrabold text-slate-800">다중 필지 일괄매매</p>
-                  <p className="text-[10px] text-slate-500 font-semibold">토지 전용 · 최대 4필지 추가</p>
-                </div>
+          <section className={PANEL_CARD}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className={PANEL_SECTION_LABEL}>다중 필지 일괄매매</p>
+                <p className={PANEL_SECTION_DESC}>최대 4필지 추가 · 선택사항</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" checked={isMultiParcel} onChange={e => { setIsMultiParcel(e.target.checked); if (!e.target.checked) setAdditionalParcels([]); }} />
-                <div className="w-10 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input type="checkbox" className="sr-only peer" checked={isMultiParcel} onChange={e => {
+                  setIsMultiParcel(e.target.checked);
+                  if (!e.target.checked) {
+                    setAdditionalParcels([]);
+                    onAdditionalParcelsChange?.([]);
+                  }
+                }} />
+                <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500" />
               </label>
             </div>
             {isMultiParcel && (
-              <div className="space-y-2">
-                <div className="bg-white rounded-xl px-3 py-2 border border-emerald-100 flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
-                  <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{address}</span>
-                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-md shrink-0">주필지</span>
+              <div className="mt-3 space-y-1.5">
+                <div className={`${PANEL_CARD_INNER} flex items-center gap-2 py-2`}>
+                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">주</span>
+                  <span className="text-[11px] font-semibold text-slate-700 truncate flex-1">{address}</span>
                 </div>
                 {additionalParcels.map((p, i) => (
-                  <div key={i} className="bg-white rounded-xl px-3 py-2 border border-slate-100 flex items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-400 shrink-0">#{i+1}</span>
-                    <span className="text-[11px] font-bold text-slate-700 truncate flex-1">{p.address}</span>
-                    {p.isLoadingPnu ? <div className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin shrink-0" /> : p.pnu ? <span className="text-[9px] text-emerald-600 font-mono shrink-0">PNU✓</span> : <span className="text-[9px] text-rose-500 shrink-0">PNU없음</span>}
-                    <button onClick={() => setAdditionalParcels(prev => prev.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500 text-sm font-bold shrink-0">✕</button>
+                  <div key={i} className={`${PANEL_CARD_INNER} flex items-center gap-2 py-2`}>
+                    <span className="text-[9px] font-bold text-slate-400 shrink-0">#{i + 1}</span>
+                    <span className="text-[11px] font-semibold text-slate-700 truncate flex-1">{p.address}</span>
+                    {p.isLoadingPnu ? (
+                      <div className="w-3 h-3 border border-slate-300 border-t-transparent rounded-full animate-spin shrink-0" />
+                    ) : p.pnu ? (
+                      <span className="text-[9px] text-emerald-600 font-bold shrink-0">✓</span>
+                    ) : (
+                      <span className="text-[9px] text-rose-400 shrink-0">—</span>
+                    )}
+                    <button type="button" onClick={() => setAdditionalParcels(prev => {
+                      const next = prev.filter((_, j) => j !== i);
+                      onAdditionalParcelsChange?.(next.map(item => ({ lat: item.lat, lng: item.lng, polygon: item.polygon })));
+                      return next;
+                    })} className="text-slate-300 hover:text-rose-500 text-xs shrink-0">✕</button>
                   </div>
                 ))}
                 {additionalParcels.length < 4 && (
-                  <div className="relative mt-2">
-                    <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-emerald-400 transition-all">
-                      <svg className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                      <input type="text" placeholder="추가 필지 주소 검색" className="flex-1 bg-transparent outline-none text-xs font-bold text-slate-700 placeholder:text-slate-400" value={parcelSearchQuery} onChange={e => handleParcelSearch(e.target.value)} />
+                  <div className="relative">
+                    <div className={PANEL_INPUT_WRAP}>
+                      <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input type="text" placeholder="추가 필지 검색" className={PANEL_INPUT} value={parcelSearchQuery} onChange={e => handleParcelSearch(e.target.value)} />
                       {isParcelSearching && <div className="w-3 h-3 border border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />}
                     </div>
                     {parcelSearchResults.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                      <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
                         {parcelSearchResults.map((r, i) => (
-                          <button key={i} onClick={() => selectParcelResult(r)} className="w-full px-3 py-2.5 text-left hover:bg-emerald-50 border-b border-slate-50 last:border-0">
-                            <p className="text-[11px] font-bold text-slate-800">{r.road_address_name || r.address_name}</p>
+                          <button key={i} onClick={() => selectParcelResult(r)} className="w-full px-3 py-2 text-left hover:bg-emerald-50/60 border-b border-slate-50 last:border-0">
+                            <p className="text-[11px] font-semibold text-slate-800">{r.road_address_name || r.address_name}</p>
                           </button>
                         ))}
                       </div>
@@ -369,123 +621,147 @@ export default function AnalyzePanel({ onLocationSelect }: AnalyzePanelProps) {
                 )}
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* 상가 희망 업종 */}
-        {selectedCategory === 'store' && (
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 rounded-xl bg-orange-500 flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-              </div>
-              <div>
-                <p className="text-xs font-extrabold text-slate-800">상가 희망 업종</p>
-                <p className="text-[10px] text-orange-500 font-bold">선택사항</p>
-              </div>
+        {selectedCategory === 'store' && address && (
+          <section className={PANEL_CARD}>
+            <div className="mb-3">
+              <p className={PANEL_SECTION_LABEL}>희망 업종</p>
+              <p className={PANEL_SECTION_DESC}>선택사항 · AI 상권 분석에 반영</p>
             </div>
-            {/* 업종 검색 */}
             <div className="relative">
-              <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-orange-400 transition-all">
-                <svg className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                <input type="text" placeholder="업종 검색 (예: 카페, 편의점)" className="flex-1 bg-transparent outline-none text-xs font-bold text-slate-700 placeholder:text-slate-400" value={industrySearch} onChange={e => searchIndustry(e.target.value)} />
-                {industrySearch && <button onClick={() => { setIndustrySearch(''); setIndustryResults([]); }} className="text-slate-300 hover:text-slate-500 text-sm font-black shrink-0">✕</button>}
+              <div className={PANEL_INPUT_WRAP}>
+                <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input type="text" placeholder="업종 검색 (예: 카페)" className={PANEL_INPUT} value={industrySearch} onChange={e => searchIndustry(e.target.value)} />
+                {industrySearch && (
+                  <button type="button" onClick={() => { setIndustrySearch(''); setIndustryResults([]); }} className="text-slate-300 hover:text-slate-500 text-xs shrink-0">✕</button>
+                )}
               </div>
               {industryResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
                   {industryResults.map((r, i) => (
-                    <button key={i} onClick={() => { setSelectedLarge(r.large); setSelectedMedium(r.medium); setSelectedSmall(r.small || null); setDesiredBusiness(r.small || r.medium); setIndustrySearch(r.small || r.medium); setIndustryResults([]); }} className="w-full px-3 py-2.5 text-left hover:bg-orange-50 border-b border-slate-50 last:border-0">
-                      <p className="text-[11px] font-bold text-slate-800">{r.small || r.medium}</p>
+                    <button key={i} onClick={() => { setSelectedLarge(r.large); setSelectedMedium(r.medium); setSelectedSmall(r.small || null); setDesiredBusiness(r.small || r.medium); setIndustrySearch(r.small || r.medium); setIndustryResults([]); }} className="w-full px-3 py-2 text-left hover:bg-emerald-50/60 border-b border-slate-50 last:border-0">
+                      <p className="text-[11px] font-semibold text-slate-800">{r.small || r.medium}</p>
                       <p className="text-[10px] text-slate-400">{r.display}</p>
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            {/* 드롭다운 */}
-            <div className="mt-3 space-y-2">
+            <div className="mt-2.5 space-y-1.5">
               {allIndustries.length === 0 ? (
-                <p className="text-[11px] text-slate-400 font-semibold text-center py-2">업종 데이터 로딩 중...</p>
+                <p className="text-[10px] text-slate-400 text-center py-2">로딩 중...</p>
               ) : (
                 <>
-                  <select value={selectedLarge || ''} onChange={e => { setSelectedLarge(e.target.value || null); setSelectedMedium(null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
-                    <option value="">대분류 선택</option>
+                  <select value={selectedLarge || ''} onChange={e => { setSelectedLarge(e.target.value || null); setSelectedMedium(null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className={PANEL_SELECT}>
+                    <option value="">대분류</option>
                     {allIndustries.map(l => <option key={l.code} value={l.name}>{l.name}</option>)}
                   </select>
                   {selectedLarge && (() => { const midList = (allIndustries.find(l => l.name === selectedLarge)?.middle || []); return midList.length > 0 ? (
-                    <select value={selectedMedium || ''} onChange={e => { setSelectedMedium(e.target.value || null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
-                      <option value="">중분류 선택</option>
+                    <select value={selectedMedium || ''} onChange={e => { setSelectedMedium(e.target.value || null); setSelectedSmall(null); setDesiredBusiness(e.target.value); }} className={PANEL_SELECT}>
+                      <option value="">중분류</option>
                       {midList.map(m => <option key={m.code} value={m.name}>{m.name}</option>)}
                     </select>
                   ) : null; })()}
                   {selectedMedium && (() => { const smallList = (allIndustries.find(l => l.name === selectedLarge)?.middle?.find(m => m.name === selectedMedium)?.small || []); return smallList.length > 0 ? (
-                    <select value={selectedSmall || ''} onChange={e => { setSelectedSmall(e.target.value || null); setDesiredBusiness(e.target.value || selectedMedium || ''); }} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-orange-400">
-                      <option value="">소분류 선택</option>
+                    <select value={selectedSmall || ''} onChange={e => { setSelectedSmall(e.target.value || null); setDesiredBusiness(e.target.value || selectedMedium || ''); }} className={PANEL_SELECT}>
+                      <option value="">소분류</option>
                       {smallList.map(s => <option key={s.code} value={s.name}>{s.name}</option>)}
                     </select>
                   ) : null; })()}
-                  {desiredBusiness && <p className="text-[11px] text-orange-600 font-extrabold">✓ 선택: {desiredBusiness}</p>}
+                  {desiredBusiness && (
+                    <p className="text-[10px] text-emerald-600 font-bold px-1">✓ {desiredBusiness}</p>
+                  )}
                 </>
               )}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* 분석 시작 버튼 */}
-        <div className="pt-3">
-          {!user ? (
-            <a href="/login" className="block w-full py-3.5 bg-slate-900 text-white font-extrabold rounded-2xl text-center text-xs tracking-wide hover:bg-slate-850 transition-all shadow-sm">
-              로그인 후 진행
-            </a>
-          ) : !canAnalyze ? (
-            <div className="w-full py-3.5 bg-rose-50 text-rose-600 font-bold rounded-2xl text-center text-xs border border-rose-100">
-              일일 수집 한도 초과
+        {/* ③ 상세 정보 */}
+        {selectedCategory && address && (
+          <section className={PANEL_CARD}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className={panelStepBadge(3)}>3</span>
+              <div>
+                <p className={PANEL_SECTION_LABEL}>매물 정보</p>
+                <p className={PANEL_SECTION_DESC}>거래 조건 · 선택사항</p>
+              </div>
             </div>
-          ) : (
-            <button
-              onClick={handleAnalyze}
-              disabled={isAnalyzing || !selectedCategory || !address}
-              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl text-xs transition-all shadow-md shadow-emerald-500/10 tracking-wide"
-            >
-              {isAnalyzing ? '데이터 수집 중...' : '공공데이터 수집 리포트 생성'}
-            </button>
-          )}
-          <p className="text-[10px] text-slate-400 text-center mt-2.5 font-semibold tracking-tight leading-relaxed">
-            ※ 국가 공공 데이터를 수집합니다.
-          </p>
-        </div>
+            <AnalysisDetailInputSection
+              category={selectedCategory}
+              input={detailInput}
+              onChange={patchDetailInput}
+            />
+          </section>
+        )}
 
-        {/* 에러 */}
         {analysisError && (
-          <div className="bg-rose-50/60 border border-rose-100 rounded-2xl p-4 flex gap-3 items-start">
-            <svg className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <p className="text-xs font-bold text-rose-700 flex-1 leading-normal">{analysisError}</p>
-            <button onClick={() => setAnalysisError(null)} className="text-slate-400 hover:text-slate-600 transition-colors text-sm font-black">&times;</button>
+          <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 flex gap-2 items-start">
+            <p className="text-[11px] font-semibold text-rose-700 flex-1">{analysisError}</p>
+            <button type="button" onClick={() => setAnalysisError(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
           </div>
         )}
       </div>
 
+      {/* 하단 CTA — 고정 */}
+      <div className="shrink-0 px-4 lg:px-5 py-3.5 border-t border-slate-100 bg-white">
+        {!user ? (
+          <a href="/login" className="block w-full py-3 bg-slate-900 text-white font-bold rounded-xl text-center text-xs hover:bg-slate-800 transition-all">
+            로그인 후 진행
+          </a>
+        ) : !canAnalyze ? (
+          <div className="w-full py-3 bg-rose-50 text-rose-600 font-semibold rounded-xl text-center text-xs border border-rose-100">
+            일일 수집 한도 초과
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={isAnalyzing || !selectedCategory || !address}
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-35 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-all shadow-sm shadow-emerald-500/15"
+          >
+            {isAnalyzing ? '데이터 수집 중...' : '공공데이터 수집 리포트 생성'}
+          </button>
+        )}
+        <p className="text-[9px] text-slate-400 text-center mt-2 font-medium">국가 공공 데이터 기반 리포트</p>
+      </div>
+
       {/* 분석 중 오버레이 */}
       {isAnalyzing && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-[280px] w-full mx-4 text-center shadow-2xl">
-            <div className="relative w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/60 backdrop-blur-md px-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 max-w-sm w-full shadow-2xl flex flex-col items-center relative overflow-hidden">
+            <div className="flex items-center gap-2 mb-5 z-10">
+              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-widest">Public Data Collector Active</span>
+            </div>
+            <div className="relative w-16 h-16 mb-5 z-10 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20" />
               <div className="absolute inset-0 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-              <span className="text-xs font-black text-emerald-400 tracking-tighter">
-                {String(analysisStep + 1).padStart(2, '0')}
-              </span>
-            </div>
-            <p className="text-xs font-extrabold text-white tracking-wide">{ANALYSIS_STEPS[analysisStep]?.label}</p>
-            <div className="w-full bg-white/10 h-1 rounded-full mt-4">
-              <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                style={{ width: `${((analysisStep + 1) / ANALYSIS_STEPS.length) * 100}%` }}
+              <img
+                src={STEP_ICONS[analysisStep] || '/3d/suzip.svg'}
+                alt=""
+                className="w-8 h-8 object-contain animate-bounce"
               />
             </div>
-            <p className="text-[10px] text-slate-500 mt-2.5 font-bold tracking-widest uppercase">{elapsedSeconds}s elapsed</p>
+            <h3 className="text-sm font-extrabold text-white mb-1.5 z-10 tracking-tight">{ANALYSIS_STEPS[analysisStep]?.label}</h3>
+            <p className="text-xs text-slate-400 mb-5 text-center z-10 px-4 leading-relaxed font-semibold">{ANALYSIS_STEPS[analysisStep]?.desc}</p>
+            <div className="w-full z-10">
+              <div className="w-full bg-white/10 h-1 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-700"
+                  style={{ width: `${((analysisStep + 1) / ANALYSIS_STEPS.length) * 100}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] font-bold text-slate-500 mt-3 tabular-nums uppercase tracking-wider">
+                <span>Phase {analysisStep + 1} / {ANALYSIS_STEPS.length}</span>
+                <span>{elapsedSeconds}s</span>
+              </div>
+            </div>
           </div>
         </div>
       )}

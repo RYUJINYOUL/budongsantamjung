@@ -1,41 +1,49 @@
 import './globals.css'
-import { Inter, Noto_Sans_KR, Share_Tech_Mono } from 'next/font/google'
+import { Noto_Sans_KR } from 'next/font/google'
 import type { Metadata } from 'next'
 import Script from 'next/script'
 
-const inter = Inter({
+const notoSansKr = Noto_Sans_KR({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-inter',
-  display: 'swap'
-})
-
-const notoSansKR = Noto_Sans_KR({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
+  weight: ['400', '500', '600', '700'],
   variable: '--font-noto-sans-kr',
-  display: 'swap'
+  display: 'swap',
 })
 
-const shareTechMono = Share_Tech_Mono({
-  subsets: ['latin'],
-  weight: ['400'],
-  variable: '--font-share-tech-mono',
-  display: 'swap'
-})
+const SITE_URL = 'https://tamjung.me'
 
-// 메타데이터 수정: '부동산탐정' 컨셉 반영
+const SITE_DESCRIPTION =
+  '주소 클릭만으로 30종 이상의 공공데이터(실거래가·건축물대장·인구·토지규제 등)를 AI가 자동 분석합니다. ' +
+  '허위매물·위험 요소·적정 가치를 빠르게 진단하고, 아파트·주택·상가·토지·빌딩 맞춤 분석과 계약 전 체크리스트를 제공합니다. ' +
+  '계약 전, 부동산탐정으로 먼저 확인하세요.'
+
+// 메타데이터: 부동산탐정 (tamjung.me)
 export const metadata: Metadata = {
-  metadataBase: new URL('https://tomjungup.web.app'),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: '부동산탐정 | 입지와 리스크를 꿰뚫어 보는 AI 부동산 분석',
-    template: '%s | 부동산탐정'
+    default: '부동산탐정 | 공공데이터와 AI가 만나 모든 부동산 분석합니다',
+    template: '%s | 부동산탐정',
   },
-  description: '과장된 매물 광고, 숨겨진 리스크를 AI가 전문적으로 판독해 드립니다. 깨끗하고 투명한 부동산 거래를 위한 부동산탐정 리포트.',
-  keywords: ['부동산탐정', '부동산 분석', '상권 분석', '허위매물', '권리금 분석', '부동산 AI 리포트'],
-  authors: [{ name: '부동산탐정 AI' }],
-  creator: '부동산탐정 AI',
-  publisher: '부동산탐정 AI',
+  description: SITE_DESCRIPTION,
+  keywords: [
+    '부동산탐정',
+    '부동산 분석',
+    'AI 부동산',
+    '공공데이터',
+    '실거래가',
+    '건축물대장',
+    '허위매물',
+    '토지 분석',
+    '상가 분석',
+    '입지 분석',
+    '부동산 리스크',
+    '매물 분석',
+    '지역 분석',
+    '계약 전 체크리스트',
+  ],
+  authors: [{ name: '부동산탐정' }],
+  creator: '부동산탐정',
+  publisher: '부동산탐정',
   formatDetection: {
     email: false,
     address: false,
@@ -44,10 +52,10 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'ko_KR',
-    url: 'https://tomjungup.web.app',
+    url: SITE_URL,
     siteName: '부동산탐정',
-    title: '부동산탐정 | 팩트 기반 매물 AI 판독서',
-    description: '허위 매물과 사기 없는 투명한 부동산 정보. AI 탐정이 입지를 분석하고 현실적인 수익성과 위험도를 파헤쳐 드립니다.',
+    title: '부동산탐정 | 공공데이터·AI 기반 부동산 분석',
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: '/logo512.png',
@@ -59,8 +67,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: '부동산탐정 | 현실적인 매물 분석',
-    description: '매물 광고의 행간을 읽는 AI 탐정의 객관적인 분석 보고서.',
+    title: '부동산탐정 | 공공데이터·AI 기반 부동산 분석',
+    description: SITE_DESCRIPTION,
     images: ['/logo512.png'],
   },
   icons: {
@@ -71,7 +79,7 @@ export const metadata: Metadata = {
   verification: {
     google: 'google6c1fb46f0a5faeec',
     other: {
-      'naver-site-verification': '958054b4c4b6f0526ecf800c27d3e258',
+      'naver-site-verification': '051964ad639f99a8f0f410850b88f316',
     },
   },
 }
@@ -86,26 +94,26 @@ export default function RootLayout({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: '부동산탐정',
-    alternateName: ['부동산 탐정', 'AI 부동산 리포트'],
-    url: 'https://tomjungup.web.app',
-    description: 'AI를 활용한 객관적인 부동산 매물 리스크 분석 서비스',
+    alternateName: ['부동산 탐정', 'tamjung', 'tamjung.me'],
+    url: SITE_URL,
+    description: SITE_DESCRIPTION,
     potentialAction: {
       '@type': 'SearchAction',
-      target: 'https://tomjungup.web.app/search?q={search_term_string}',
-      'query-input': 'required name=search_term_string'
+      target: `${SITE_URL}/?panel=analyze`,
     },
     publisher: {
       '@type': 'Organization',
       name: '부동산탐정',
+      url: SITE_URL,
       logo: {
         '@type': 'ImageObject',
-        url: 'https://tomjungup.web.app/logo512.png'
-      }
-    }
+        url: `${SITE_URL}/logo512.png`,
+      },
+    },
   }
 
   return (
-    <html lang="ko" className={`${inter.variable} ${notoSansKR.variable} ${shareTechMono.variable}`}>
+    <html lang="ko" className={notoSansKr.variable}>
       <head>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}`}

@@ -8,14 +8,12 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'inter': ['var(--font-inter)', 'sans-serif'],
-        'noto-sans-kr': ['var(--font-noto-sans-kr)', 'sans-serif'],
+        'noto-sans-kr': ['var(--font-noto-sans-kr)', 'Noto Sans KR', 'sans-serif'],
       },
+      // 본고딕(Noto Sans KR)은 같은 숫자보다 두껍게 보임 → Tailwind 기본값 사용 + 굵은 클래스만 전역 보정
       fontWeight: {
-        'normal': '500',
-        'medium': '600',
-        'semibold': '700',
-        'bold': '800',
+        extrabold: '700',
+        black: '700',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

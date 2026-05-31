@@ -239,42 +239,39 @@ export default function ProfilePage() {
     if (!user) return null;
 
     return (
-        <div className="min-h-screen text-slate-900 relative bg-white flex">
+        <div className="min-h-screen text-slate-900 relative bg-white flex overflow-x-hidden">
             <SideNav />
 
-            <div className="lg:pl-16 flex-1 flex flex-col lg:flex-row min-h-screen">
+            <div className="lg:pl-16 flex-1 flex flex-col lg:grid lg:grid-cols-[minmax(0,25%)_minmax(0,75%)] min-h-screen min-w-0 overflow-x-hidden">
                 
-                {/* ── 좌측 패널: 프로필 설정 (w-full lg:w-[40%]) ── */}
-                <div className={`w-full lg:w-[40%] bg-white border-b lg:border-b-0 lg:border-r border-slate-200/50 flex flex-col h-auto lg:h-screen lg:sticky lg:top-0 overflow-y-auto ${showMobileHistory ? 'hidden lg:flex' : 'flex'}`}>
-                    {/* 헤더 */}
-                    <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 shrink-0 lg:hidden" />
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    <h2 className="text-sm font-extrabold text-slate-900 tracking-tight">내 프로필</h2>
-                                </div>
-                                <p className="text-[11px] text-slate-400 font-semibold tracking-tight">계정 정보 및 분석 활동을 관리합니다</p>
+                {/* ── 좌측 패널 (3) ── */}
+                <div className={`w-full bg-white border-b lg:border-b-0 lg:border-r border-slate-200/50 flex flex-col h-auto lg:h-screen lg:sticky lg:top-0 overflow-y-auto min-w-0 ${showMobileHistory ? 'hidden lg:flex' : 'flex'}`}>
+                    <header className="px-4 lg:px-6 py-3 border-b border-slate-200/50 bg-white/95 backdrop-blur-sm sticky top-0 z-50">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 shrink-0 lg:hidden" />
+                                <h1 className="text-lg font-black tracking-tighter text-black leading-none">
+                                    내 기록
+                                </h1>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    onClick={() => setShowMobileHistory(true)}
+                                    className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95"
+                                >
+                                    내역
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        auth.signOut().then(() => router.replace('/login'));
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-slate-500 hover:text-rose-500 hover:border-rose-250 transition-colors text-[10px] font-extrabold tracking-tight"
+                                >
+                                    로그아웃
+                                </button>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <button
-                                onClick={() => setShowMobileHistory(true)}
-                                className="lg:hidden px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-[10px] rounded-xl shadow-md transition-all active:scale-95 shrink-0"
-                            >
-                                내역
-                            </button>
-                            <button
-                                onClick={() => {
-                                    auth.signOut().then(() => router.replace('/login'));
-                                }}
-                                className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-slate-500 hover:text-rose-500 hover:border-rose-250 transition-colors text-[10px] font-extrabold tracking-tight shrink-0"
-                            >
-                                로그아웃
-                            </button>
-                        </div>
-                    </div>
+                    </header>
 
                     {/* 본문 프로필 */}
                     <div className="p-5 space-y-6">
@@ -359,46 +356,44 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
-                {/* ── 우측 패널: 내 활동 내역 리스트 (w-full lg:w-[60%]) ── */}
-                <div className={`w-full lg:w-[60%] flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50 ${!showMobileHistory ? 'hidden lg:flex' : 'flex'}`}>
-                    {/* 헤더 */}
-                    <div className="bg-white border-b border-slate-200/50 px-6 pt-5 shrink-0">
-                        <div className="flex items-center justify-between mb-4 gap-3">
-                            <div className="flex items-center gap-3">
+                {/* ── 우측 패널 (7) ── */}
+                <div className={`w-full flex-1 flex flex-col h-screen overflow-hidden bg-slate-50/50 min-w-0 max-w-full ${!showMobileHistory ? 'hidden lg:flex' : 'flex'}`}>
+                    <header className="bg-white/95 backdrop-blur-sm border-b border-slate-200/50 px-4 lg:px-6 pt-3.5 pb-3 lg:py-3 shrink-0 sticky top-0 z-50 min-w-0 max-w-full overflow-hidden">
+                        <div className="flex items-center justify-between gap-3 mb-3 min-w-0">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
                                 <div className="w-9 shrink-0 lg:hidden" />
-                                <div>
-                                    <h2 className="text-sm font-extrabold text-slate-900 tracking-tight">내 활동 내역</h2>
-                                    <p className="text-[11px] text-slate-400 font-semibold tracking-tight mt-0.5">분석 및 발굴 이력을 관리할 수 있습니다</p>
-                                </div>
+                                <h2 className="text-lg font-black tracking-tighter text-black leading-none truncate">활동 내역</h2>
                             </div>
                             <button
                                 onClick={() => setShowMobileHistory(false)}
-                                className="lg:hidden px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-[10px] rounded-xl shadow-md transition-all active:scale-95 shrink-0"
+                                className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95 shrink-0"
                             >
-                                프로필
+                                내 기록
                             </button>
                         </div>
                         
-                        {/* 탭 버튼들 */}
-                        <div className="flex border-b border-slate-100 gap-1">
-                            {([
-                                { key: 'favorites', label: '찜한 매물' },
-                                { key: 'my-analyses', label: '내 분석 내역' },
-                                { key: 'my-discoveries', label: '발견 기록' },
-                            ] as { key: Tab; label: string }[]).map(tab => (
-                                <button
-                                    key={tab.key}
-                                    onClick={() => setActiveTab(tab.key)}
-                                    className={`px-5 py-2.5 text-xs font-extrabold border-b-2 transition-all -mb-px ${activeTab === tab.key ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
+                        {/* 탭 — 모바일 가로 스크롤 (3탭 고정 배치 시 viewport 초과 방지) */}
+                        <div className="min-w-0 -mx-4 px-4 lg:-mx-6 lg:px-6 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                            <div className="flex flex-nowrap border-b border-slate-100 w-max min-w-full">
+                                {([
+                                    { key: 'favorites', label: '찜한 매물' },
+                                    { key: 'my-analyses', label: '내 분석 내역' },
+                                    { key: 'my-discoveries', label: '발견 기록' },
+                                ] as { key: Tab; label: string }[]).map(tab => (
+                                    <button
+                                        key={tab.key}
+                                        onClick={() => setActiveTab(tab.key)}
+                                        className={`shrink-0 whitespace-nowrap px-3 sm:px-5 py-2.5 text-xs font-extrabold border-b-2 transition-all -mb-px ${activeTab === tab.key ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    </header>
 
                     {/* 리스트 본문 */}
-                    <div className="flex-1 overflow-y-auto px-6 py-5 pb-24">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 lg:px-6 py-5 pb-24 min-w-0">
                         
                         {/* 찜한 매물 */}
                         {activeTab === 'favorites' && (
@@ -417,7 +412,7 @@ export default function ProfilePage() {
                                         {favorites.map((item) => (
                                             <div
                                                 key={item.id}
-                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
                                                 onClick={() => router.push(`/analyze/${item.id}`)}
                                             >
                                                 <div className="flex items-start gap-4">
@@ -434,7 +429,7 @@ export default function ProfilePage() {
                                                             <div className="flex items-center gap-2 shrink-0">
                                                                 {(item.propertyGrade?.riskScore || (item as any).riskScore) && (
                                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRiskColor(item.propertyGrade?.riskScore || (item as any).riskScore)}`}>
-                                                                        위험도 {item.propertyGrade?.riskScore || (item as any).riskScore}%
+                                                                        AI평가 {item.propertyGrade?.riskScore || (item as any).riskScore}%
                                                                     </span>
                                                                 )}
                                                                 <button
@@ -512,7 +507,7 @@ export default function ProfilePage() {
                                         {myAnalyses.map((item) => (
                                             <div
                                                 key={item.id}
-                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
                                                 onClick={() => router.push(`/analyze/${item.id}`)}
                                             >
                                                 <div className="flex items-start gap-4">
@@ -529,7 +524,7 @@ export default function ProfilePage() {
                                                             <div className="flex items-center gap-2 shrink-0">
                                                                 {item.propertyGrade?.riskScore && (
                                                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getRiskColor(item.propertyGrade.riskScore)}`}>
-                                                                        위험도 {item.propertyGrade.riskScore}%
+                                                                        AI평가 {item.propertyGrade.riskScore}%
                                                                     </span>
                                                                 )}
                                                                 <button
@@ -613,7 +608,7 @@ export default function ProfilePage() {
                                             return (
                                                 <div
                                                     key={id || idx}
-                                                    className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                                                    className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
                                                     onClick={() => router.push(`/discover/${id}`)}
                                                 >
                                                     <div className="flex items-start gap-4">
@@ -623,12 +618,12 @@ export default function ProfilePage() {
 
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                                <h3 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-emerald-600 transition-colors flex items-center gap-1">
+                                                                <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-emerald-600 transition-colors flex items-center gap-1 min-w-0 flex-1">
                                                                     <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                                                     </svg>
-                                                                    {region}
+                                                                    <span className="truncate">{region}</span>
                                                                 </h3>
                                                                 
                                                                 {createdAt && (

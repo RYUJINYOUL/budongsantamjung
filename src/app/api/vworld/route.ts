@@ -13,7 +13,9 @@ export async function GET(request: Request) {
     const vworldKey = process.env.NEXT_PUBLIC_VWORLD_KEY;
     
     // Vworld req/data 엔드포인트를 노드 서버 단에서 호출하여 브라우저 CORS 회피
-    const response = await fetch(`https://api.vworld.kr/req/data?service=data&request=GetFeature&data=LP_PA_CBND_BUBUN&key=${vworldKey}&domain=localhost&geomFilter=POINT(${lng}+${lat})`);
+    const response = await fetch(
+      `https://api.vworld.kr/req/data?service=data&request=GetFeature&data=LP_PA_CBND_BUBUN&key=${vworldKey}&domain=localhost&crs=EPSG:4326&geomFilter=POINT(${lng}%20${lat})`
+    );
     
     if (!response.ok) {
         return NextResponse.json({ error: 'VWorld API request failed' }, { status: response.status });
