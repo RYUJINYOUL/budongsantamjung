@@ -8,7 +8,7 @@ export const metadata: Metadata = {
         title: '부동산 매물 AI 분석 | 허위매물 및 사기 탐지 - 부동산탐정',
         description: 'AI로 부동산 매물 정보의 숨겨진 리스크와 사기 패턴을 자동으로 찾아냅니다',
         type: 'website',
-        url: 'https://tomjungup.web.app/',
+        url: 'https://tamjung.me/analyze',
         images: ['/logo512.png'],
     },
     twitter: {

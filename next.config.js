@@ -4,17 +4,16 @@ const path = require('path');
 const nextConfig = {
     transpilePackages: [],
     experimental: {
-        serverComponentsExternalPackages: ['undici'],
+        serverComponentsExternalPackages: ['firebase', '@firebase/auth', '@firebase/storage'],
     },
-    webpack: (config, { isServer }) => {
-        if (!isServer) {
-            config.resolve.alias = {
-                ...config.resolve.alias,
-                undici: false,
-                '@firebase/auth': path.resolve(__dirname, 'node_modules/@firebase/auth/dist/esm2017/index.js'),
-                '@firebase/app': path.resolve(__dirname, 'node_modules/@firebase/app/dist/esm/index.esm2017.js'),
-            };
-        }
+    webpack: (config) => {
+        config.resolve.alias = {
+            ...config.resolve.alias,
+            undici: false,
+            '@firebase/auth': path.resolve(__dirname, 'node_modules/@firebase/auth/dist/esm2017/index.js'),
+            '@firebase/app': path.resolve(__dirname, 'node_modules/@firebase/app/dist/esm/index.esm2017.js'),
+            '@firebase/storage': path.resolve(__dirname, 'node_modules/@firebase/storage/dist/index.esm2017.js'),
+        };
         return config;
     },
     async rewrites() {

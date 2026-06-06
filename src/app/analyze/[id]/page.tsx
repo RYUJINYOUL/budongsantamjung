@@ -61,10 +61,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
             title,
             description,
             type: 'website',
-            url: `https://tomjungup.web.app/analyze/${params.id}`,
+            url: `https://tamjung.me/analyze/${params.id}`,
             images: [
                 {
-                    url: '/logo512.png',
+                    url: 'https://tamjung.me/logo512.png',
                     width: 512,
                     height: 512,
                     alt: '부동산탐정 로고',
@@ -75,7 +75,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
             card: 'summary_large_image',
             title,
             description,
-            images: ['/logo512.png'],
+            images: ['https://tamjung.me/logo512.png'],
         },
     };
 }

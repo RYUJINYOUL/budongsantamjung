@@ -68,6 +68,18 @@ export default function UnifiedAnalyzePage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [usageLimit, setUsageLimit] = useState<number>(1);
   const [canAnalyze, setCanAnalyze] = useState<boolean>(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileWarning, setShowMobileWarning] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const apiKey = process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY;
   const analysisSteps = [
@@ -599,7 +611,15 @@ export default function UnifiedAnalyzePage() {
             </div>
 
             <div className="space-y-4">
-              {!user ? (
+              {isMobile ? (
+                <button
+                  type="button"
+                  onClick={() => setShowMobileWarning(true)}
+                  className="w-full py-4 bg-slate-800 text-white font-extrabold rounded-2xl hover:bg-slate-900 tracking-wide transition-all text-xs animate-pulse"
+                >
+                  매물 분석은 앱 - PC에서만 지원 →
+                </button>
+              ) : !user ? (
                 <Link href="/login" className="block w-full py-4 bg-slate-900 text-white font-extrabold rounded-2xl text-center text-xs tracking-wide hover:bg-slate-850 transition-all shadow-sm">로그인 후 진행</Link>
               ) : !canAnalyze ? (
                 <div className="w-full py-4 bg-rose-50 text-rose-600 font-bold rounded-2xl text-center text-xs border border-rose-100">일일 수집 한도 초과</div>
@@ -631,10 +651,10 @@ export default function UnifiedAnalyzePage() {
             <div className="relative w-16 h-16 mb-5 z-10 flex items-center justify-center">
               <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20" />
               <div className="absolute inset-0 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
-              <img 
-                src={stepIcons[analysisStep] || '/3d/suzip.svg'} 
-                alt="Loading Step" 
-                className="w-8 h-8 object-contain animate-bounce" 
+              <img
+                src={stepIcons[analysisStep] || '/3d/suzip.svg'}
+                alt="Loading Step"
+                className="w-8 h-8 object-contain animate-bounce"
               />
             </div>
             <h3 className="text-sm font-extrabold text-white mb-1.5 z-10 tracking-tight">{analysisSteps[analysisStep]?.label}</h3>
@@ -660,6 +680,60 @@ export default function UnifiedAnalyzePage() {
             </svg>
             <div className="flex-1 text-xs font-bold text-rose-700 leading-normal">{analysisError}</div>
             <button onClick={() => setAnalysisError(null)} className="text-slate-400 hover:text-slate-655 font-black text-sm">&times;</button>
+          </div>
+        </div>
+      )}
+
+      {/* 모바일 매물 분석 페이지 접속 시 하단 알림 */}
+      {isMobile && showMobileWarning && (
+        <div className="fixed bottom-6 left-6 right-6 z-[150] bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-2xl p-5 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex flex-col gap-3 text-white">
+            <div className="flex justify-between items-start">
+              <p className="text-[12px] text-slate-355 font-semibold leading-relaxed animate-pulse">
+                매물 분석은 <strong className="text-emerald-400 font-extrabold">앱</strong>과 <strong className="text-emerald-400 font-extrabold">PC</strong>에서만 지원.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowMobileWarning(false)}
+                className="text-slate-400 hover:text-white transition-colors p-1"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="h-px bg-white/10 my-0.5" />
+            <div className="flex flex-col gap-2.5">
+              <a
+                href="https://www.tamjung.me/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between text-xs bg-white/10 hover:bg-white/15 active:scale-[0.98] px-4 py-3 rounded-xl border border-white/10 transition-all text-white font-bold"
+              >
+                <div className="flex items-center gap-2">
+                  <span>💻</span>
+                  <span>PC 웹 버전 바로가기</span>
+                </div>
+                <span className="text-emerald-400 text-[11px] font-extrabold">tamjung.me →</span>
+              </a>
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.yongcar.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 text-[11px] bg-white/10 hover:bg-white/15 active:scale-[0.98] py-2.5 rounded-xl border border-white/10 transition-all text-white font-bold"
+                >
+                  <span>🤖 Google Play</span>
+                </a>
+                <a
+                  href="https://apps.apple.com/kr/app/%EB%B6%80%EB%8F%99%EC%82%B0%ED%83%90%EC%A0%95/id6762132537"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 text-[11px] bg-white/10 hover:bg-white/15 active:scale-[0.98] py-2.5 rounded-xl border border-white/10 transition-all text-white font-bold"
+                >
+                  <span>🍎 App Store</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}

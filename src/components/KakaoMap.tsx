@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  createMarkerElement,
+  hasValidCoords,
+  LEGEND_ITEMS,
+  type MapMarkerProperty,
+} from '../lib/mapMarkers';
+import { GeolocationError, getCurrentPosition } from '../lib/geolocation';
 
 declare global {
   interface Window {
@@ -8,13 +15,7 @@ declare global {
   }
 }
 
-interface Property {
-  id: string;
-  address: string;
-  riskScore: number;
-  lat?: number;
-  lng?: number;
-}
+export type { MapMarkerProperty };
 
 interface SearchResult {
   place_name: string;
@@ -25,12 +26,22 @@ interface SearchResult {
 }
 
 interface KakaoMapProps {
-  properties: Property[];
-  selectedProperty?: Property | null;
-  onPropertySelect?: (property: Property) => void;
+  properties: MapMarkerProperty[];
+  selectedProperty?: MapMarkerProperty | null;
+  onPropertySelect?: (property: MapMarkerProperty) => void;
   onBoundsChanged?: (bounds: { neLat: number; neLng: number; swLat: number; swLng: number } | null) => void;
+  /** 지도 idle 시 중심·줌 (타임라인 API geo 쿼리용, 앱과 동일) */
+  onMapIdle?: (position: { lat: number; lng: number; zoomLevel: number }) => void;
   onMapDrag?: () => void;
   initialCenter?: { lat: number; lng: number } | null;
+  isAnalyzeMode?: boolean;
+  primaryPolygon?: { lat: number; lng: number }[] | null;
+  additionalPolygons?: { lat: number; lng: number }[][];
+  onMapClick?: (lat: number, lng: number) => void;
+  isBenefitMode?: boolean;
+  benefitParcels?: any[];
+  selectedBenefitParcel?: any;
+  onBenefitParcelSelect?: (parcel: any) => void;
 }
 
 // 전역 스크립트 로딩 상태 관리
@@ -38,23 +49,49 @@ let isScriptLoading = false;
 let isScriptLoaded = false;
 const scriptCallbacks: (() => void)[] = [];
 
-export default function KakaoMap({ properties, selectedProperty, onPropertySelect, onBoundsChanged, onMapDrag, initialCenter }: KakaoMapProps) {
+export default function KakaoMap({
+  properties,
+  selectedProperty,
+  onPropertySelect,
+  onBoundsChanged,
+  onMapIdle,
+  onMapDrag,
+  initialCenter,
+  isAnalyzeMode,
+  primaryPolygon,
+  additionalPolygons,
+  onMapClick,
+  isBenefitMode,
+  benefitParcels,
+  selectedBenefitParcel,
+  onBenefitParcelSelect,
+}: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [map, setMap] = useState<any>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const polygonsRef = useRef<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [zoomLevel, setZoomLevel] = useState(8);
+  const [markerCount, setMarkerCount] = useState(0);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const initialCenterRef = useRef(initialCenter);
 
   const onBoundsChangedRef = useRef(onBoundsChanged);
   useEffect(() => {
     onBoundsChangedRef.current = onBoundsChanged;
   }, [onBoundsChanged]);
+
+  const onMapIdleRef = useRef(onMapIdle);
+  useEffect(() => {
+    onMapIdleRef.current = onMapIdle;
+  }, [onMapIdle]);
 
   const onMapDragRef = useRef(onMapDrag);
   useEffect(() => {
@@ -65,6 +102,11 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
   useEffect(() => {
     onPropertySelectRef.current = onPropertySelect;
   }, [onPropertySelect]);
+
+  const onMapClickRef = useRef(onMapClick);
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   const initializeMap = () => {
     console.log('지도 초기화 시작...');
@@ -106,6 +148,9 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
       mapRef.current = kakaoMap;
 
       const updateBounds = () => {
+        const c = kakaoMap.getCenter();
+        const zoomLevel = kakaoMap.getLevel();
+
         if (onBoundsChangedRef.current) {
           const kakaoBounds = kakaoMap.getBounds();
           onBoundsChangedRef.current({
@@ -115,12 +160,21 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
             swLng: kakaoBounds.getSouthWest().getLng()
           });
         }
-        // 지도 중심점 sessionStorage에 저장
-        const c = kakaoMap.getCenter();
+
+        if (onMapIdleRef.current) {
+          onMapIdleRef.current({
+            lat: c.getLat(),
+            lng: c.getLng(),
+            zoomLevel,
+          });
+        }
+
+        setZoomLevel(zoomLevel);
+
         sessionStorage.setItem('kakaomap_center', JSON.stringify({
           lat: c.getLat(),
           lng: c.getLng(),
-          level: kakaoMap.getLevel()
+          level: zoomLevel,
         }));
       };
 
@@ -130,6 +184,13 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
       // dragstart 이벤트: 사용자가 직접 지도를 드래그할 때 발생
       window.kakao.maps.event.addListener(kakaoMap, 'dragstart', () => {
         if (onMapDragRef.current) onMapDragRef.current();
+      });
+
+      // click 이벤트: 지도를 클릭했을 때 좌표 기반 동작
+      window.kakao.maps.event.addListener(kakaoMap, 'click', (mouseEvent: any) => {
+        if (onMapClickRef.current) {
+          onMapClickRef.current(mouseEvent.latLng.getLat(), mouseEvent.latLng.getLng());
+        }
       });
 
       setMap(kakaoMap);
@@ -223,99 +284,196 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
   useEffect(() => {
     if (!map) return;
 
-    // 기존 마커 확실히 제거 (배열이 비어 있어도 무조건 기존 마커 지움)
     if (markersRef.current.length > 0) {
       markersRef.current.forEach(marker => marker.setMap(null));
       markersRef.current = [];
     }
 
-    if (!properties || properties.length === 0) {
+    if (isBenefitMode && benefitParcels) {
+      const newMarkers = benefitParcels.map((parcel) => {
+        const isSelected = selectedBenefitParcel?.pnu === parcel.pnu;
+        const markerElement = document.createElement('div');
+        markerElement.className = 'benefit-parcel-marker';
+        const tier = parcel.tier || 'weak';
+        const color = tier === 'direct' ? '#EF4444' : tier === 'indirect' ? '#F97316' : '#3B82F6';
+        
+        markerElement.style.cssText = `
+          position:relative;display:flex;flex-direction:column;align-items:center;
+          cursor:pointer;user-select:none;transform:scale(${isSelected ? 1.25 : 1});
+          transition:transform 0.2s ease, filter 0.2s ease;
+          filter:drop-shadow(0 ${isSelected ? '6px 14px' : '3px 8px'} ${color}55);
+          z-index:${isSelected ? 30 : 10};
+        `;
+        
+        const body = document.createElement('div');
+        body.style.cssText = `
+          width:${isSelected ? '32px' : '24px'};height:${isSelected ? '32px' : '24px'};
+          border-radius:50%;background:${color};border:2px solid #fff;
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 2px 8px rgba(0,0,0,0.2);
+        `;
+        
+        const text = document.createElement('span');
+        text.style.cssText = `color:#fff;font-size:${isSelected ? '11px' : '9px'};font-weight:900;`;
+        text.textContent = tier === 'direct' ? '직' : tier === 'indirect' ? '간' : '약';
+        
+        body.appendChild(text);
+        markerElement.appendChild(body);
+        
+        const tail = document.createElement('div');
+        tail.style.cssText = `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};margin-top:-1px;`;
+        markerElement.appendChild(tail);
+        
+        const customOverlay = new window.kakao.maps.CustomOverlay({
+          position: new window.kakao.maps.LatLng(Number(parcel.lat), Number(parcel.lng)),
+          content: markerElement,
+          yAnchor: 1.1,
+          zIndex: isSelected ? 30 : 10,
+        });
+        
+        customOverlay.setMap(map);
+        
+        markerElement.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onBenefitParcelSelect?.(parcel);
+        });
+        
+        return customOverlay;
+      });
+      
+      markersRef.current = newMarkers;
+      setMarkerCount(newMarkers.length);
       return;
     }
 
-    const newMarkers = properties.map((property) => {
-      const position = new window.kakao.maps.LatLng(
-        property.lat || 37.5665 + Math.random() * 0.01,
-        property.lng || 126.9780 + Math.random() * 0.01
-      );
+    if (isAnalyzeMode) {
+      // 분석 모드: 핀 아이콘 대신 필지 폴리곤만 표시
+      setMarkerCount(0);
+      return;
+    }
 
-      // 리스크 점수에 따른 마커 색상 (연한 파스텔 톤)
-      const getRiskColor = (score: number) => {
-        if (score >= 80) return '#ef4444'; // 빨간색 (높은 위험)
-        if (score >= 60) return '#f59e0b'; // 주황색 (중간 위험)
-        return '#10b981'; // 초록색 (낮은 위험)/ 연한 초록색 (낮은 위험)
-      };
+    const validProperties = (properties || []).filter(hasValidCoords);
 
-      // 커스텀 마커 DOM 엘리먼트 생성 (더 자연스러운 디자인)
-      const markerElement = document.createElement('div');
-      markerElement.style.background = getRiskColor(property.riskScore);
-      markerElement.style.color = 'white';
-      markerElement.style.padding = '6px 10px';
-      markerElement.style.borderRadius = '16px';
-      markerElement.style.fontSize = '13px';
-      markerElement.style.fontWeight = '600';
-      markerElement.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1)';
-      markerElement.style.border = '2px solid rgba(255,255,255,0.9)';
-      markerElement.style.minWidth = '32px';
-      markerElement.style.textAlign = 'center';
-      markerElement.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-      markerElement.style.backdropFilter = 'blur(8px)';
-      markerElement.innerText = property.riskScore.toString();
+    const newMarkers = validProperties.map((property) => {
+      const isSelected = selectedProperty?.id === property.id;
+      const markerElement = createMarkerElement(property, {
+        selected: isSelected,
+        zoomLevel,
+        isAnalyzePin: property.id === '__analyze_pin__',
+      });
 
       const customOverlay = new window.kakao.maps.CustomOverlay({
-        position: position,
+        position: new window.kakao.maps.LatLng(property.lat!, property.lng!),
         content: markerElement,
-        yAnchor: 1
+        yAnchor: 1.1,
+        zIndex: isSelected ? 30 : 10,
       });
 
       customOverlay.setMap(map);
 
-      // 클릭 이벤트
-      markerElement.addEventListener('click', () => {
-        if (onPropertySelectRef.current) {
-          onPropertySelectRef.current(property);
-        }
-      });
-
-      // 호버 효과 (더 부드러운 애니메이션)
-      markerElement.addEventListener('mouseenter', () => {
-        markerElement.style.transform = 'scale(1.15) translateY(-2px)';
-        markerElement.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.15)';
-        markerElement.style.cursor = 'pointer';
-      });
-
-      markerElement.addEventListener('mouseleave', () => {
-        markerElement.style.transform = 'scale(1) translateY(0px)';
-        markerElement.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1)';
+      markerElement.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onPropertySelectRef.current?.(property);
       });
 
       return customOverlay;
     });
 
     markersRef.current = newMarkers;
-  }, [map, properties]);
+    setMarkerCount(newMarkers.length);
+  }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect]);
 
-  const prevSelectedId = useRef<string | null>(null);
+  // 분석 지적도 폴리곤 다각형 생성 및 업데이트
+  useEffect(() => {
+    if (!map) return;
 
-  // 선택된 매물로 지도 이동
+    // 기존 그려져 있던 모든 폴리곤을 완벽히 지우기
+    if (polygonsRef.current.length > 0) {
+      polygonsRef.current.forEach(polygon => polygon.setMap(null));
+      polygonsRef.current = [];
+    }
+
+    if (!isAnalyzeMode) return;
+
+    const newPolygons: any[] = [];
+
+    // 1. 대표 필지(Primary Polygon) 그리기 - 세련된 하늘색 네온 광원
+    if (primaryPolygon && primaryPolygon.length >= 3) {
+      const kakaoPolygon = new window.kakao.maps.Polygon({
+        path: primaryPolygon.map(p => new window.kakao.maps.LatLng(p.lat, p.lng)),
+        strokeWeight: 2.5,
+        strokeColor: '#0EA5E9',
+        strokeOpacity: 0.95,
+        strokeStyle: 'solid',
+        fillColor: '#0EA5E9',
+        fillOpacity: 0.16
+      });
+      
+      kakaoPolygon.setMap(map);
+      newPolygons.push(kakaoPolygon);
+    }
+
+    // 2. 추가 합필 필지(Additional Polygons) 그리기 - 틸/에메랄드색 네온 광원
+    if (additionalPolygons && additionalPolygons.length > 0) {
+      additionalPolygons.forEach((polyPoints) => {
+        if (polyPoints.length >= 3) {
+          const kakaoPolygon = new window.kakao.maps.Polygon({
+            path: polyPoints.map(p => new window.kakao.maps.LatLng(p.lat, p.lng)),
+            strokeWeight: 2.5,
+            strokeColor: '#10B981',
+            strokeOpacity: 0.95,
+            strokeStyle: 'solid',
+            fillColor: '#10B981',
+            fillOpacity: 0.16
+          });
+          
+          kakaoPolygon.setMap(map);
+          newPolygons.push(kakaoPolygon);
+        }
+      });
+    }
+
+    polygonsRef.current = newPolygons;
+  }, [map, isAnalyzeMode, primaryPolygon, additionalPolygons]);
+
+  const prevSelectedRef = useRef<{ id: string; lat: number; lng: number; polygonKey: number } | null>(null);
+
+  // 선택된 매물/분석 위치로 지도 이동
   useEffect(() => {
     if (!map || !selectedProperty) {
-      prevSelectedId.current = null;
+      prevSelectedRef.current = null;
       return;
     }
 
-    // 이미 같은 매물로 이동했으면 무시 (무한 펜 포커스/스냅백 방지)
-    if (prevSelectedId.current === selectedProperty.id) return;
-    prevSelectedId.current = selectedProperty.id;
+    const lat = selectedProperty.lat ?? 37.5665;
+    const lng = selectedProperty.lng ?? 126.9780;
+    const polygonKey = primaryPolygon?.length ?? 0;
+    const prev = prevSelectedRef.current;
+    if (prev && prev.id === selectedProperty.id && prev.lat === lat && prev.lng === lng && prev.polygonKey === polygonKey) return;
+    prevSelectedRef.current = { id: selectedProperty.id, lat, lng, polygonKey };
 
-    const position = new window.kakao.maps.LatLng(
-      selectedProperty.lat || 37.5665,
-      selectedProperty.lng || 126.9780
-    );
+    if (isAnalyzeMode && primaryPolygon && primaryPolygon.length >= 3) {
+      const bounds = new window.kakao.maps.LatLngBounds();
+      primaryPolygon.forEach(p => bounds.extend(new window.kakao.maps.LatLng(p.lat, p.lng)));
+      map.setBounds(bounds);
+    } else {
+      const position = new window.kakao.maps.LatLng(lat, lng);
+      map.setCenter(position);
+      map.setLevel(isAnalyzeMode ? 3 : 5);
+    }
+  }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
-    map.setCenter(position);
-    map.setLevel(5);
-  }, [map, selectedProperty]);
+  // 선택된 수혜 필지 위치로 지도 이동
+  useEffect(() => {
+    if (!map || !isBenefitMode || !selectedBenefitParcel) return;
+    const lat = Number(selectedBenefitParcel.lat);
+    const lng = Number(selectedBenefitParcel.lng);
+    if (lat && lng && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+      const position = new window.kakao.maps.LatLng(lat, lng);
+      map.setCenter(position);
+      map.setLevel(4);
+    }
+  }, [map, isBenefitMode, selectedBenefitParcel]);
 
   // 주소 검색 처리 핸들러
   const handleSearch = () => {
@@ -374,6 +532,28 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
     map.setLevel(4);
     setSearchInput(result.place_name || result.address_name);
     setSearchResults([]);
+  };
+
+  const moveToMyLocation = async () => {
+    if (isLocating || !map) return;
+    setIsLocating(true);
+    setLocationError(null);
+    try {
+      const { lat, lng } = await getCurrentPosition();
+      const coords = new window.kakao.maps.LatLng(lat, lng);
+      map.setCenter(coords);
+      map.setLevel(4);
+    } catch (err) {
+      const message =
+        err instanceof GeolocationError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : '현재 위치를 가져올 수 없습니다.';
+      setLocationError(message);
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   if (loadError) {
@@ -458,7 +638,56 @@ export default function KakaoMap({ properties, selectedProperty, onPropertySelec
             </div>
           </div>
         )}
+        {locationError && (
+          <p className="text-[11px] font-semibold text-rose-600 bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-md border border-rose-100">
+            {locationError}
+          </p>
+        )}
       </div>
+
+      {/* 내 위치 */}
+      {!isLoading && (
+        <button
+          type="button"
+          onClick={moveToMyLocation}
+          disabled={isLocating}
+          aria-label="내 위치로 이동"
+          className={`absolute bottom-24 right-4 lg:bottom-6 z-20 w-9 h-9 rounded-full border border-slate-200/80 shadow-lg flex items-center justify-center transition-all active:scale-95 ${
+            isLocating ? 'bg-emerald-500' : 'bg-white/95 backdrop-blur-md hover:bg-white'
+          }`}
+        >
+          {isLocating ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+              <circle cx="12" cy="12" r="4" strokeWidth={2.5} />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+          )}
+        </button>
+      )}
+
+      {/* 범례 + 영역 매물 수 (PC만) */}
+      {!isAnalyzeMode && !isLoading && (
+        <div className="absolute bottom-4 left-4 z-20 hidden lg:flex flex-col gap-2 max-w-[200px]">
+          {markerCount > 0 && (
+            <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-lg border border-slate-200/80 text-[11px] font-bold text-slate-700">
+              현재 위치 분석 <span className="text-emerald-600">{markerCount}</span>건
+            </div>
+          )}
+          <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2.5 shadow-lg border border-slate-200/80">
+            <div className="flex flex-wrap gap-x-2 gap-y-1">
+              {LEGEND_ITEMS.map(item => (
+                <span key={item.label} className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600">
+                  <img src={item.icon} alt="" className="w-4 h-4 rounded-full shrink-0 object-cover border border-white shadow-sm" />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div ref={mapContainer} className="w-full h-full rounded-lg" />
       {isLoading && (

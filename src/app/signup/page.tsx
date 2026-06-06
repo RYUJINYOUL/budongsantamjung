@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GoogleAuthProvider, signInWithPopup, getRedirectResult, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import Link from 'next/link';
+import KakaoAuthButton from '../../components/KakaoAuthButton';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -56,22 +57,18 @@ export default function SignupPage() {
     }
   };
 
-  const handleKakaoSignup = () => {
-    alert('카카오 회원가입은 현재 준비 중입니다.');
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 p-10 bg-white rounded-2xl shadow-xl border border-slate-100">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-800 p-1 shadow-lg">
+            <div className="w-24 h-24 rounded-2xl p-1 shadow-lg">
               <img src="/logo512.png" alt="Logo" className="w-full h-full rounded-xl bg-white object-cover" />
             </div>
           </div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">부동산탐정 시작하기</h2>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">부동산탐정</h2>
           <p className="mt-2 text-sm text-slate-500 font-medium">
-            현명한 부동산 투자의 시작, AI 탐정 분석
+            공공데이터와 AI가 만나다.
           </p>
         </div>
 
@@ -128,13 +125,20 @@ export default function SignupPage() {
 
         <div className="space-y-3">
           <button
+            type="button"
             onClick={handleGoogleSignup}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 transition-all shadow-sm"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
             Google로 계속하기
           </button>
-
+          <KakaoAuthButton
+            disabled={loading}
+            returnTo="/"
+            label="카카오로 시작하기"
+            onError={(msg) => alert(msg)}
+          />
         </div>
 
         <div className="mt-6 text-center border-t border-slate-100 pt-6">

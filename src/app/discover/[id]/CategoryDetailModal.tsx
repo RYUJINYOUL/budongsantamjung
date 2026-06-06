@@ -1,6 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart3, Landmark, Lightbulb, ListChecks, MapPin, Sparkles, Target, TrendingUp, Clock, Search
+} from 'lucide-react';
+import { generateMarketInsights } from '../../../lib/marketRone';
 
 const CATEGORY_LABELS: Record<string, string> = {
   apartment: '아파트',
@@ -32,20 +36,29 @@ const INDICATORS: Record<string, Record<string, { label: string, color: string, 
   }
 };
 
-function gradeColorClass(g: string) {
-  const upper = g.toUpperCase();
-  if (upper.startsWith('S')) return 'bg-amber-100 text-amber-800 border-amber-300';
-  if (upper.startsWith('A')) return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-  if (upper.startsWith('B')) return 'bg-blue-100 text-blue-800 border-blue-300';
-  return 'bg-slate-100 text-slate-600 border-slate-300';
+function Badge({ text, color }: { text: string; color: string }) {
+  return <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${color}`}>{text}</span>;
 }
 
-function gradeColorHex(g: string) {
-  const upper = g.toUpperCase();
-  if (upper.startsWith('S')) return '#CA8A04';
-  if (upper.startsWith('A')) return '#0F766E';
-  if (upper.startsWith('B')) return '#0284C7';
-  return '#64748B';
+function SectionHeader({ icon: Icon, title, subtitle }: { icon: typeof Sparkles; title: string; subtitle?: string }) {
+  return (
+    <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+      <Icon className="w-4 h-4 text-teal-700 shrink-0" />
+      <div>
+        <h3 className="font-black text-slate-800 text-sm">{title}</h3>
+        {subtitle && <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const style = rank === 1 ? 'bg-teal-700 text-white' : rank === 2 ? 'bg-teal-600 text-white' : rank === 3 ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-500';
+  return (
+    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 ${style}`}>
+      {rank}
+    </div>
+  );
 }
 
 function formatWon(n?: number) {
@@ -54,12 +67,91 @@ function formatWon(n?: number) {
   return `${n.toLocaleString()}만원`;
 }
 
+function RawTransactionCard({
+  t,
+  isLoanCard,
+  isRefCard,
+  categoryKey,
+}: {
+  t: any;
+  isLoanCard: boolean;
+  isRefCard: boolean;
+  categoryKey: string;
+}) {
+  if (!t || typeof t !== 'object') return null;
+
+  const date = (t.date || t.dealDate || t.contractDate || '-').toString().trim();
+  const location = t.name || t.location || '-';
+  const area = parseFloat((t.area || t.totalArea || t.exArea || '0').toString()) || 0;
+  const price = Number(t.price || t.dealAmount || 0);
+  const pricePerPyeong = Number(t.pricePerPyeong || 0);
+  const badges = (t.badges as string[]) || [];
+
+  const cardStyle = isLoanCard
+    ? 'bg-amber-50/40 border-amber-200/80 shadow-sm hover:bg-amber-50 transition-colors'
+    : 'bg-white border-slate-200 shadow-sm hover:bg-slate-50 transition-colors';
+
+  const priceColor = isLoanCard ? 'text-amber-700' : 'text-teal-700';
+
+  return (
+    <div className="rounded-2xl p-4.5 border border-slate-100 bg-white shadow-sm hover:bg-slate-50/50 transition-all p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className={`text-[11px] font-black ${isRefCard ? 'text-slate-400' : 'text-slate-500'}`}>{date}</span>
+        {badges.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {badges.map((b, idx) => {
+              let bColor = 'text-teal-700 bg-teal-50 border-teal-200';
+              if (b === '지분 거래 의심' || b.includes('의심')) {
+                bColor = 'text-rose-600 bg-rose-50 border-rose-200';
+              } else if (b === '대형 필지' || b.includes('대형')) {
+                bColor = 'text-amber-700 bg-amber-50 border-amber-200';
+              }
+              return (
+                <span key={idx} className={`px-2 py-0.5 rounded-md text-[9px] font-black border ${bColor}`}>
+                  {b}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <h5 className="font-black text-sm text-slate-800 leading-snug">{location}</h5>
+
+      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100/60 mt-3">
+        <div>
+          <p className="text-[10px] font-bold text-slate-400">거래금액</p>
+          <p className={`text-sm font-black mt-1 ${priceColor}`}>{formatWon(price)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-slate-400">대지/전용면적</p>
+          <p className="text-xs font-black text-slate-700 mt-1">{area.toFixed(1)}㎡</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-slate-400">
+            {categoryKey === 'apartment' ? '평형 환산' : '평당 가격'}
+          </p>
+          <p className="text-xs font-black text-slate-700 mt-1">
+            {categoryKey === 'apartment'
+              ? `${(area / 3.3058).toFixed(0)}평형`
+              : pricePerPyeong > 0
+              ? `${pricePerPyeong.toLocaleString()}만`
+              : '-'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CategoryDetailModal({ category, data, onClose }: { category: string, data: any, onClose: () => void }) {
   const [tab, setTab] = useState(0);
   const [jimokFilter, setJimokFilter] = useState('전체');
   const [selectedIndicator, setSelectedIndicator] = useState('priceIndex');
 
   const label = CATEGORY_LABELS[category] || category;
+  const region = data.query?.sggNm || data.region || '';
+  const budget = data.query?.budget;
   const catAnalysis = data.analysis?.[category] || {};
   const outlook = data.analysis?.regionalOutlook || {};
   const oneLineVerdict = data.analysis?.oneLineVerdict;
@@ -79,6 +171,15 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
 
   const dealVolumeStats = data.dealVolumeStats || [];
   const firesales = data.nearbyTrades?.rows || [];
+
+  // 나의 구매력 및 검토 구간
+  const pp = data.investmentLists?.purchasingPower || catAnalysis.purchasingPower || {};
+  const equity = pp.equityLabel || pp.equity || '';
+  const loanRange = pp.loanRangeLabel || pp.loanRange || '';
+  const ppDisclaimer = pp.disclaimer || '';
+
+  // 신규 수혜 주목 구역
+  const emergingList = data.analysis?.emergingList || data.emergingList || data.deterministicResults?.[category]?.ranking?.emerging || data.deterministicResults?.emergingList || [];
 
   // Reset selected indicator based on category
   useEffect(() => {
@@ -120,41 +221,38 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
   };
 
   const direction = outlook.direction || '';
-  const dirColorClass = (dir: string) => {
-    if (dir.includes('적극') || dir.includes('매수') || dir.includes('상승')) return 'bg-teal-50 text-teal-700 border-teal-200';
-    if (dir.includes('관망') || dir.includes('중립')) return 'bg-amber-50 text-amber-700 border-amber-200';
-    return 'bg-rose-50 text-rose-700 border-rose-200';
-  };
+  const investmentGrade = catAnalysis.investmentGrade || catAnalysis.grade || '';
 
-  const metrics: { label: string; value: string; color: string; icon: string }[] = [];
-  if (catAnalysis.tradeCount) metrics.push({ label: '최근 거래', value: `${catAnalysis.tradeCount}건`, color: '#0F766E', icon: '📈' });
-  if (catAnalysis.priceRange) metrics.push({ label: '예상 시세', value: catAnalysis.priceRange, color: '#EA580C', icon: '🏷️' });
-  if (catAnalysis.gapAnalysis) metrics.push({ label: '갭투자 분석', value: catAnalysis.gapAnalysis, color: '#0284C7', icon: '📊' });
-  if (catAnalysis.investmentGrade) metrics.push({ label: '투자 등급', value: `${catAnalysis.investmentGrade} Grade`, color: gradeColorHex(catAnalysis.investmentGrade), icon: '✅' });
+  const metrics: { label: string; value: string }[] = [];
+  if (catAnalysis.tradeCount) metrics.push({ label: '최근 거래', value: `${catAnalysis.tradeCount}건` });
+  if (catAnalysis.priceRange) metrics.push({ label: '예상 시세', value: catAnalysis.priceRange });
+  if (catAnalysis.gapAnalysis) metrics.push({ label: '갭투자 분석', value: catAnalysis.gapAnalysis });
 
   const keyPositives = outlook.keyPositives || outlook.keyFactors || [];
 
   return (
-    <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+    <div className="fixed inset-y-0 left-0 right-0 lg:left-16 z-40 bg-slate-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
-            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <h2 className="font-black text-slate-800 text-lg tracking-tight">{label} 정밀 분석</h2>
+      <div className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
+        <div className="max-w-3xl mx-auto w-full px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="p-2 -ml-2 rounded-full hover:bg-slate-100 transition-colors">
+              <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <h2 className="font-black text-slate-800 text-lg tracking-tight">{label} 정밀 분석</h2>
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="bg-white border-b border-slate-200 overflow-x-auto scrollbar-hide">
-        <div className="flex px-2 w-max">
+        <div className="max-w-3xl mx-auto w-full px-4 flex border-t border-slate-100">
           {TABS.map((t, i) => (
             <button
               key={i}
               onClick={() => setTab(i)}
-              className={`px-4 py-3 text-sm font-bold border-b-2 transition-colors ${
-                tab === i ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+              className={`px-5 py-2.5 text-sm font-bold border-b-2 transition-all -mb-px whitespace-nowrap ${
+                tab === i ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400 hover:text-slate-600'
               }`}
             >
               {t}
@@ -164,119 +262,186 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto w-full px-4 py-4 pb-24 space-y-6">
         {activeTabName === '요약 및 추천' && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            {/* AI 분석 결과 카드 */}
-            <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-teal-700 font-extrabold text-lg">AI 분석 결과</h3>
-                <div className="flex gap-2">
-                  {catAnalysis.investmentGrade && (
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-black border ${gradeColorClass(catAnalysis.investmentGrade)}`}>
-                      투자등급: {catAnalysis.investmentGrade}
-                    </span>
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {/* 유형 · 등급 히어로 카드 */}
+            <div className="rounded-2xl p-5 border border-teal-100 bg-gradient-to-br from-emerald-50 to-slate-50 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-slate-500 text-xs font-bold mb-1 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-teal-600" />
+                    {label} 정밀 분석
+                  </p>
+                  {region && (
+                    <h2 className="text-xl font-black text-slate-900 leading-tight tracking-tight">{region}</h2>
                   )}
-                  {direction && (
-                    <span className={`px-2.5 py-1 rounded-lg text-xs font-black border ${dirColorClass(direction)}`}>
-                      {direction}
-                    </span>
-                  )}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {budget && (
+                      <span className="inline-flex items-center gap-1.5 bg-white text-slate-700 text-xs font-bold px-3 py-1.5 rounded-full border border-slate-200">
+                        <Landmark className="w-3.5 h-3.5 text-teal-600" />
+                        예산 {formatWon(budget)}
+                      </span>
+                    )}
+                    {direction && (
+                      <Badge text={direction} color="bg-white text-slate-700 border-slate-200" />
+                    )}
+                  </div>
                 </div>
+                {investmentGrade && (
+                  <div className="shrink-0 w-14 h-14 rounded-2xl bg-teal-700 flex items-center justify-center shadow-sm">
+                    <span className="text-2xl font-black text-white">{investmentGrade}</span>
+                  </div>
+                )}
               </div>
-
-              {/* 최종 판단 */}
-              {oneLineVerdict && (
-                <div className="bg-teal-50/50 border border-teal-100 text-teal-900 rounded-2xl p-4 flex items-start gap-3 mb-4 animate-in fade-in duration-300">
-                  <span className="text-teal-600 text-base mt-0.5">⚖️</span>
-                  <div>
-                    <span className="font-extrabold text-xs text-teal-800">최종 판단</span>
-                    <p className="font-black text-sm text-teal-950 mt-1 leading-relaxed">{oneLineVerdict}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* 메트릭 리스트 */}
-              {metrics.length > 0 && (
-                <div className="space-y-3 mb-4">
-                  {metrics.map((m, idx) => (
-                    <div key={idx} className="flex items-center gap-3 p-3 rounded-2xl border" style={{ backgroundColor: `${m.color}08`, borderColor: `${m.color}20` }}>
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white shadow-sm border" style={{ borderColor: `${m.color}25` }}>
-                        <span className="text-lg">{m.icon}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-extrabold block" style={{ color: m.color }}>{m.label}</span>
-                        <p className="text-slate-800 font-black text-sm mt-0.5 leading-snug">{m.value}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* 핵심 투자 전략 */}
-              {catAnalysis.strategy && (
-                <div className="bg-amber-50/40 border border-amber-100 rounded-2xl p-4 animate-in fade-in duration-300">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-amber-600 text-sm">⭐</span>
-                    <span className="font-black text-amber-700 text-xs">핵심 투자 전략</span>
-                  </div>
-                  <p className="text-slate-800 font-bold text-sm leading-relaxed">{catAnalysis.strategy}</p>
-
-                  {/* 호재 및 투자 요인 리스트 */}
-                  {keyPositives.length > 0 && (
-                    <div className="mt-4 flex flex-col gap-2 pt-3 border-t border-amber-200/40">
-                      {keyPositives.map((kp: any, idx: number) => (
-                        <div key={idx} className="flex items-start gap-2 bg-white/60 p-2.5 rounded-xl border border-amber-100 text-xs text-slate-700 font-extrabold shadow-sm leading-relaxed">
-                          <span className="text-amber-600 shrink-0">🔥</span>
-                          <span>{kp}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+              {catAnalysis.outlook && (
+                <div className="mt-4 bg-white/80 rounded-xl p-3 border border-slate-100">
+                  <p className="text-slate-500 text-xs font-bold mb-1">투자 전망</p>
+                  <p className="text-slate-800 text-sm font-semibold leading-relaxed">{catAnalysis.outlook}</p>
                 </div>
               )}
             </div>
 
-            {/* 시나리오별 시세차익 분석 */}
-            {outlook.marketScenarios?.estimatedCapitalGain && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-teal-600">📊</span>
-                  <h4 className="font-black text-slate-800 text-base">10년 후 시나리오별 예상 차익</h4>
+            {/* 최종 판단 */}
+            {oneLineVerdict && (
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-teal-50 border border-teal-100 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-teal-700" />
+                  </div>
+                  <h3 className="font-black text-teal-800 text-sm">최종 판단</h3>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: '보수적', data: outlook.marketScenarios.estimatedCapitalGain.conservative, color: '#64748B' },
-                    { label: '보통', data: outlook.marketScenarios.estimatedCapitalGain.normal, color: '#0F766E' },
-                    { label: '낙관적', data: outlook.marketScenarios.estimatedCapitalGain.optimistic, color: '#0284C7' }
-                  ].map((s, i) => (
-                    <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center flex flex-col justify-between">
-                      <span className="text-xs font-bold" style={{ color: s.color }}>{s.label}</span>
-                      <div className="font-black text-base my-2" style={{ color: s.color }}>
-                        {s.data?.profitRate || '-'}
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-medium">{s.data?.year10Price || '-'}</span>
+                <p className="text-sm text-slate-700 leading-relaxed font-medium">{oneLineVerdict}</p>
+              </div>
+            )}
+
+            {/* 나의 구매력 및 검토 구간 */}
+            {equity && (
+              <div className="bg-gradient-to-br from-teal-800 to-teal-950 text-white rounded-2xl p-5 shadow-md border border-teal-700/50 space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                    <Landmark className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <h4 className="font-black text-sm text-white">나의 구매력 및 검토 구간</h4>
+                </div>
+                <div className="space-y-3 pt-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-teal-200/80 font-bold">자기 자본</span>
+                    <span className="font-black text-white text-sm">{equity}</span>
+                  </div>
+                  <div className="h-px bg-white/10" />
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-teal-200/80 font-bold">대출 활용 시</span>
+                    <span className="font-black text-amber-400 text-sm">{loanRange}</span>
+                  </div>
+                </div>
+                {ppDisclaimer && (
+                  <div className="bg-black/15 rounded-xl p-3 flex gap-2 items-start text-[10px] leading-relaxed text-teal-100/90 font-medium">
+                    <span className="text-amber-400 font-bold">⚠️</span>
+                    <p className="flex-1">{ppDisclaimer}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 핵심 지표 */}
+            {metrics.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <SectionHeader icon={BarChart3} title="핵심 지표" subtitle="거래·시세 기반 분석 수치" />
+                <div className="p-4 grid grid-cols-2 gap-3">
+                  {metrics.map((m, idx) => (
+                    <div key={idx} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400">{m.label}</p>
+                      <p className="text-sm font-black text-slate-800 mt-1 leading-snug">{m.value}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* AI 추천 매물 (전통적 아파트 방식) */}
-            {recommendations.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-teal-600">✨</span>
-                  <h4 className="font-black text-slate-800 text-base">AI 추천 매물</h4>
+            {/* 핵심 투자 전략 */}
+            {catAnalysis.strategy && (
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="w-9 h-9 rounded-full bg-teal-50 border border-teal-100 flex items-center justify-center">
+                    <Target className="w-4 h-4 text-teal-700" />
+                  </div>
+                  <h3 className="font-black text-teal-800 text-sm">핵심 투자 전략</h3>
                 </div>
-                <div className="space-y-4">
+                <p className="text-sm text-slate-700 leading-relaxed font-medium">{catAnalysis.strategy}</p>
+                {keyPositives.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100">
+                    {keyPositives.map((kp: string, idx: number) => (
+                      <span key={idx} className="text-[11px] bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg font-semibold">
+                        {kp}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 과거 데이터 기반 (실측치) */}
+            {outlook.marketScenarios?.historicalGrowth && (
+              <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-slate-500" />
+                  <h4 className="text-xs font-black text-slate-500">과거 데이터 기반 (실측치)</h4>
+                </div>
+                <p className="text-sm text-slate-800 leading-relaxed font-bold">
+                  {outlook.marketScenarios.historicalGrowth}
+                </p>
+                <p className="text-[10px] text-slate-400">※ 한국부동산원 임대매매지수 및 국토부 실거래가 기반</p>
+              </div>
+            )}
+
+            {/* 시나리오별 예상 차익 */}
+            {outlook.marketScenarios?.estimatedCapitalGain && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <SectionHeader icon={TrendingUp} title="10년 후 시나리오별 예상 차익" />
+                <div className="p-4 grid grid-cols-3 gap-3">
+                  {[
+                    { label: '보수적', data: outlook.marketScenarios.estimatedCapitalGain.conservative, accent: 'text-slate-600' },
+                    { label: '보통', data: outlook.marketScenarios.estimatedCapitalGain.normal, accent: 'text-teal-700' },
+                    { label: '낙관적', data: outlook.marketScenarios.estimatedCapitalGain.optimistic, accent: 'text-sky-700' },
+                  ].map((s, i) => (
+                    <div key={i} className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-center">
+                      <p className={`text-[11px] font-bold ${s.accent}`}>{s.label}</p>
+                      <p className={`text-base font-black my-1.5 ${s.accent}`}>{s.data?.profitRate || '-'}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">{s.data?.year10Price || '-'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 특수 가치 및 개발 이익 분석 */}
+            {outlook.marketScenarios?.specialAnalysis && (
+              <div className="bg-gradient-to-br from-teal-900 to-teal-950 text-white rounded-2xl p-5 shadow-md border border-teal-800/60 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <h4 className="text-sm font-black text-white">특수 가치 및 개발 이익 분석</h4>
+                </div>
+                <p className="text-xs text-teal-100/90 leading-relaxed font-medium">
+                  {outlook.marketScenarios.specialAnalysis}
+                </p>
+              </div>
+            )}
+
+            {/* AI 추천 매물 */}
+            {recommendations.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <SectionHeader icon={Sparkles} title="AI 추천 매물" subtitle="예산·지역 기반 맞춤 추천" />
+                <div className="divide-y divide-slate-100">
                   {recommendations.map((rec: any, idx: number) => {
                     const name = rec.name || '아파트명 미상';
                     const area = rec.area || '-';
                     const price = rec.price || '-';
                     const selfCapital = rec.selfCapital || '-';
                     const reason = rec.reason || '';
-                    
+                    const rank = rec.rank || idx + 1;
+
                     let formattedArea = area.toString();
                     if (formattedArea !== '-' && !formattedArea.includes('㎡')) {
                       const numArea = parseFloat(formattedArea);
@@ -286,30 +451,27 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
                     }
 
                     return (
-                      <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 animate-in fade-in duration-300">
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="bg-teal-700 text-white px-2 py-0.5 rounded text-[10px] font-black">
-                            {rec.rank || idx + 1}위 추천
-                          </span>
-                          <span className="font-black text-slate-800 text-base">{name}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                          <div>
-                            <span className="text-[9px] font-bold text-slate-400 block">전용 면적</span>
-                            <span className="text-xs font-extrabold text-slate-800">{formattedArea}</span>
+                      <div key={idx} className={`flex items-start gap-3 px-4 py-4 ${rank <= 3 ? 'bg-teal-50/40' : 'bg-white'}`}>
+                        <RankBadge rank={rank} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-black text-sm text-slate-900 truncate">{name}</p>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400">전용 면적</p>
+                              <p className="text-xs font-bold text-slate-700 mt-0.5">{formattedArea}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400">실거래가</p>
+                              <p className="text-xs font-bold text-teal-700 mt-0.5">{price}</p>
+                            </div>
+                            <div className="col-span-2">
+                              <p className="text-[10px] font-bold text-slate-400">필요 자기자본 (LTV 70%)</p>
+                              <p className="text-xs font-bold text-slate-800 mt-0.5">{selfCapital}</p>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-[9px] font-bold text-slate-400 block">실거래가</span>
-                            <span className="text-xs font-extrabold text-slate-800">{price}</span>
-                          </div>
-                          <div className="col-span-2 mt-2 pt-2 border-t border-slate-200/50">
-                            <span className="text-[9px] font-bold text-slate-400 block">필요 자기자본 (LTV 70%)</span>
-                            <span className="text-xs font-extrabold text-teal-700">{selfCapital}</span>
-                          </div>
-                        </div>
-                        <div className="text-xs text-slate-700 leading-relaxed font-semibold">
-                          <span className="text-[10px] font-bold text-slate-400 block mb-1">투자 근거</span>
-                          {reason}
+                          {reason && (
+                            <p className="text-xs text-slate-600 leading-relaxed mt-2 pt-2 border-t border-slate-100">{reason}</p>
+                          )}
                         </div>
                       </div>
                     );
@@ -318,94 +480,156 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
               </div>
             )}
 
-            {/* 추천 탐색 조건 (신규 토지/상가/빌딩 방식) */}
+            {/* AI 추천 탐색 조건 */}
             {searchConditions.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-teal-600">🎯</span>
-                  <h4 className="font-black text-slate-800 text-base">AI 추천 탐색 조건</h4>
-                </div>
-                <div className="space-y-4">
-                  {searchConditions.map((cond: any, idx: number) => (
-                    <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="bg-teal-700 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black">
-                          {cond.rank || idx + 1}
-                        </span>
-                        <span className="font-black text-slate-800 text-sm">{cond.location}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mb-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <div>
-                          <span className="text-[9px] font-bold text-slate-400 block">희망 면적</span>
-                          <span className="text-xs font-extrabold text-slate-800">{cond.areaRange || cond.area || '-'}</span>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <SectionHeader icon={Target} title="AI 추천 탐색 조건" subtitle="실거래 기반 탐색 가이드" />
+                <div className="divide-y divide-slate-100">
+                  {searchConditions.map((cond: any, idx: number) => {
+                    const rank = cond.rank || idx + 1;
+                    return (
+                      <div key={idx} className={`px-4 py-4 ${rank <= 3 ? 'bg-teal-50/40' : 'bg-white'}`}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <RankBadge rank={rank} />
+                          <p className="font-black text-sm text-slate-900">{cond.location}</p>
                         </div>
-                        <div>
-                          <span className="text-[9px] font-bold text-slate-400 block">용도/업종</span>
-                          <span className="text-xs font-extrabold text-slate-800">{cond.zoning || cond.usage || '-'}</span>
-                        </div>
-                        <div className="mt-2">
-                          <span className="text-[9px] font-bold text-slate-400 block">실거래 평균가</span>
-                          <span className="text-xs font-extrabold text-slate-800">{cond.avgPricePerPyeong || cond.avgPrice || '-'}</span>
-                        </div>
-                        <div className="mt-2">
-                          <span className="text-[9px] font-bold text-slate-400 block">예상 매입가</span>
-                          <span className="text-xs font-extrabold text-teal-700">{cond.estimatedTotalPrice || '-'}</span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-slate-700 leading-relaxed font-semibold mb-3">
-                        <span className="text-[10px] font-bold text-slate-400 block mb-1">투자 포인트</span>
-                        {cond.reason}
-                      </div>
-                      {cond.searchTips && (
-                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-start gap-2">
-                          <span className="text-xs mt-0.5">💡</span>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 block">탐색 팁</span>
-                            <p className="text-xs text-slate-600 font-medium leading-relaxed mt-0.5">{cond.searchTips}</p>
+                        <div className="grid grid-cols-2 gap-2 mb-3">
+                          <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                            <p className="text-[10px] font-bold text-slate-400">희망 면적</p>
+                            <p className="text-xs font-bold text-slate-800 mt-0.5">{cond.areaRange || cond.area || '-'}</p>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                            <p className="text-[10px] font-bold text-slate-400">용도/업종</p>
+                            <p className="text-xs font-bold text-slate-800 mt-0.5">{cond.zoning || cond.usage || '-'}</p>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                            <p className="text-[10px] font-bold text-slate-400">실거래 평균가</p>
+                            <p className="text-xs font-bold text-slate-800 mt-0.5">{cond.avgPricePerPyeong || cond.avgPrice || '-'}</p>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                            <p className="text-[10px] font-bold text-slate-400">예상 매입가</p>
+                            <p className="text-xs font-bold text-teal-700 mt-0.5">{cond.estimatedTotalPrice || '-'}</p>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        {cond.reason && (
+                          <p className="text-xs text-slate-700 leading-relaxed font-medium">{cond.reason}</p>
+                        )}
+                        {cond.searchTips && (
+                          <div className="mt-3 flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                            <Lightbulb className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-400">탐색 팁</p>
+                              <p className="text-xs text-slate-600 font-medium leading-relaxed mt-0.5">{cond.searchTips}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* 예산 내 최근 실거래 */}
-            {investmentList.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 px-1">
-                  <span className="text-teal-600">📋</span>
-                  <h4 className="font-black text-slate-800 text-base">예산 내 최근 실거래</h4>
+            {/* 추가 탐색 가이드 & 리스크 분석 */}
+            {catAnalysis.searchCriteria && (
+              <div className="bg-slate-100/60 rounded-2xl p-5 border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-slate-500" />
+                  <span className="text-xs font-black text-slate-600">추가 탐색 가이드</span>
                 </div>
-                <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-left">
-                        <th className="p-3 text-[10px] font-extrabold text-slate-400">거래일</th>
-                        <th className="p-3 text-[10px] font-extrabold text-slate-400">대상 정보</th>
-                        <th className="p-3 text-[10px] font-extrabold text-slate-400 text-right">거래가</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {investmentList.slice(0, 15).map((item: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-3 text-xs text-slate-500 font-medium whitespace-nowrap">{(item.date || '-').replace('.00', '').trim()}</td>
-                          <td className="p-3">
-                            <div className="text-xs font-black text-slate-800">{item.name || item.location}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">{item.area ? `${item.area}㎡` : ''} / {item.floor || item.jimok || '-'}</div>
-                          </td>
-                          <td className="p-3 text-right">
-                            <div className="text-xs font-black text-rose-600">{formatWon(item.price)}</div>
-                            {item.pricePerPyeong && <div className="text-[9px] text-slate-400 mt-0.5">평당 {item.pricePerPyeong}만</div>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">{catAnalysis.searchCriteria}</p>
+              </div>
+            )}
+
+            {catAnalysis.gapAnalysis && (
+              <div className="bg-amber-50/50 rounded-2xl p-5 border border-amber-100/80 space-y-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-black text-amber-800">수익성 및 리스크 분석</span>
+                </div>
+                <p className="text-xs text-amber-900 leading-relaxed font-medium">{catAnalysis.gapAnalysis}</p>
+              </div>
+            )}
+
+            {/* 🌱 신규 수혜 주목 구역 */}
+            {emergingList.length > 0 && (
+              <div className="bg-emerald-50/30 rounded-3xl p-6 border border-emerald-100/80 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                  <h4 className="font-black text-emerald-900 text-base">🌱 신규 수혜 주목 구역</h4>
+                </div>
+                <p className="text-xs text-emerald-800 leading-relaxed font-medium">
+                  거래량은 극소수이나, 고시 호재 구역과의 높은 물리적 인접성으로 인해 직접적인 낙수 수혜가 기대되는 주목 지역군입니다.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {emergingList.map((item: any, idx: number) => {
+                    const dong = item.location || item.dong || item.name || '-';
+                    return (
+                      <span key={idx} className="bg-white text-emerald-800 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-black shadow-sm">
+                        {dong}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
+
+            {/* 3단계 추천 매물 카드 섹션 */}
+            {(() => {
+              const mainList = data.investmentLists?.[category] || [];
+              const loanList = data.investmentLists?.[`${category}Loan`] || [];
+              const refList = data.investmentLists?.[`${category}Reference`] || [];
+
+              if (mainList.length === 0 && loanList.length === 0 && refList.length === 0) {
+                return null;
+              }
+
+              return (
+                <div className="space-y-6">
+                  {mainList.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 px-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-teal-600" />
+                        <h4 className="font-black text-sm text-teal-800">추천 실투자 매물 카드 (예산 범위 내)</h4>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        {mainList.map((t: any, idx: number) => (
+                          <RawTransactionCard key={idx} t={t} isLoanCard={false} isRefCard={false} categoryKey={category} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {loanList.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+                        <h4 className="font-black text-sm text-amber-800">대출 활용 시 검토 권장 매물 (레버리지)</h4>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        {loanList.map((t: any, idx: number) => (
+                          <RawTransactionCard key={idx} t={t} isLoanCard={true} isRefCard={false} categoryKey={category} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {refList.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                        <h4 className="font-black text-sm text-slate-800">참고용 최근 주변 실거래 내역</h4>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        {refList.map((t: any, idx: number) => (
+                          <RawTransactionCard key={idx} t={t} isLoanCard={false} isRefCard={true} categoryKey={category} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -730,6 +954,62 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
               );
             })()}
 
+            {/* 시장 한눈에 보기 설명 패널 */}
+            {(() => {
+              const ind = market;
+              const insightItems = generateMarketInsights(category, ind);
+              if (insightItems.length === 0) return null;
+
+              const metaColors: Record<string, string> = {
+                land: '#8B5CF6',
+                apartment: '#0EA5E9',
+                house: '#10B981',
+                building: '#F59E0B',
+                store: '#EF4444',
+              };
+              const accentColor = metaColors[category] || '#0EA5E9';
+
+              return (
+                <section className="bg-slate-900 border border-white/5 rounded-2xl p-5 shadow-lg space-y-4 text-white">
+                  <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                    <div className="w-1 h-4 rounded" style={{ backgroundColor: accentColor }} />
+                    <span className="text-xs font-black text-white">{CATEGORY_LABELS[category]} 시장 한눈에 보기</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {insightItems.map((item, idx) => {
+                      const isUp = item.trend === '상승';
+                      const isDown = item.trend === '하락';
+                      const trendColor = isUp ? 'text-rose-400' : isDown ? 'text-sky-400' : 'text-slate-400';
+                      const trendBg = isUp ? 'bg-rose-500/10 border-rose-500/20' : isDown ? 'bg-sky-500/10 border-sky-500/20' : 'bg-slate-500/10 border-slate-500/20';
+
+                      return (
+                        <div key={idx} className="p-4 rounded-xl border border-white/5 bg-white/[0.01] flex flex-col justify-between space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <h5 className="text-[10px] font-black text-slate-300">{item.label}</h5>
+                            {item.trend && (
+                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border ${trendColor} ${trendBg}`}>
+                                {isUp ? '▲' : isDown ? '▼' : '─'} {item.changeLabel ? `${item.trend} ${item.changeLabel}` : item.trend}
+                              </span>
+                            )}
+                          </div>
+                          {item.headlineValue && (
+                            <div className="space-y-0.5">
+                              {item.subLine && <p className="text-[8px] text-slate-500 font-bold">{item.subLine}</p>}
+                              <div className="flex items-baseline gap-0.5">
+                                <span className="text-lg font-black text-white" style={{ color: accentColor }}>{item.headlineValue}</span>
+                                {item.headlineUnit && <span className="text-[8px] font-black text-slate-400">{item.headlineUnit}</span>}
+                              </div>
+                            </div>
+                          )}
+                          <p className="text-[11px] text-slate-400 leading-relaxed font-medium">{item.body}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })()}
+
             {Object.keys(market).length === 0 && (
               <div className="bg-white p-10 rounded-2xl text-center text-slate-500 text-sm font-medium shadow-sm border border-slate-100">
                 시장 지표 데이터가 없습니다.
@@ -742,6 +1022,7 @@ export default function CategoryDetailModal({ category, data, onClose }: { categ
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );
