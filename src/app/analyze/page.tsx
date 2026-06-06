@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth } from '../../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import AnalysisPaymentModal from '../../components/AnalysisPaymentModal';
 
 // 카카오맵 타입 정의
 declare global {
@@ -70,6 +71,13 @@ export default function UnifiedAnalyzePage() {
   const [canAnalyze, setCanAnalyze] = useState<boolean>(true);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileWarning, setShowMobileWarning] = useState(false);
+
+  // 결제 모달 상태
+  const DEV_UID = process.env.NEXT_PUBLIC_DEV_UID;
+  const DEV_UID2 = process.env.NEXT_PUBLIC_DEV_UID2;
+  const isDevAccount = !!user && (user.uid === DEV_UID || user.uid === DEV_UID2);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentDailyPropertyId, setPaymentDailyPropertyId] = useState('');
 
   useEffect(() => {
     const checkMobile = () => {
@@ -334,16 +342,15 @@ export default function UnifiedAnalyzePage() {
     setPrimaryPnu(pnu);
   };
 
-  const handleAnalyze = async () => {
-    if (!selectedCategory || !address || !lat || !user) return;
-
+  /** 공공데이터 수집 실행 (결제 후 재시도에도 재사용) */
+  const runAnalysis = async () => {
     setIsAnalyzing(true);
     setAnalysisStep(0);
     setElapsedSeconds(0);
     setAnalysisError(null);
 
     try {
-      const idToken = await user.getIdToken();
+      const idToken = await user!.getIdToken();
 
       const allParcels = [
         primaryPnu ? { address, lat, lng, pnu: primaryPnu } : { address, lat, lng }
@@ -362,8 +369,8 @@ export default function UnifiedAnalyzePage() {
       const payload: any = {
         category: selectedCategory,
         address: address,
-        lat: lat.toString(),
-        lng: lng.toString()
+        lat: lat!.toString(),
+        lng: lng!.toString()
       };
 
       if (pnuList.length > 0) {
@@ -379,6 +386,15 @@ export default function UnifiedAnalyzePage() {
         },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 402) {
+        // 무료 횟수 소진 → 결제창 표시
+        const errorData = await response.json();
+        setPaymentDailyPropertyId(errorData.dailyPropertyId || '');
+        setIsAnalyzing(false);
+        setIsPaymentModalOpen(true);
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -396,6 +412,11 @@ export default function UnifiedAnalyzePage() {
       setAnalysisError(error instanceof Error ? error.message : '데이터 수집 중 오류 발생');
       setIsAnalyzing(false);
     }
+  };
+
+  const handleAnalyze = async () => {
+    if (!selectedCategory || !address || !lat || !user) return;
+    await runAnalysis();
   };
 
   return (
@@ -736,6 +757,20 @@ export default function UnifiedAnalyzePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 개별분석 결제 모달 */}
+      {isPaymentModalOpen && user && (
+        <AnalysisPaymentModal
+          address={address}
+          dailyPropertyId={paymentDailyPropertyId}
+          user={user}
+          onClose={() => setIsPaymentModalOpen(false)}
+          onSuccess={() => {
+            setIsPaymentModalOpen(false);
+            runAnalysis();
+          }}
+        />
       )}
     </div>
   );

@@ -942,8 +942,10 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const patchAiInput = (patch: Partial<AiAnalysisInputState>) =>
         setAiInput((prev) => ({ ...prev, ...patch }));
 
-    // 결제 관련 상태
+    // 결제 관련 상태 - 두 운영자 계정은 결제 없이 무제한
     const DEV_UID = process.env.NEXT_PUBLIC_DEV_UID;
+    const DEV_UID2 = process.env.NEXT_PUBLIC_DEV_UID2;
+    const isDevAccount = !!user && (user.uid === DEV_UID || user.uid === DEV_UID2);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isCheckingAccess, setIsCheckingAccess] = useState(false);
     const [isMapDropdownOpen, setIsMapDropdownOpen] = useState(false);
@@ -1261,7 +1263,8 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             return;
         }
 
-        if (user.uid === DEV_UID || !propertyId) {
+        // 운영자 계정 또는 propertyId 없으면 바로 분석 실행
+        if (isDevAccount || !propertyId) {
             runAiAnalysis();
             return;
         }
@@ -1269,6 +1272,23 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         setIsCheckingAccess(true);
         try {
             const idToken = await user.getIdToken();
+
+            // (1) 오늘 무료 분석 이력 확인 (daily_free_analysis)
+            const usageRes = await fetch(
+                `/api/payment/check-daily-usage?userId=${user.uid}`,
+                { headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            if (usageRes.ok) {
+                const usageData = await usageRes.json();
+                // freeRemaining === 0 이면 오늘 이미 무료 분석 사용 → AI도 무료 통과
+                // hasPaidToday === true 이면 오늘 결제한 경우 → 통과
+                if (usageData.freeRemaining === 0 || usageData.hasPaidToday) {
+                    runAiAnalysis();
+                    return;
+                }
+            }
+
+            // (2) 유료 결제 이력 확인 (analysis_access)
             const res = await fetch(
                 `/api/payment/check-access?userId=${user.uid}&propertyId=${propertyId}`,
                 { headers: { Authorization: `Bearer ${idToken}` } },
