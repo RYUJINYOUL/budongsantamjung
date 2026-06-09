@@ -19,7 +19,7 @@ export default function DiscoveryPaymentModal({
     onSuccess,
 }: DiscoveryPaymentModalProps) {
     const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
-    const AMOUNT = 9900;
+    const AMOUNT = 19900;
 
     const [isWidgetLoaded, setIsWidgetLoaded] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -160,7 +160,7 @@ export default function DiscoveryPaymentModal({
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-xs text-slate-500">결제 금액</p>
-                            <p className="text-emerald-400 font-black text-xl">₩9,900</p>
+                            <p className="text-emerald-400 font-black text-xl">₩19,900</p>
                         </div>
                         <button
                             onClick={onClose}

@@ -633,7 +633,7 @@ export default function AiAnalysisInputModal({
                             disabled={!valid || isCheckingAccess}
                             className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-2xl shadow-xl shadow-sky-500/20 transition-all flex items-center justify-center gap-3 active:scale-95 text-base"
                         >
-                            {isCheckingAccess ? '확인 중...' : 'AI 정밀 분석 3,900원'}
+                            {isCheckingAccess ? '확인 중...' : 'AI 정밀 분석 5,900원'}
                         </button>
                     </motion.div>
                 </motion.div>

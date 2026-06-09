@@ -1,7 +1,7 @@
 {
   "/page": "app/page.js",
-  "/api/land/detective/timeline/route": "app/api/land/detective/timeline/route.js",
-  "/api/land/detective/discoveries/route": "app/api/land/detective/discoveries/route.js",
-  "/discover/page": "app/discover/page.js",
-  "/discover/[id]/page": "app/discover/[id]/page.js"
+  "/analyze/[id]/page": "app/analyze/[id]/page.js",
+  "/profile/page": "app/profile/page.js",
+  "/discover/[id]/page": "app/discover/[id]/page.js",
+  "/discover/page": "app/discover/page.js"
 }

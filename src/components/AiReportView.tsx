@@ -9,8 +9,9 @@ import {
     Compass, Lock, Award, Building, Activity, Info, ExternalLink,
     HelpCircle, CheckSquare, RefreshCw, Eye, Shield,
     List, ChevronRight, Store, ArrowRightLeft, Calendar, FileText,
-    Milestone, Play
+    Milestone, Play, Map, X
 } from 'lucide-react';
+import ComparableMap from './ComparableMap';
 
 // Typewriter 컴포넌트
 const Typewriter = ({ text, delay = 30 }: { text: string; delay?: number }) => {
@@ -217,6 +218,186 @@ const shouldHideItem = (keyOrLabel: string, category: string): boolean => {
 
 export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isCheckingAccess }: any) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
+    const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
+
+    const renderPriceSpectrumSection = (spectrum: any) => {
+        if (!spectrum) return null;
+        const narrative = spectrum.narrative || '';
+        const buildingFloorVal = spectrum.buildingFloor || '';
+
+        const meta = ai.analysisMetadata || {};
+        const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
+        const attachedTrades = Array.isArray(meta.uiAttachedRegionalTrades) ? meta.uiAttachedRegionalTrades : [];
+        const attachedMultiplier = meta.uiAttachedMultiplier;
+        const categoryStr = String(mergedData?.category || 'land');
+
+        // Target Area Calculation
+        let targetArea = 0;
+        try {
+            const t = meta.target || {};
+            const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
+                ? parseFloat(meta.targetArea.toString())
+                : null;
+            if (directTargetArea !== null && directTargetArea > 0) {
+                targetArea = directTargetArea;
+            } else if (categoryStr === 'building') {
+                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+            } else {
+                targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+            }
+        } catch (_) {}
+
+        return (
+            <div className="p-5 bg-white/[0.02] border border-white/10 rounded-3xl flex flex-col gap-4 mt-2">
+                <div className="flex items-center gap-2">
+                    <List className="w-4 h-4 text-[#c5dedd]" />
+                    <span className="text-white text-sm font-bold">인근 유사 비교사례 가치 대입 리스트</span>
+                </div>
+
+                {comparables.length === 0 ? (
+                    <span className="text-white/38 text-xs">분석된 비교사례가 없습니다.</span>
+                ) : (
+                    <div className="flex flex-col gap-2.5">
+                        {comparables.map((c: any, index: number) => {
+                            const platPlc = c.platPlc || '';
+                            const platAddr = c.platAddr || '';
+                            const sggNm = c.sggNm || '';
+                            const umdNm = c.umdNm || '';
+                            const addr = umdNm || platPlc.split(' ').pop() || platAddr.split(' ').pop() || `사례 #${index + 1}`;
+                            
+                            const simVal = Number(c.similarityScore || c.score) || 0;
+                            const simStr = simVal > 0 ? `${simVal.toFixed(0)}%` : '90%';
+
+                            const distVal = Number(c.distance || c.distanceFromTarget) || 0;
+                            const distStr = distVal > 0 ? `${distVal.toFixed(0)}m` : '-';
+
+                            const date = `${c.dealYear || '?'}.${c.dealMonth || '?'}`;
+
+                            const dealAmountVal = Number(c.dealAmount) || 0;
+                            const dealAmountManwon = dealAmountVal > 1000000 ? dealAmountVal / 10000 : dealAmountVal;
+                            const dealAmountStr = dealAmountManwon > 0 
+                                ? `${(dealAmountManwon / 10000).toFixed(1)}억원`
+                                : '-';
+
+                            const rawPricePerSqm = Number(c.adjustedPricePerSqm || c.pricePerSqm) || 0;
+                            const adjPricePerSqmManwon = rawPricePerSqm > 10000 ? rawPricePerSqm / 10000 : rawPricePerSqm;
+                            const adjTotalManwon = targetArea > 0 ? adjPricePerSqmManwon * targetArea : 0;
+                            const adjTotalStr = adjTotalManwon > 0 
+                                ? `${(adjTotalManwon / 10000).toFixed(1)}억원`
+                                : '계산불가';
+
+                            return (
+                                <div key={index} className="p-4 bg-white/[0.01] border border-white/5 rounded-2xl flex flex-col gap-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-white text-xs font-bold">#{index + 1} {addr}</span>
+                                        <span className="text-white/40 text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
+                                            유사도 {simStr} · 거리 {distStr}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs mt-1">
+                                        <span className="text-white/30 text-[11px]">거래 정보 ({date})</span>
+                                        <span className="text-white/70 font-semibold">{dealAmountStr}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs pt-1 border-t border-white/5">
+                                        <span className="text-white/50 font-bold">보정 후 대입 가치</span>
+                                        <span className="text-[#7dd3c0] font-black text-sm">{adjTotalStr}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {buildingFloorVal && (
+                    <div className="pt-3 border-t border-white/5 flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center gap-1.5 text-white/50">
+                                <Building className="w-3.5 h-3.5" />
+                                <span>건축물 잔존가 하한선 (원가법)</span>
+                            </div>
+                            <span className="text-[#c5dedd] font-bold">{buildingFloorVal}</span>
+                        </div>
+                        <span className="text-white/30 text-[10px]">※ 국세청 신축가격기준액을 준용한 최소 원가 기준이며, 시장 가격이 아닙니다.</span>
+                    </div>
+                )}
+
+                {attachedMultiplier && (
+                    <div className="pt-3 border-t border-white/5 flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5 text-white/50 text-xs">
+                            <Layers className="w-3.5 h-3.5" />
+                            <span>공시지가 배율 추정 (사례 부족 시)</span>
+                        </div>
+                        <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl flex flex-col gap-1 text-xs">
+                            <span className="text-white/70">용도지역: {attachedMultiplier.zoning || '-'}</span>
+                            <span className="text-white/70">
+                                적용 배율: {attachedMultiplier.minMult || '-'}~{attachedMultiplier.maxMult || '-'}배 (중간값 {attachedMultiplier.midMult || '-'}배)
+                            </span>
+                            <span className="text-[#c5dedd] font-bold text-sm mt-1">
+                                추정 범위: {formatKoreanCurrency(Number(attachedMultiplier.minTotal) || 0)} ~ {formatKoreanCurrency(Number(attachedMultiplier.maxTotal) || 0)}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {attachedTrades.length > 0 && (
+                    <div className="pt-3 border-t border-white/5 flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5 text-white/50 text-xs">
+                            <List className="w-3.5 h-3.5" />
+                            <span>인근 거래사례 참고 리스트</span>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            {attachedTrades.map((group: any, idx: number) => {
+                                const items = Array.isArray(group.data) ? group.data : [];
+                                if (items.length === 0) return null;
+                                return (
+                                    <div key={idx} className="flex flex-col gap-1.5">
+                                        <span className="text-white/40 text-[10px] font-bold">{group.type} ({items.length}건)</span>
+                                        <div className="flex flex-col gap-1 pl-2">
+                                            {items.slice(0, 5).map((t: any, i: number) => {
+                                                const addr = `${t.sggNm || t.시군구 || ''} ${t.umdNm || t.법정동 || ''} ${t.jibun || t.지번 || ''}`.trim();
+                                                const year = t.dealYear || t.년 || '';
+                                                const month = t.dealMonth || t.월 || '';
+                                                const dateStr = year ? `${year}.${month}` : '-';
+
+                                                const deposit = t.deposit || t.보증금액;
+                                                const monthly = t.monthlyRent || t.월세금액;
+                                                const dealAmt = t.dealAmount || t.거래금액;
+
+                                                let priceStr = '';
+                                                if (deposit !== undefined && deposit !== null) {
+                                                    priceStr = monthly !== undefined && monthly !== null && monthly.toString() !== '0'
+                                                        ? `보증금 ${deposit}만 / 월세 ${monthly}만`
+                                                        : `전세 ${deposit}만`;
+                                                } else {
+                                                    const priceNum = parseInt(String(dealAmt).replace(/,/g, '')) || 0;
+                                                    priceStr = `매매 ${priceNum.toLocaleString()}만`;
+                                                }
+
+                                                return (
+                                                    <span key={i} className="text-white/60 text-[11px] leading-relaxed">
+                                                        - {dateStr} [{addr}] → {priceStr}
+                                                    </span>
+                                                );
+                                            })}
+                                            {items.length > 5 && (
+                                                <span className="text-white/30 text-[10px] pl-2">... 외 {items.length - 5}건</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {narrative && (
+                    <div className="pt-3 border-t border-white/5 text-white/70 text-xs leading-relaxed">
+                        {narrative}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     if (aiStatus !== 'completed') {
         return (
@@ -457,21 +638,44 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         const cbdScore = meta.cbdGrade?.score || 0;
         const zoningChangeComment = meta.zoningChangeComment || '주변 5년 이내 상업/숙박 용도변경 이력 없음';
 
-        const stepHeader = (stepNum: string, title: string) => (
+        const isBuilding = categoryStr === 'building';
+        const isHouse = categoryStr === 'house';
+
+        const ledgerTitle = isBuilding
+            ? '빌딩 가치 정밀 검증 원장'
+            : isHouse
+            ? '주택 가치 정밀 검증 원장'
+            : '토지 가치 정밀 검증 원장';
+
+        const step1Title = isBuilding
+            ? '1단계: 선별된 유사 상업건물 비교 (Comparables)'
+            : isHouse
+            ? '1단계: 선별된 유사 주택 비교 (Comparables)'
+            : '1단계: 선별된 유사 필지 비교 (Comparables)';
+
+        const step3Title = (isBuilding || isHouse)
+            ? '3단계: 입지 등급 분석'
+            : '3단계: 입지 등급 및 CBD 프리미엄 범위';
+
+        const pyeongLabel = isBuilding
+            ? '연면적 평당'
+            : isHouse
+            ? '전용면적 평당'
+            : '대지면적 평당';
+
+        const stepHeader = (stepNum, title) => (
             <div className="flex items-center gap-2 mt-6 mb-3">
                 <div className="w-[18px] h-[18px] flex items-center justify-center bg-[#c5dedd] text-[#0f172a] rounded-full text-[10px] font-black">{stepNum}</div>
                 <span className="text-white text-[13px] font-bold">{title}</span>
             </div>
         );
 
-
-
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
             const totalRate = hosaeAdj.totalRate ? (hosaeAdj.totalRate * 100).toFixed(1) : '0';
             return (
                 <div className="flex flex-col gap-2 mt-1">
-                    {hosaeAdj.details.map((detail: any, i: number) => {
+                    {hosaeAdj.details.map((detail, i) => {
                         const hasLink = !!detail.url;
                         return (
                             <div key={i} className="p-2.5 bg-white/5 border border-white/5 rounded-xl flex flex-col gap-1.5">
@@ -501,26 +705,109 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
             );
         };
 
+        // 보정 항목 타일 동적 구성
+        const tiles = [];
+        tiles.push({
+            name: "면적 보정 (Area)",
+            factor: areaAdj.factor || 1.0,
+            desc: areaAdj.applied
+                ? `대상지(${areaAdj.targetArea}㎡)와 사례평균(${areaAdj.avgComparableArea}㎡) 면적 격차 보정 (${areaAdj.reason})`
+                : '비교 사례와 대지 규모 유사로 보정 없음',
+            infoText: "대상 토지의 면적 크기에 따른 가치 격차를 보정합니다. 일반적으로 대규모 필지는 개발 효율성은 높지만 평당 단가는 낮아지며, 소규모 필지는 평당 단가가 높아지는 경향이 있습니다."
+        });
+
+        // 토지일 때만 용도 보정과 도로 보정 적용
+        if (isLand) {
+            tiles.push({
+                name: "용도 보정 (Zoning)",
+                factor: zoningAdj.factor || 1.0,
+                desc: zoningAdj.applied
+                    ? `대상지 ${zoningAdj.targetZoning} vs 사례평균 ${zoningAdj.avgComparableRank}등급 격차 보정 (${zoningAdj.reason})`
+                    : '비교 사례와 용도지역 동일로 보정 없음',
+                infoText: "대상지와 비교 대상 사례 간의 용도지역 등급(상업지역 > 준주거 > 주거지역 등) 차이를 보정하여 토지의 이용 효용성을 일치시킵니다."
+            });
+
+            tiles.push({
+                name: "도로 보정 (Road)",
+                factor: roadAdj.factor || 1.0,
+                desc: roadAdj.applied
+                    ? `${roadAdj.name || ''} 접면 (${roadAdj.status || ''})에 따른 감점 -${roadAdj.discountPercent || 0}% 반영`
+                    : '비교 사례와 도로 조건 유사로 보정 없음',
+                infoText: "토지가 접하고 있는 도로의 폭, 접면 상태(광대로, 중로, 세로, 맹지 등)에 따른 개발 가능 여부 및 접근 편의성을 보정합니다."
+            });
+        }
+
+        tiles.push({
+            name: "역세권 보정 (Station)",
+            factor: stationAdj.factor || 1.0,
+            desc: stationAdj.applied
+                ? `${stationAdj.stationName || ''} ${stationAdj.distance || 0}m (${stationAdj.label || ''}) 프리미엄 +${stationAdj.premiumPercent || 0}% 반영`
+                : '역세권 범위(500m) 외 지역으로 프리미엄 없음',
+            infoText: "인근 지하철역/철도역과의 거리에 따른 접근성 가치를 보정합니다. (일반적으로 500m 이내를 초역세권/역세권으로 판단하여 프리미엄을 반영)"
+        });
+
+        tiles.push({
+            name: "시점 보정 (Time)",
+            factor: avgTimeFactor,
+            desc: "한국부동산원 지가변동률 지수 및 거래월 기준 시계열 변동 반영",
+            infoText: "거래가 발생한 과거 시점과 현재 시점 사이의 한국부동산원 지가변동률 지수 변화를 반영하여 현재 가치로 환산합니다."
+        });
+
+        // 주택/빌딩일 때 건축연도 보정 추가
+        if (isBuilding || isHouse) {
+            const buildYearAdj = meta.buildYearAdjustment || {};
+            tiles.push({
+                name: "건축연도 보정 (Build Year)",
+                factor: buildYearAdj.factor || 1.0,
+                desc: buildYearAdj.applied
+                    ? `대상 연식(${buildYearAdj.targetAge}년)과 사례평균(${buildYearAdj.avgComparableAge}년) 차이 보정 (${buildYearAdj.reason})`
+                    : buildYearAdj.reason || '건축연도 차이 미미로 보정 없음',
+                infoText: "대상 건물과 비교 대상 사례 건물의 승인 연도 및 경과 연수 차이에 따른 감가 및 가치 차이를 보정합니다."
+            });
+        }
+
+        if (hosaeAdj) {
+            tiles.push({
+                name: "호재 보정 (Hosae)",
+                factor: hosaeAdj.applied ? (hosaeAdj.factor || 1.0) : 1.0,
+                desc: hosaeAdj.applied ? '' : '인근 호재 미감지 — 보정 없음',
+                infoText: "개발 계획, 교통망 신설, 구역 지정 등 인근 지역의 미래 가치 상승 요인(호재)에 따른 가치 상승분을 보정하여 반영합니다.",
+                customDescElement: hosaeAdj.applied ? renderHosaeDetails() : undefined
+            });
+        }
+
         return (
             <div className="p-6 bg-[#0f172a]/55 border border-[#c5dedd]/20 rounded-[40px] shadow-[0_0_25px_rgba(197,222,221,0.04)]">
                 {/* Header */}
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#c5dedd]/12 border border-[#c5dedd]/30 rounded-xl">
-                        <List className="w-4 h-4 text-[#c5dedd]" />
+                <div className="flex justify-between items-center w-full pb-4 border-b border-white/5 mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-[#c5dedd]/12 border border-[#c5dedd]/30 rounded-xl">
+                            <List className="w-4 h-4 text-[#c5dedd]" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-white text-base font-bold tracking-tight">{ledgerTitle}</span>
+                            <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
+                        </div>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-white text-base font-bold tracking-tight">토지 가치 정밀 검증 원장</span>
-                        <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
-                    </div>
+                    {comparables.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setIsMapModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#c5dedd]/10 hover:bg-[#c5dedd]/20 border border-[#c5dedd]/25 text-[#c5dedd] hover:text-white rounded-xl text-xs font-bold transition-all"
+                        >
+                            <Map className="w-3.5 h-3.5" />
+                            <span>지도 보기</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* Step 1: 유사 필지 비교 (Comparables) */}
-                {stepHeader('1', '1단계: 선별된 유사 필지 비교 (Comparables)')}
+                {stepHeader('1', step1Title)}
                 {comparables.length === 0 ? (
                     <div className="text-white/38 text-xs py-4">유사한 실거래 비교 사례가 없습니다.</div>
                 ) : (
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
-                        {comparables.map((c: any, index: number) => {
+                        {comparables.map((c, index) => {
                             const addr = c.platPlc || c.platAddr || `${c.sggNm || ''} ${c.umdNm || ''}`.trim() || '주소 정보 없음';
                             const dateStr = `${c.dealYear || '?'}.${c.dealMonth || '?'}`;
                             const rawPriceStr = c.pricePerPyeong ? `${Math.round(c.pricePerPyeong / 10000).toLocaleString()}만원` : '-';
@@ -533,15 +820,22 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                                         <span className="text-white/30 text-[10px]">{dateStr}</span>
                                     </div>
                                     <div className="flex justify-between items-center mt-1">
-                                        <span className="text-white/50 text-[10px]">보정후 평당</span>
+                                        <span className="text-white/50 text-[10px]">보정후 {pyeongLabel}</span>
                                         <span className="text-[#c5dedd] text-[13px] font-black">{adjPriceStr}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-white/30 text-[10px]">보정전 평당</span>
+                                        <span className="text-white/30 text-[10px]">보정전 {pyeongLabel}</span>
                                         <span className="text-white/50 text-xs line-through">{rawPriceStr}</span>
                                     </div>
                                     <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-white/5">
-                                        <span className="text-white/30 text-[9px]">{c.area ? `${c.area}㎡` : '-'} · {c.zoning || '-'}</span>
+                                        <span className="text-white/30 text-[9px] truncate">
+                                            {isBuilding 
+                                                ? `연 ${c.buildingAr || c.area || '-'}㎡/대 ${c.plottageAr || '-'}㎡ · ${c.buildingUse || c.zoning || '-'}`
+                                                : isHouse
+                                                ? `전 ${c.area || '-'}㎡/대 ${c.plottageAr || '-'}㎡ · ${c.zoning || '-'}`
+                                                : `${c.area ? `${c.area}㎡` : '-'} · ${c.zoning || '-'}`
+                                            }
+                                        </span>
                                         <span className="text-white/30 text-[9px]">시점 x{(c.timeAdjFactor || 1.0).toFixed(3)}</span>
                                     </div>
                                 </div>
@@ -553,95 +847,60 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 {/* Step 2: Multipliers */}
                 {stepHeader('2', '2단계: 개별 요인 보정 계수 (Multipliers)')}
                 <div className="flex flex-col gap-2">
-                    <MultiplierTile
-                        indexStr="①"
-                        name="면적 보정 (Area)"
-                        factor={areaAdj.factor || 1.0}
-                        desc={areaAdj.applied
-                            ? `대상지(${areaAdj.targetArea}㎡)와 사례평균(${areaAdj.avgComparableArea}㎡) 면적 격차 보정 (${areaAdj.reason})`
-                            : '비교 사례와 대지 규모 유사로 보정 없음'}
-                        infoText="대상 토지의 면적 크기에 따른 가치 격차를 보정합니다. 일반적으로 대규모 필지는 개발 효율성은 높지만 평당 단가는 낮아지며, 소규모 필지는 평당 단가가 높아지는 경향이 있습니다."
-                    />
-                    <MultiplierTile
-                        indexStr="②"
-                        name="용도 보정 (Zoning)"
-                        factor={zoningAdj.factor || 1.0}
-                        desc={zoningAdj.applied
-                            ? `대상지 ${zoningAdj.targetZoning} vs 사례평균 ${zoningAdj.avgComparableRank}등급 격차 보정 (${zoningAdj.reason})`
-                            : '비교 사례와 용도지역 동일로 보정 없음'}
-                        infoText="대상지와 비교 대상 사례 간의 용도지역 등급(상업지역 > 준주거 > 주거지역 등) 차이를 보정하여 토지의 이용 효용성을 일치시킵니다."
-                    />
-                    <MultiplierTile
-                        indexStr="③"
-                        name="도로 보정 (Road)"
-                        factor={roadAdj.factor || 1.0}
-                        desc={roadAdj.applied
-                            ? `${roadAdj.name || ''} 접면 (${roadAdj.status || ''})에 따른 감점 -${roadAdj.discountPercent || 0}% 반영`
-                            : '비교 사례와 도로 조건 유사로 보정 없음'}
-                        infoText="토지가 접하고 있는 도로의 폭, 접면 상태(광대로, 중로, 세로, 맹지 등)에 따른 개발 가능 여부 및 접근 편의성을 보정합니다."
-                    />
-                    <MultiplierTile
-                        indexStr="④"
-                        name="역세권 보정 (Station)"
-                        factor={stationAdj.factor || 1.0}
-                        desc={stationAdj.applied
-                            ? `${stationAdj.stationName || ''} ${stationAdj.distance || 0}m (${stationAdj.label || ''}) 프리미엄 +${stationAdj.premiumPercent || 0}% 반영`
-                            : '역세권 범위(500m) 외 지역으로 프리미엄 없음'}
-                        infoText="인근 지하철역/철도역과의 거리에 따른 접근성 가치를 보정합니다. (일반적으로 500m 이내를 초역세권/역세권으로 판단하여 프리미엄을 반영)"
-                    />
-                    <MultiplierTile
-                        indexStr="⑤"
-                        name="시점 보정 (Time)"
-                        factor={avgTimeFactor}
-                        desc="한국부동산원 지가변동률 지수 및 거래월 기준 시계열 변동 반영"
-                        infoText="거래가 발생한 과거 시점과 현재 시점 사이의 한국부동산원 지가변동률 지수 변화를 반영하여 현재 가치로 환산합니다."
-                    />
-                    {hosaeAdj && (
-                        <MultiplierTile
-                            indexStr="⑥"
-                            name="호재 보정 (Hosae)"
-                            factor={hosaeAdj.applied ? (hosaeAdj.factor || 1.0) : 1.0}
-                            desc={hosaeAdj.applied ? '' : '인근 호재 미감지 — 보정 없음'}
-                            infoText="개발 계획, 교통망 신설, 구역 지정 등 인근 지역의 미래 가치 상승 요인(호재)에 따른 가치 상승분을 보정하여 반영합니다."
-                            customDescElement={hosaeAdj.applied ? renderHosaeDetails() : undefined}
-                        />
-                    )}
-                </div>
-
-                {/* Step 3: Location rank */}
-                {stepHeader('3', '3단계: 입지 등급 및 CBD 프리미엄 범위')}
-                <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-2">
-                    <div className="flex justify-between items-center">
-                        <span className="text-white text-xs font-bold">입지 등급: {cbdGrade}</span>
-                        <div className="px-2 py-0.5 bg-[#c5dedd]/15 text-[#c5dedd] rounded text-[10px] font-bold">점수: {cbdScore}점</div>
-                    </div>
-                    {cbdEst ? (() => {
-                        const minTotalVal = cbdEst.multiplier?.min || 1.0;
-                        const maxTotalVal = cbdEst.multiplier?.max || 1.0;
-                        const officialPricePerSqm = cbdEst.officialPerSqm || 0;
-                        const targetArea = meta.areaAdjustment?.targetArea || 0;
-                        const minTotal = Math.round((officialPricePerSqm * minTotalVal * targetArea) / 10000);
-                        const maxTotal = Math.round((officialPricePerSqm * maxTotalVal * targetArea) / 10000);
-
+                    {tiles.map((tile, i) => {
+                        const indexMap = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
                         return (
-                            <div className="text-white/70 text-xs leading-relaxed flex flex-col gap-1.5">
-                                <span>· 일반 용도/주거 기준 (배율 {minTotalVal.toFixed(1)}~{maxTotalVal.toFixed(1)}배):</span>
-                                <span className="text-white font-bold text-[13px] pl-2">{minTotal.toLocaleString()}만원 ~ {maxTotal.toLocaleString()}만원</span>
-                                <span>· 상업화 및 개발 성공 시: 공시지가의 3.5배 ~ 5.0배 범위 적용 가능 (잠재 가치)</span>
-                            </div>
+                            <MultiplierTile
+                                key={i}
+                                indexStr={indexMap[i] || `${i + 1}`}
+                                name={tile.name}
+                                factor={tile.factor}
+                                desc={tile.desc}
+                                infoText={tile.infoText}
+                                customDescElement={tile.customDescElement}
+                            />
                         );
-                    })() : (
-                        <span className="text-white/70 text-xs leading-relaxed">
-                            · 빌딩/주택 실거래가에는 입지 프리미엄이 이미 반영되어 있으므로 별도 CBD 배율 산출 불필요
-                        </span>
-                    )}
+                    })}
                 </div>
 
-                {/* Step 4: Surrounding zoning change comment */}
-                {stepHeader('4', '4단계: 최근 5년 이내 인접 필지 용도변경 허가 이력')}
-                <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
-                    <span className="text-white/70 text-xs leading-relaxed">{zoningChangeComment}</span>
-                </div>
+                {/* Step 3: Location rank (토지일 때만 노출) */}
+                {isLand && stepHeader('3', step3Title)}
+                {isLand && (
+                    <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                            <span className="text-white text-xs font-bold">입지 등급: {cbdGrade}</span>
+                            <div className="px-2 py-0.5 bg-[#c5dedd]/15 text-[#c5dedd] rounded text-[10px] font-bold">점수: {cbdScore}점</div>
+                        </div>
+                        {cbdEst ? (() => {
+                            const minTotalVal = cbdEst.multiplier?.min || 1.0;
+                            const maxTotalVal = cbdEst.multiplier?.max || 1.0;
+                            const officialPricePerSqm = cbdEst.officialPerSqm || 0;
+                            const targetArea = meta.areaAdjustment?.targetArea || 0;
+                            const minTotal = Math.round((officialPricePerSqm * minTotalVal * targetArea) / 10000);
+                            const maxTotal = Math.round((officialPricePerSqm * maxTotalVal * targetArea) / 10000);
+
+                            return (
+                                <div className="text-white/70 text-xs leading-relaxed flex flex-col gap-1.5">
+                                    <span>· 일반 용도/주거 기준 (배율 {minTotalVal.toFixed(1)}~{maxTotalVal.toFixed(1)}배):</span>
+                                    <span className="text-white font-bold text-[13px] pl-2">{minTotal.toLocaleString()}만원 ~ {maxTotal.toLocaleString()}만원</span>
+                                    <span>· 상업화 및 개발 성공 시: 공시지가의 3.5배 ~ 5.0배 범위 적용 가능 (잠재 가치)</span>
+                                </div>
+                            );
+                        })() : (
+                            <span className="text-white/70 text-xs leading-relaxed">
+                                · 빌딩/주택 실거래가에는 입지 프리미엄이 이미 반영되어 있으므로 별도 CBD 배율 산출 불필요
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {/* Step 4: Surrounding zoning change comment (토지일 때만 노출) */}
+                {isLand && stepHeader('4', '4단계: 최근 5년 이내 인접 필지 용도변경 허가 이력')}
+                {isLand && (
+                    <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
+                        <span className="text-white/70 text-xs leading-relaxed">{zoningChangeComment}</span>
+                    </div>
+                )}
             </div>
         );
     };
@@ -700,7 +959,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         return (
             <div className="p-6 bg-[#0f172a]/55 border border-[#7dd3c0]/20 rounded-[40px] shadow-[0_0_25px_rgba(125,211,192,0.04)]">
                 {/* Header */}
-                <div className="flex justify-between items-center gap-2">
+                <div className="flex justify-between items-center gap-2 pb-4 border-b border-white/5 mb-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-[#7dd3c0]/12 border border-[#7dd3c0]/30 rounded-xl">
                             <Building className="w-4 h-4 text-[#7dd3c0]" />
@@ -710,12 +969,24 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             <span className="text-white/38 text-[11px] font-medium">Apartment Valuation Ledger · {aptTarget.aptName || ''}</span>
                         </div>
                     </div>
-                    <div style={{
-                        borderColor: confidenceGrade === 'A' ? '#007f5f' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
-                        color: confidenceGrade === 'A' ? '#10b981' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
-                        backgroundColor: confidenceGrade === 'A' ? 'rgba(0,127,95,0.15)' : confidenceGrade === 'B' ? 'rgba(125,211,192,0.12)' : 'rgba(245,158,11,0.12)'
-                    }} className="px-2 py-1 rounded-lg border text-[9px] font-black whitespace-nowrap">
-                        신뢰도 {confidenceGrade} ({confidenceScore}점)
+                    <div className="flex items-center gap-2">
+                        {comparables.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setIsMapModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#7dd3c0]/10 hover:bg-[#7dd3c0]/20 border border-[#7dd3c0]/25 text-[#7dd3c0] hover:text-white rounded-xl text-xs font-bold transition-all"
+                            >
+                                <Map className="w-3.5 h-3.5" />
+                                <span>지도 보기</span>
+                            </button>
+                        )}
+                        <div style={{
+                            borderColor: confidenceGrade === 'A' ? '#007f5f' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
+                            color: confidenceGrade === 'A' ? '#10b981' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
+                            backgroundColor: confidenceGrade === 'A' ? 'rgba(0,127,95,0.15)' : confidenceGrade === 'B' ? 'rgba(125,211,192,0.12)' : 'rgba(245,158,11,0.12)'
+                        }} className="px-2 py-1 rounded-lg border text-[9px] font-black whitespace-nowrap">
+                            신뢰도 {confidenceGrade} ({confidenceScore}점)
+                        </div>
                     </div>
                 </div>
 
@@ -954,14 +1225,16 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                         </div>
                     )}
 
+                    {priceReas.priceSpectrum && renderPriceSpectrumSection(priceReas.priceSpectrum)}
+
                     {priceReas.opinion && <span className="text-white/50 text-xs leading-relaxed">{priceReas.opinion}</span>}
 
                     {/* Sub-Cards for CBD, zoning notes, etc. */}
-                    {!isApartment && priceReas.cbdEstimate && (
+                    {isLand && priceReas.cbdEstimate && (
                         priceSubCard(MapPin, '도심 중심업무지구(CBD) 추정', String(priceReas.cbdEstimate), '#bcd4e6')
                     )}
 
-                    {!isApartment && priceReas.zoningChangeNote && (
+                    {isLand && priceReas.zoningChangeNote && (
                         priceSubCard(TrendingUp, '토지 용도지역 변경 동향', String(priceReas.zoningChangeNote), '#eddcd2')
                     )}
 
@@ -1221,6 +1494,34 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Comparable Map Modal */}
+            {isMapModalOpen && (
+                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                    {/* Background Overlay */}
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMapModalOpen(false)} />
+                    {/* Modal Content */}
+                    <div className="relative w-full max-w-4xl h-[80vh] bg-slate-950 border border-white/10 rounded-[32px] overflow-hidden flex flex-col z-10 animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-white/5 bg-slate-900/50">
+                            <div className="flex items-center gap-2">
+                                <Map className="w-5 h-5 text-sky-400" />
+                                <span className="text-white text-base font-bold">비교사례 위치 시각화 지도</span>
+                            </div>
+                            <button
+                                onClick={() => setIsMapModalOpen(false)}
+                                className="p-1 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        {/* Map Body */}
+                        <div className="flex-1 p-4 bg-slate-950">
+                            <ComparableMap mapData={ai.analysisMetadata} category={categoryStr} />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

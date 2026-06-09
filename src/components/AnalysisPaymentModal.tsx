@@ -20,6 +20,7 @@ export default function AnalysisPaymentModal({
 }: AnalysisPaymentModalProps) {
     const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
     const AMOUNT = 5900;
+    const isDevAccount = user && (user.uid === process.env.NEXT_PUBLIC_DEV_UID || user.uid === process.env.NEXT_PUBLIC_DEV_UID2);
 
     const [isWidgetLoaded, setIsWidgetLoaded] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -142,7 +143,7 @@ export default function AnalysisPaymentModal({
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-xs text-slate-500">결제 금액</p>
-                            <p className="text-sky-400 font-black text-xl">₩5,900</p>
+                            <p className="text-emerald-400 font-black text-xl">₩5,900</p>
                         </div>
                         <button
                             onClick={onClose}
@@ -188,12 +189,12 @@ export default function AnalysisPaymentModal({
                     <button
                         onClick={handlePay}
                         disabled={!isWidgetLoaded || isConfirming}
-                        className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-lg shadow-sky-500/15"
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-lg shadow-emerald-500/15"
                     >
                         {isConfirming ? (
                             <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> 결제 승인 중...</>
                         ) : (
-                            <>분석 시작 · 5,900원</>
+                            <>{isDevAccount ? '분석 시작' : '분석 시작 · 5,900원'}</>
                         )}
                     </button>
                     <p className="text-center text-xs text-slate-500 mt-3">토스페이먼츠 보안 결제 • SSL 암호화</p>

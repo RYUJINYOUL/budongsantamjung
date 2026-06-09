@@ -53,6 +53,17 @@ interface AnalyzePanelProps {
     timestamp: number;
   } | null;
   onMobileButtonClick?: () => void;
+  /** URL 추출 등 외부에서 분석 폼 전체를 채울 때 사용 */
+  urlPrefill?: {
+    timestamp: number;
+    category: string;
+    address: string;
+    lat: number;
+    lng: number;
+    pnu?: string | null;
+    polygon?: { lat: number; lng: number }[] | null;
+    detailInput?: Partial<AnalysisDetailInput>;
+  } | null;
 }
 
 const ANALYSIS_STEPS = [
@@ -95,7 +106,7 @@ interface AdditionalParcel {
 }
 interface Industry { code: string; name: string; middle?: { code: string; name: string; small?: { code: string; name: string }[] }[] }
 
-export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick }: AnalyzePanelProps) {
+export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill }: AnalyzePanelProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [canAnalyze, setCanAnalyze] = useState(true);
@@ -142,6 +153,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setDetailInput((prev) => ({ ...prev, ...patch }));
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [noTradeDataModal, setNoTradeDataModal] = useState<{ aptName: string | null; reason: string } | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -194,6 +207,30 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       onLocationSelect?.(latVal, lngVal, addr, polygon);
     }
   }, [externalClickParcel]);
+
+  useEffect(() => {
+    if (!urlPrefill) return;
+    setSelectedCategory(urlPrefill.category);
+    setAddress(urlPrefill.address);
+    setLat(urlPrefill.lat);
+    setLng(urlPrefill.lng);
+    setPrimaryPnu(urlPrefill.pnu ?? null);
+    setSearchQuery('');
+    setSearchResults([]);
+    if (urlPrefill.detailInput) {
+      setDetailInput((prev) => ({
+        ...prev,
+        ...defaultAnalysisDetailInput(),
+        ...urlPrefill.detailInput,
+      }));
+    }
+    onLocationSelect?.(
+      urlPrefill.lat,
+      urlPrefill.lng,
+      urlPrefill.address,
+      urlPrefill.polygon ?? null,
+    );
+  }, [urlPrefill?.timestamp]);
 
   const getPnuAndPolygonFromCoords = async (latV: number, lngV: number): Promise<{ pnu: string | null; polygon: { lat: number; lng: number }[] | null }> => {
     try {
@@ -376,6 +413,35 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
 
   const handleAnalyze = async () => {
     if (!selectedCategory || !address || !lat || !lng || !user) return;
+
+    // 아파트인 경우 결제 전 실거래 가용성 사전 체크
+    if (selectedCategory === 'apartment' && primaryPnu) {
+      setIsCheckingAvailability(true);
+      try {
+        const dealYmd = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
+        const params = new URLSearchParams({
+          pnu: primaryPnu,
+          dealYmd,
+          address,
+        });
+        const checkRes = await fetch(`${BACKEND_URL}/api/land/detective/check-availability?${params}`);
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (!checkData.available) {
+            setNoTradeDataModal({
+              aptName: checkData.aptName,
+              reason: checkData.reason || '최근 6개월간 해당 단지의 실거래가 데이터가 없습니다.',
+            });
+            setIsCheckingAvailability(false);
+            return; // 결제 및 분석 중단
+          }
+        }
+      } catch {
+        // 체크 실패 시 분석 그냥 진행 (보수적 처리)
+      }
+      setIsCheckingAvailability(false);
+    }
+
     setIsAnalyzing(true);
     setAnalysisStep(0);
     setElapsedSeconds(0);
@@ -741,14 +807,83 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           <button
             type="button"
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !selectedCategory || !address}
-            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-35 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-all shadow-sm shadow-emerald-500/15"
+            disabled={isAnalyzing || isCheckingAvailability || !selectedCategory || !address}
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-35 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-all shadow-sm shadow-emerald-500/15 flex items-center justify-center gap-2"
           >
-            {isAnalyzing ? '데이터 수집 중...' : '공공데이터 수집 리포트 생성'}
+            {isCheckingAvailability ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                실거래 확인 중...
+              </>
+            ) : isAnalyzing ? (
+              '데이터 수집 중...'
+            ) : (
+              '공공데이터 수집 리포트 생성'
+            )}
           </button>
         )}
         <p className="text-[9px] text-slate-400 text-center mt-2 font-medium">국가 공공 데이터 기반 리포트</p>
       </div>
+
+      {/* 아파트 실거래 없음 모달 */}
+      {noTradeDataModal && (
+        <div
+          className="absolute inset-0 z-40 flex items-end justify-center bg-slate-950/50 backdrop-blur-sm"
+          onClick={() => setNoTradeDataModal(null)}
+        >
+          <div
+            className="w-full bg-white rounded-t-3xl p-5 pb-8 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 핸들 */}
+            <div className="w-8 h-1 bg-slate-200 rounded-full mx-auto mb-5" />
+
+            {/* 아이콘 + 타이틀 */}
+            <div className="flex flex-col items-center text-center gap-2 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-1">
+                <svg className="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-extrabold text-slate-900">실거래 데이터 없음</p>
+              {noTradeDataModal.aptName && (
+                <p className="text-xs font-bold text-emerald-600">{noTradeDataModal.aptName}</p>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-500 text-center leading-relaxed font-medium mb-5">
+              {noTradeDataModal.reason}
+              <br />
+              <span className="text-slate-400">거래가 드문 단지는 정확한 시세 분석이 어렵습니다.</span>
+            </p>
+
+            {/* 안내 박스 */}
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-5 space-y-2">
+              <p className="text-[10px] font-bold text-slate-600">💡 이런 경우라면</p>
+              <ul className="space-y-1.5">
+                {[
+                  '초고가 빌라트·단독주택 등 거래 빈도가 극히 낮은 단지',
+                  '신축 또는 준공 직후라 거래 이력이 없는 경우',
+                  '실제 거래가 없는 미분양 단지',
+                ].map((text, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="text-emerald-500 text-[10px] mt-0.5 shrink-0">•</span>
+                    <span className="text-[10px] text-slate-500 font-medium">{text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setNoTradeDataModal(null)}
+              className="w-full py-3.5 bg-slate-900 text-white font-bold rounded-2xl text-xs hover:bg-slate-800 transition-all"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 분석 중 오버레이 */}
       {isAnalyzing && (

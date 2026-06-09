@@ -948,6 +948,12 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const isDevAccount = !!user && (user.uid === DEV_UID || user.uid === DEV_UID2);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isCheckingAccess, setIsCheckingAccess] = useState(false);
+
+    // 무료 사용 및 결제 정보 조회 상태
+    const [freeRemaining, setFreeRemaining] = useState<number>(0);
+    const [hasPaidToday, setHasPaidToday] = useState<boolean>(false);
+    const [hasAccess, setHasAccess] = useState<boolean>(false);
+
     const [isMapDropdownOpen, setIsMapDropdownOpen] = useState(false);
     const propertyId = analysisData?.report?.pnu as string | undefined;
 
@@ -1177,6 +1183,44 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         }
     };
 
+    const fetchPaymentAndUsageStatus = async () => {
+        if (!user) return;
+        try {
+            const idToken = await user.getIdToken();
+            
+            // 1. check daily usage
+            const usageRes = await fetch(
+                `/api/payment/check-daily-usage?userId=${user.uid}`,
+                { headers: { Authorization: `Bearer ${idToken}` } }
+            );
+            if (usageRes.ok) {
+                const usageData = await usageRes.json();
+                setFreeRemaining(usageData.freeRemaining ?? 0);
+                setHasPaidToday(usageData.hasPaidToday ?? false);
+            }
+
+            // 2. check access
+            if (propertyId) {
+                const accessRes = await fetch(
+                    `/api/payment/check-access?userId=${user.uid}&propertyId=${propertyId}`,
+                    { headers: { Authorization: `Bearer ${idToken}` } }
+                );
+                if (accessRes.ok) {
+                    const accessData = await accessRes.json();
+                    setHasAccess(accessData.hasAccess ?? false);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch payment or usage status:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (user) {
+            fetchPaymentAndUsageStatus();
+        }
+    }, [user, propertyId]);
+
     const toggleFavorite = async () => {
         if (!user) {
             alert('로그인이 필요한 기능입니다.');
@@ -1280,9 +1324,9 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             );
             if (usageRes.ok) {
                 const usageData = await usageRes.json();
-                // freeRemaining === 0 이면 오늘 이미 무료 분석 사용 → AI도 무료 통과
-                // hasPaidToday === true 이면 오늘 결제한 경우 → 통과
-                if (usageData.freeRemaining === 0 || usageData.hasPaidToday) {
+                // freeRemaining > 0 이면 오늘 무료 분석 기회 남음 → AI 분석 실행
+                // hasPaidToday === true 이면 오늘 결제완료 상태 → AI 분석 실행
+                if (usageData.freeRemaining > 0 || usageData.hasPaidToday) {
                     runAiAnalysis();
                     return;
                 }
@@ -1337,6 +1381,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             if (!response.ok) throw new Error('AI 분석 요청 실패');
 
             await fetchAnalysis();
+            await fetchPaymentAndUsageStatus();
             setActiveTab('ai_report');
             setShareToast('AI 탐정의 판독이 완료되었습니다! 🕵️');
         } catch (err: any) {
@@ -4036,6 +4081,10 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                 <AiAnalysisBottomBar
                     onTriggerAnalysis={handleAiAnalysisClick}
                     isCheckingAccess={isCheckingAccess}
+                    hasAccess={hasAccess}
+                    hasPaidToday={hasPaidToday}
+                    isDevAccount={isDevAccount}
+                    freeRemaining={freeRemaining}
                 />
             )}
 
@@ -4147,7 +4196,11 @@ interface PaymentModalProps {
 function PaymentModal({ propertyId, propertyAddress, user, onClose, onSuccess }: PaymentModalProps) {
     const TOSS_CLIENT_KEY = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
     const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
-    const AMOUNT = 3000;
+    const AMOUNT = 5900;
+
+    const DEV_UID = process.env.NEXT_PUBLIC_DEV_UID;
+    const DEV_UID2 = process.env.NEXT_PUBLIC_DEV_UID2;
+    const isDevAccount = !!user && (user.uid === DEV_UID || user.uid === DEV_UID2);
 
     const [isWidgetLoaded, setIsWidgetLoaded] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
@@ -4285,7 +4338,7 @@ function PaymentModal({ propertyId, propertyAddress, user, onClose, onSuccess }:
                     <div className="flex items-center gap-4">
                         <div className="text-right">
                             <p className="text-xs text-slate-500">결제 금액</p>
-                            <p className="text-sky-400 font-black text-xl">₩3,900</p>
+                            <p className="text-emerald-400 font-black text-xl">₩5,900</p>
                         </div>
                         <button
                             onClick={onClose}
@@ -4331,12 +4384,12 @@ function PaymentModal({ propertyId, propertyAddress, user, onClose, onSuccess }:
                     <button
                         onClick={handlePay}
                         disabled={!isWidgetLoaded || isConfirming}
-                        className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-2 text-base"
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-lg shadow-emerald-500/20"
                     >
                         {isConfirming ? (
                             <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> 결제 승인 중...</>
                         ) : (
-                            <>AI 분석 시작</>
+                            <>{isDevAccount ? 'AI 분석 시작' : 'AI 분석 시작  ·  5,900원'}</>
                         )}
                     </button>
                     <p className="text-center text-xs text-slate-600 mt-3">토스페이먼츠 보안 결제 • SSL 암호화</p>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { isAdminUser } from '../lib/adminUids';
 
 const NAV_ITEMS = [
   {
@@ -50,8 +51,11 @@ function SideNavInner() {
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/profile') return pathname.startsWith('/profile');
     if (href === '/reviews') return pathname.startsWith('/reviews');
+    if (href === '/admin/analyze') return pathname.startsWith('/admin/analyze');
     return false;
   };
+
+  const isAdmin = isAdminUser(user?.uid);
 
   return (
     <>
@@ -122,6 +126,29 @@ function SideNavInner() {
             })}
           </ul>
         </nav>
+
+        {/* 관리자 샘플 분석 — PC + 관리자만, 리뷰 위 */}
+        {isAdmin && (
+          <div className="hidden lg:block p-2 shrink-0">
+            <Link
+              href="/admin/analyze"
+              title="관리자 샘플 분석"
+              className={[
+                'w-full flex flex-col items-center gap-1 py-3 px-1 rounded-xl transition-all',
+                isActive('/admin/analyze')
+                  ? 'bg-violet-50 text-violet-700 font-bold'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800',
+              ].join(' ')}
+            >
+              <span className={isActive('/admin/analyze') ? 'text-violet-600' : 'text-slate-400'}>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </span>
+              <span className="font-medium text-[10px] tracking-tight text-center leading-tight">샘플</span>
+            </Link>
+          </div>
+        )}
 
         {/* 리뷰 — 프로필 위 */}
         <div className="p-3 lg:p-2 shrink-0">
