@@ -48,12 +48,12 @@ export function parseHanpriceToManwon(value: unknown): number | '' {
   }
 
   let text = String(value).replace(/,/g, '').trim();
-  text = text.replace(/^(매매|전세|전|월세|임대)\s*/u, '');
-  text = text.replace(/\s*원\s*$/u, '').trim();
+  text = text.replace(/^(매매|전세|전|월세|임대)\s*/, '');
+  text = text.replace(/\s*원\s*$/, '').trim();
 
   let total = 0;
 
-  const eokMatch = text.match(/(\d+(?:\.\d+)?)\s*억/u);
+  const eokMatch = text.match(/(\d+(?:\.\d+)?)\s*억/);
   if (eokMatch) {
     total += parseFloat(eokMatch[1]) * 10000;
     text = text.slice(text.indexOf('억') + 1).trim();
@@ -71,19 +71,19 @@ function parseKoreanManwonSuffix(text: string): number {
   let sum = 0;
   let rest = text.trim();
 
-  const cheonMan = rest.match(/(\d+(?:\.\d+)?)\s*천\s*만/u);
+  const cheonMan = rest.match(/(\d+(?:\.\d+)?)\s*천\s*만/);
   if (cheonMan) {
     sum += parseFloat(cheonMan[1]) * 1000;
     rest = rest.replace(cheonMan[0], '').trim();
   } else {
-    const cheon = rest.match(/(\d+(?:\.\d+)?)\s*천/u);
+    const cheon = rest.match(/(\d+(?:\.\d+)?)\s*천/);
     if (cheon) {
       sum += parseFloat(cheon[1]) * 1000;
       rest = rest.replace(cheon[0], '').trim();
     }
   }
 
-  const man = rest.match(/(\d+(?:\.\d+)?)\s*만/u);
+  const man = rest.match(/(\d+(?:\.\d+)?)\s*만/);
   if (man) {
     sum += parseFloat(man[1]);
     rest = rest.replace(man[0], '').trim();
