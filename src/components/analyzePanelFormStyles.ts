@@ -29,7 +29,7 @@ export const PANEL_CARD_INNER =
 export const PANEL_DIVIDER = 'border-t border-slate-100 my-4';
 
 export const PANEL_INPUT_WRAP =
-    'flex items-center bg-slate-50/80 border border-slate-200/70 rounded-xl px-3.5 py-2.5 focus-within:border-emerald-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/10 transition-all gap-2';
+    'flex items-center bg-slate-50/80 border border-slate-200/70 rounded-xl px-3.5 py-2.5 focus-within:border-emerald-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/10 transition-[border-color,background-color,box-shadow] gap-2';
 
 export const PANEL_INPUT =
     'flex-1 min-w-0 bg-transparent border-none outline-none text-xs font-semibold text-slate-800 placeholder:text-slate-400 placeholder:font-medium';

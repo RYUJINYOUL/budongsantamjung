@@ -694,6 +694,9 @@ export default function DetectiveSummaryView({
                     {/* 건물 상세 요약 */}
                     {renderBuildingSummarySection()}
 
+                    {/* 입점 상가 정보 */}
+                    {renderBuildingStoresSection()}
+
                     {/* 시장 동향 요약 */}
                     {renderMarketSummarySection()}
 
@@ -1273,6 +1276,63 @@ export default function DetectiveSummaryView({
         );
     }
 
+    function renderBuildingStoresSection() {
+        const isBldgOrStore =
+            category === 'building' || category === 'store' || category === '빌딩';
+        if (!isBldgOrStore) return null;
+
+        const stores = rawData.commercialData?.buildingStores;
+        const storeList = Array.isArray(stores) ? stores : [];
+
+        return (
+            <div className="p-6 bg-[#13131a]/80 border border-white/[0.08] rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-2xl space-y-6">
+                <div className="flex justify-between items-center gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Store className="w-5 h-5 text-teal-400 drop-shadow-[0_0_8px_rgba(45,212,191,0.5)] shrink-0" />
+                        <span className="text-white text-base font-bold tracking-tight">입점 상가 정보</span>
+                    </div>
+                    {storeList.length > 0 && (
+                        <span className="px-2.5 py-1 bg-teal-500/10 border border-teal-500/20 text-teal-300 text-[10px] rounded-xl font-black shrink-0">
+                            총 {storeList.length}개 점포
+                        </span>
+                    )}
+                </div>
+
+                <div className="p-5 bg-white/[0.02] border border-white/[0.05] rounded-[24px] space-y-4">
+                    {storeList.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {storeList.map((store: any, i: number) => (
+                                <div
+                                    key={i}
+                                    className="p-4 bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05] hover:border-white/[0.1] rounded-2xl flex flex-col gap-2 min-w-0 transition-all duration-300"
+                                >
+                                    <div className="flex items-center justify-between gap-2 min-w-0">
+                                        <span className="shrink-0 text-[10px] font-black bg-teal-500/10 text-teal-400 px-2 py-0.5 rounded-lg border border-teal-500/20">
+                                            {store.flrNoNm || '-'}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-white/35 truncate">
+                                            {store.indsLclsNm}{store.indsSclsNm ? ` > ${store.indsSclsNm}` : ''}
+                                        </span>
+                                    </div>
+                                    <p className="text-white font-extrabold text-[13px] truncate leading-tight">
+                                        {store.bizesNm || '-'}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sky-300 text-xs font-bold leading-relaxed text-center py-2">
+                            해당 건물에 등록된 상가 데이터가 없습니다. (소상공인시장진흥공단 기준)
+                        </p>
+                    )}
+                    <p className="text-white/25 text-[10px] font-bold text-center">
+                        소상공인시장진흥공단 상가업소 정보
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     function renderApartmentMarketSummarySection() {
         const ind = rawData.marketIndicators || {};
 
@@ -1474,7 +1534,7 @@ export default function DetectiveSummaryView({
         const isBldgOrStore = category === 'building' || category === 'store';
         const isHouse = category === 'house';
 
-        const title = isBldgOrStore ? '오피스/상가 시장 동향 요약' : (isHouse ? '주택 시장 동향 요약' : '토지 시장 동향 요약');
+        const title = isBldgOrStore ? '현 지역 상업 시장 동향 요약' : (isHouse ? '주택 시장 동향 요약' : '토지 시장 동향 요약');
         const themeColor = isBldgOrStore ? 'text-amber-400' : (isHouse ? 'text-emerald-400' : 'text-purple-400');
         const IconHeader = TrendingUp;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -53,6 +53,8 @@ interface AnalyzePanelProps {
     timestamp: number;
   } | null;
   onMobileButtonClick?: () => void;
+  /** 관리자 샘플 분석(/admin/analyze) — 리포트 생성 후 AI 자동 실행 플래그 */
+  adminSampleMode?: boolean;
   /** URL 추출 등 외부에서 분석 폼 전체를 채울 때 사용 */
   urlPrefill?: {
     timestamp: number;
@@ -63,6 +65,7 @@ interface AnalyzePanelProps {
     pnu?: string | null;
     polygon?: { lat: number; lng: number }[] | null;
     detailInput?: Partial<AnalysisDetailInput>;
+    specialNotes?: string;
   } | null;
 }
 
@@ -106,7 +109,55 @@ interface AdditionalParcel {
 }
 interface Industry { code: string; name: string; middle?: { code: string; name: string; small?: { code: string; name: string }[] }[] }
 
-export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill }: AnalyzePanelProps) {
+const ADDRESS_SEARCH_DEBOUNCE_MS = 300;
+
+function SearchInputLocationTrailing({
+  busy,
+  onMyLocation,
+}: {
+  busy: boolean;
+  onMyLocation: () => void;
+}) {
+  return (
+    <div className="relative shrink-0 w-7 h-7">
+      {busy && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onMyLocation}
+        disabled={busy}
+        aria-label="내 위치"
+        title="내 위치"
+        className={`w-7 h-7 rounded-lg flex items-center justify-center text-emerald-600 hover:bg-emerald-50 transition-colors ${
+          busy ? 'opacity-0 pointer-events-none' : ''
+        }`}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+          <circle cx="12" cy="12" r="4" strokeWidth={2.5} />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function SearchInputSpinnerSlot({ busy }: { busy: boolean }) {
+  return (
+    <div className="relative shrink-0 w-7 h-7">
+      {busy && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill, adminSampleMode }: AnalyzePanelProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [canAnalyze, setCanAnalyze] = useState(true);
@@ -152,6 +203,9 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const patchDetailInput = (patch: Partial<AnalysisDetailInput>) =>
     setDetailInput((prev) => ({ ...prev, ...patch }));
 
+  /** URL 추출(땅야 Q&A 등) → AI 정밀 분석 특이사항 prefill */
+  const [pendingSpecialNotes, setPendingSpecialNotes] = useState('');
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [noTradeDataModal, setNoTradeDataModal] = useState<{ aptName: string | null; reason: string } | null>(null);
@@ -159,7 +213,19 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  const addressSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const parcelSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addressSearchSeqRef = useRef(0);
+  const parcelSearchSeqRef = useRef(0);
+
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+  useEffect(() => {
+    return () => {
+      if (addressSearchTimerRef.current) clearTimeout(addressSearchTimerRef.current);
+      if (parcelSearchTimerRef.current) clearTimeout(parcelSearchTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -224,6 +290,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         ...urlPrefill.detailInput,
       }));
     }
+    setPendingSpecialNotes(urlPrefill.specialNotes?.trim() || '');
     onLocationSelect?.(
       urlPrefill.lat,
       urlPrefill.lng,
@@ -250,18 +317,43 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     return pnu;
   };
 
-  const handleParcelSearch = (q: string) => {
-    setParcelSearchQuery(q);
-    if (!q || q.length < 2) { setParcelSearchResults([]); return; }
-    if (typeof window === 'undefined' || !window.kakao?.maps?.services) return;
+  const executeParcelSearch = useCallback((q: string) => {
+    if (typeof window === 'undefined' || !window.kakao?.maps?.services) {
+      setIsParcelSearching(false);
+      return;
+    }
+
+    const seq = ++parcelSearchSeqRef.current;
     setIsParcelSearching(true);
     const geocoder = new (window as any).kakao.maps.services.Geocoder();
     geocoder.addressSearch(q, (result: any, status: any) => {
+      if (seq !== parcelSearchSeqRef.current) return;
       setIsParcelSearching(false);
       if (status === (window as any).kakao.maps.services.Status.OK && result.length > 0) {
-        setParcelSearchResults(result.slice(0, 5).map((p: any) => ({ address_name: p.address_name, road_address_name: p.road_address?.address_name || '', x: p.x, y: p.y })));
+        setParcelSearchResults(result.slice(0, 5).map((p: any) => ({
+          address_name: p.address_name,
+          road_address_name: p.road_address?.address_name || '',
+          x: p.x,
+          y: p.y,
+        })));
       } else setParcelSearchResults([]);
     });
+  }, []);
+
+  const handleParcelSearch = (q: string) => {
+    setParcelSearchQuery(q);
+    if (parcelSearchTimerRef.current) clearTimeout(parcelSearchTimerRef.current);
+
+    if (!q || q.length < 2) {
+      parcelSearchSeqRef.current += 1;
+      setParcelSearchResults([]);
+      setIsParcelSearching(false);
+      return;
+    }
+
+    parcelSearchTimerRef.current = setTimeout(() => {
+      executeParcelSearch(q);
+    }, ADDRESS_SEARCH_DEBOUNCE_MS);
   };
 
   const selectParcelResult = async (r: SearchResult) => {
@@ -321,15 +413,19 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   };
 
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (!query || query.length < 2) { setSearchResults([]); return; }
-    if (typeof window === 'undefined' || !window.kakao?.maps?.services) return;
+  const executeAddressSearch = useCallback((query: string) => {
+    if (typeof window === 'undefined' || !window.kakao?.maps?.services) {
+      setIsSearching(false);
+      return;
+    }
 
+    const seq = ++addressSearchSeqRef.current;
     setIsSearching(true);
     const { kakao } = window;
     const geocoder = new kakao.maps.services.Geocoder();
     geocoder.addressSearch(query, (result: any, status: any) => {
+      if (seq !== addressSearchSeqRef.current) return;
+
       if (status === kakao.maps.services.Status.OK && result.length > 0) {
         setIsSearching(false);
         setSearchResults(result.slice(0, 5).map((p: any) => ({
@@ -341,6 +437,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       } else {
         const ps = new kakao.maps.services.Places();
         ps.keywordSearch(query, (data: any, status: any) => {
+          if (seq !== addressSearchSeqRef.current) return;
           setIsSearching(false);
           if (status === kakao.maps.services.Status.OK) {
             setSearchResults(data.slice(0, 5).map((p: any) => ({
@@ -353,6 +450,22 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         });
       }
     });
+  }, []);
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (addressSearchTimerRef.current) clearTimeout(addressSearchTimerRef.current);
+
+    if (!query || query.length < 2) {
+      addressSearchSeqRef.current += 1;
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    addressSearchTimerRef.current = setTimeout(() => {
+      executeAddressSearch(query);
+    }, ADDRESS_SEARCH_DEBOUNCE_MS);
   };
 
   const selectResult = async (r: SearchResult) => {
@@ -458,6 +571,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         ...detailInput,
         desiredBusiness: desiredBusiness || detailInput.desiredBusiness,
       });
+      const specialNotes = pendingSpecialNotes.trim();
+      if (specialNotes) {
+        storeData.specialNotes = specialNotes;
+      }
 
       const payload: Record<string, unknown> = {
         category: selectedCategory,
@@ -466,6 +583,9 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         lng: lng.toString(),
         storeData,
       };
+      if (specialNotes) {
+        payload.specialNotes = specialNotes;
+      }
       if (pnuList.length > 0) {
         payload.primaryPnu = primaryPnu;
         payload.pnuList = pnuList;
@@ -482,7 +602,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || '오류 발생'); }
       const result = await res.json();
       if (result.success && result.reportId) {
-        router.push(`/analyze/${result.reportId}`);
+        const qs = adminSampleMode ? '?adminSample=1' : '';
+        router.push(`/analyze/${result.reportId}${qs}`);
       } else throw new Error('결과 수신 실패');
     } catch (err: any) {
       setAnalysisError(err.message);
@@ -574,23 +695,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 value={searchQuery}
                 onChange={e => handleSearch(e.target.value)}
               />
-              {isSearching || isLocating ? (
-                <div className="w-3.5 h-3.5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleMyLocation}
-                  aria-label="내 위치"
-                  title="내 위치"
-                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-emerald-600 hover:bg-emerald-50 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 2v2m0 16v2M2 12h2m16 0h2" />
-                    <circle cx="12" cy="12" r="4" strokeWidth={2.5} />
-                    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  </svg>
-                </button>
-              )}
+              <SearchInputLocationTrailing
+                busy={isSearching || isLocating}
+                onMyLocation={handleMyLocation}
+              />
             </div>
 
             {locationError && (
@@ -683,7 +791,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
                       <input type="text" placeholder="추가 필지 검색" className={PANEL_INPUT} value={parcelSearchQuery} onChange={e => handleParcelSearch(e.target.value)} />
-                      {isParcelSearching && <div className="w-3 h-3 border border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />}
+                      <SearchInputSpinnerSlot busy={isParcelSearching} />
                     </div>
                     {parcelSearchResults.length > 0 && (
                       <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">

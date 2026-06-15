@@ -10,8 +10,10 @@ export interface AnalysisDetailInput {
     desiredBusiness: string;
     monthlyRevenue: number | '';
     monthlyProfit: number | '';
-    floor: number | '';
-    area: number | '';
+    floor: number | string | '';
+    area: number | string | '';
+    totalDeposit: number | '';
+    totalMonthlyRent: number | '';
 }
 
 export const defaultAnalysisDetailInput = (): AnalysisDetailInput => ({
@@ -26,9 +28,20 @@ export const defaultAnalysisDetailInput = (): AnalysisDetailInput => ({
     monthlyProfit: '',
     floor: '',
     area: '',
+    totalDeposit: '',
+    totalMonthlyRent: '',
 });
 
 const toWon = (v: number | '') => (v !== '' ? Number(v) * 10000 : null);
+
+/** DB floor(INT) — 순수 숫자만. "4층", "고층" 등은 null → 전송 제외 */
+export function toDbSafeFloor(floor: number | string | ''): number | null {
+    if (floor === '') return null;
+    if (typeof floor === 'number' && Number.isFinite(floor)) return Math.trunc(floor);
+    const str = String(floor).trim();
+    if (/^\d+$/.test(str)) return Number(str);
+    return null;
+}
 
 /** Flutter _collectUserInputData 와 동일 */
 export function collectAnalysisInputData(
@@ -52,8 +65,12 @@ export function collectAnalysisInputData(
         data.monthlyRent = toWon(input.monthlyRent);
     }
 
-    if (input.floor !== '') data.floor = Number(input.floor);
-    if (input.area !== '') data.area = Number(input.area);
+    const dbFloor = toDbSafeFloor(input.floor);
+    if (dbFloor !== null) data.floor = dbFloor;
+    if (input.area !== '') {
+        const parsed = Number(input.area);
+        if (!isNaN(parsed)) data.area = parsed;
+    }
 
     if (category === 'store') {
         if (input.premium !== '') data.premium = toWon(input.premium);
@@ -61,6 +78,11 @@ export function collectAnalysisInputData(
         if (input.desiredBusiness) data.desiredBusiness = input.desiredBusiness;
         if (input.monthlyRevenue !== '') data.monthly_revenue = toWon(input.monthlyRevenue);
         if (input.monthlyProfit !== '') data.monthly_profit = toWon(input.monthlyProfit);
+    }
+
+    if (category === 'building') {
+        if (input.totalDeposit !== '') data.totalDeposit = toWon(input.totalDeposit);
+        if (input.totalMonthlyRent !== '') data.totalMonthlyRent = toWon(input.totalMonthlyRent);
     }
 
     return data;

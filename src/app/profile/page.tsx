@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '../../lib/firebase';
 import { onAuthStateChanged, updateProfile, User } from 'firebase/auth';
@@ -54,11 +54,25 @@ const catIconMap: Record<string, string> = {
   '빌딩': '/build.svg'
 };
 
-export default function ProfilePage() {
+function ProfilePageContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [user, setUser] = useState<User | null>(null);
     const [authLoading, setAuthLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<Tab>('favorites');
+    const [activeTab, setActiveTab] = useState<Tab>(() => {
+        const queryTab = searchParams.get('tab') as Tab;
+        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries'].includes(queryTab)) {
+            return queryTab;
+        }
+        return 'favorites';
+    });
+
+    useEffect(() => {
+        const queryTab = searchParams.get('tab') as Tab;
+        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries'].includes(queryTab)) {
+            setActiveTab(queryTab);
+        }
+    }, [searchParams]);
     const [showMobileHistory, setShowMobileHistory] = useState(false);
 
     const [favorites, setFavorites] = useState<AnalysisCard[]>([]);
@@ -382,7 +396,10 @@ export default function ProfilePage() {
                                 ] as { key: Tab; label: string }[]).map(tab => (
                                     <button
                                         key={tab.key}
-                                        onClick={() => setActiveTab(tab.key)}
+                                        onClick={() => {
+                                            setActiveTab(tab.key);
+                                            router.replace(`/profile?tab=${tab.key}`);
+                                        }}
                                         className={`shrink-0 whitespace-nowrap px-3 sm:px-5 py-2.5 text-xs font-extrabold border-b-2 transition-all -mb-px ${activeTab === tab.key ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
                                     >
                                         {tab.label}
@@ -667,5 +684,17 @@ export default function ProfilePage() {
 
             </div>
         </div>
+    );
+}
+
+export default function ProfilePage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-white flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        }>
+            <ProfilePageContent />
+        </Suspense>
     );
 }

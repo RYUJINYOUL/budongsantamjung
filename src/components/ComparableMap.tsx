@@ -6,9 +6,10 @@ import { MapPin, X } from 'lucide-react';
 interface ComparableMapProps {
     mapData: any; // ai.analysisMetadata
     category?: string;
+    targetArea?: number;
 }
 
-export default function ComparableMap({ mapData, category }: ComparableMapProps) {
+export default function ComparableMap({ mapData, category, targetArea }: ComparableMapProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<any>(null);
     const [selectedComp, setSelectedComp] = useState<any>(null);
@@ -17,6 +18,72 @@ export default function ComparableMap({ mapData, category }: ComparableMapProps)
 
     const target = mapData?.target || {};
     const comparables = Array.isArray(mapData?.comparables) ? mapData.comparables : [];
+
+    const directTargetArea = mapData?.targetArea !== undefined && mapData?.targetArea !== null
+        ? parseFloat(mapData.targetArea.toString())
+        : null;
+    let resolvedTargetArea = 0;
+    if (directTargetArea !== null && directTargetArea > 0) {
+        resolvedTargetArea = directTargetArea;
+    } else if (target) {
+        resolvedTargetArea = parseFloat(target.totalArea_sqm || target.area_sqm || target.exclusiveArea_sqm || target.land?.area_sqm || '0');
+    }
+    const targetAreaVal = targetArea || resolvedTargetArea;
+
+    const normalizeDealAmountWon = (raw: any): number => {
+        const num = Number(raw) || 0;
+        if (num <= 0) return 0;
+        return num > 1000000 ? num : num * 10000;
+    };
+
+    const formatEokCompact = (won: number): string => {
+        if (!won || won <= 0) return '-';
+        const eok = won / 100000000;
+        if (eok >= 10) return `${Math.round(eok)}억`;
+        return `${eok.toFixed(1).replace(/\.0$/, '')}억`;
+    };
+
+    const formatSqmManwon = (wonPerSqm: number): string => {
+        if (!wonPerSqm || wonPerSqm <= 0) return '-';
+        const man = wonPerSqm >= 10000 ? wonPerSqm / 10000 : wonPerSqm;
+        return `${Math.round(man).toLocaleString()}만/㎡`;
+    };
+
+    const getCompMetrics = (c: any) => {
+        if (!c || c.isTarget) return null;
+        const dealWon = normalizeDealAmountWon(c.dealAmount);
+        const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
+        const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
+        const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+        const adjTotalWon = targetAreaVal > 0 ? adjSqm * targetAreaVal : 0;
+
+        const simVal = Number(c.similarityScore || c.score) || 0;
+        const simRounded = simVal > 0 ? Math.round(simVal) : 0;
+        const distVal = Number(c.distance ?? c.distanceFromTarget) || 0;
+        const month = String(c.dealMonth || '?').padStart(2, '0');
+        const date = c.dealYear ? `${c.dealYear}.${month}` : '-';
+
+        return {
+            dealWon,
+            dealEok: formatEokCompact(dealWon),
+            area,
+            rawSqm,
+            adjSqm,
+            adjTotalWon,
+            adjTotalEok: formatEokCompact(adjTotalWon),
+            rawSqmStr: formatSqmManwon(rawSqm),
+            adjSqmStr: formatSqmManwon(adjSqm),
+            simStr: simRounded > 0 ? `${simRounded}%` : '참고용',
+            distStr: distVal > 0 ? `${Math.round(distVal)}m` : '-',
+            date,
+            zoning: c.zoning || c.landUse || '-',
+            jimok: c.jimok || '',
+            officialPrice: Number(c.officialPrice) || 0,
+            timeAdjFactor: c.timeAdjFactor || 1,
+            deductions: Array.isArray(c.deductions) ? c.deductions : [],
+            isRedevelopment: c.isRedevelopment,
+        };
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -165,25 +232,6 @@ export default function ComparableMap({ mapData, category }: ComparableMapProps)
         };
     }, [mapData, target, comparables]);
 
-    // Format currency
-    const formatKoreanCurrency = (val: any) => {
-        if (val === null || val === undefined) return '-';
-        const num = typeof val === 'number' ? val : (parseFloat(val) || 0);
-        if (num === 0) return '-';
-
-        if (num >= 100000000) {
-            const eok = Math.floor(num / 100000000);
-            const rest = num % 100000000;
-            if (rest >= 10000) {
-                return `${eok}억 ${Math.round(rest / 10000).toLocaleString()}만`;
-            }
-            return `${eok}억`;
-        } else if (num >= 10000) {
-            return `${Math.floor(num / 10000).toLocaleString()}만`;
-        }
-        return Math.round(num).toLocaleString();
-    };
-
     return (
         <div className="relative w-full h-full rounded-2xl overflow-hidden min-h-[400px] bg-slate-900 border border-white/10">
             <div ref={mapContainerRef} className="w-full h-full min-h-[400px]" />
@@ -204,60 +252,82 @@ export default function ComparableMap({ mapData, category }: ComparableMapProps)
             )}
 
             {/* Selected Info Card Overlay */}
-            {selectedComp && (
-                <div className="absolute bottom-4 left-4 right-4 z-10 bg-[#0f172a]/95 backdrop-blur-md border border-[#7dd3c0]/30 rounded-2xl p-4 shadow-2xl text-white">
-                    <button
-                        onClick={() => setSelectedComp(null)}
-                        className="absolute top-3 right-3 p-1 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition-colors"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
+            {selectedComp && (() => {
+                const isTarget = !!selectedComp.isTarget;
+                const m = isTarget ? null : getCompMetrics(selectedComp);
+                return (
+                    <div className="absolute bottom-4 left-4 right-4 z-10 bg-white/95 backdrop-blur-md border border-emerald-500/20 rounded-2xl p-4 shadow-2xl text-slate-800 animate-in slide-in-from-bottom duration-250">
+                        <button
+                            onClick={() => setSelectedComp(null)}
+                            className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
 
-                    {selectedComp.isTarget ? (
-                        <div>
-                            <span className="inline-block px-2 py-0.5 bg-sky-500/10 border border-sky-500/20 text-sky-400 rounded text-[10px] font-bold mb-2">분석 대상지</span>
-                            <h4 className="text-sm font-bold truncate pr-6">{selectedComp.address}</h4>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-2.5">
-                            <div className="flex justify-between items-start pr-6">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-[#7dd3c0] text-xs font-bold font-mono">#{selectedComp.index} 비교사례</span>
-                                    <h4 className="text-sm font-bold truncate max-w-[240px]">
-                                        {selectedComp.platPlc || selectedComp.platAddr || `${selectedComp.sggNm || ''} ${selectedComp.umdNm || ''}`.trim() || '주소 정보 없음'}
-                                    </h4>
-                                </div>
-                                {selectedComp.distance !== undefined && (
-                                    <span className="text-white/40 text-xs mt-0.5 whitespace-nowrap">대상지 거리: {Math.round(selectedComp.distance)}m</span>
-                                )}
+                        {isTarget ? (
+                            <div>
+                                <span className="inline-block px-2 py-0.5 bg-sky-50 border border-sky-100 text-sky-600 rounded text-[10px] font-extrabold mb-1.5 uppercase tracking-wide">분석 대상지</span>
+                                <h4 className="text-sm font-black text-slate-900 truncate pr-6">{selectedComp.address}</h4>
                             </div>
+                        ) : m ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex justify-between items-start pr-6">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-teal-600 text-[10px] font-black tracking-wider uppercase">#{selectedComp.index} 비교사례</span>
+                                        <h4 className="text-sm font-black text-slate-900 truncate max-w-[240px]">
+                                            {selectedComp.platPlc || selectedComp.platAddr || `${selectedComp.sggNm || ''} ${selectedComp.umdNm || ''}`.trim() || '주소 정보 없음'}
+                                        </h4>
+                                    </div>
+                                    {m.distStr !== '-' && (
+                                        <span className="text-slate-400 text-xs mt-0.5 font-bold whitespace-nowrap">대상지 거리: {m.distStr}</span>
+                                    )}
+                                </div>
 
-                            <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-white/5">
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-white/40 text-[10px]">용도지역</span>
-                                    <span className="font-semibold text-white/80">{selectedComp.zoning || '-'}</span>
-                                </div>
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-white/40 text-[10px]">거래년월</span>
-                                    <span className="font-semibold text-white/80">{selectedComp.dealYear}.{selectedComp.dealMonth || '?'}</span>
-                                </div>
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-white/40 text-[10px]">실거래 가격</span>
-                                    <span className="font-semibold text-white/80">
-                                        {selectedComp.dealAmount ? formatKoreanCurrency(selectedComp.dealAmount > 1000000 ? selectedComp.dealAmount : selectedComp.dealAmount * 10000) : '-'}
-                                    </span>
-                                </div>
-                                <div className="flex flex-col gap-0.5">
-                                    <span className="text-white/40 text-[10px]">보정 대입 총액</span>
-                                    <span className="font-bold text-[#7dd3c0]">
-                                        {selectedComp.adjustedTotal || '-'}
-                                    </span>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs pt-2.5 border-t border-slate-100">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">용도지역</span>
+                                        <span className="font-extrabold text-slate-800">{m.zoning}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">거래년월</span>
+                                        <span className="font-extrabold text-slate-800">{m.date}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">지목 / 면적</span>
+                                        <span className="font-extrabold text-slate-800">{m.jimok || '-'}{m.area > 0 ? ` / ${m.area.toLocaleString()}㎡` : ''}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">공시지가</span>
+                                        <span className="font-extrabold text-slate-800">
+                                            {m.officialPrice > 0 ? formatSqmManwon(m.officialPrice) : '-'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">실거래 가격</span>
+                                        <span className="font-extrabold text-slate-800">{m.dealEok}원</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">실거래 단가</span>
+                                        <span className="font-extrabold text-slate-800">{m.rawSqmStr}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">보정 대입 단가</span>
+                                        <span className="font-extrabold text-teal-600">{m.adjSqmStr}</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">보정 대입 총액</span>
+                                        <span className="font-black text-teal-600 text-[13px]">{m.adjTotalEok}원</span>
+                                    </div>
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-slate-400 text-[9px] font-bold">공시지가 유사도</span>
+                                        <span className="font-extrabold text-slate-800">{m.simStr}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            )}
+                        ) : null}
+                    </div>
+                );
+            })()}
         </div>
     );
 }

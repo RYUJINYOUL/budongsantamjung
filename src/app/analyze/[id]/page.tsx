@@ -1,5 +1,10 @@
 import { Metadata } from 'next';
-import AnalysisDetailPage from './AnalysisClientPage';
+import dynamic from 'next/dynamic';
+
+const AnalysisDetailPage = dynamic(
+    () => import('./AnalysisClientPage').then((mod) => mod.default),
+    { ssr: false },
+);
 
 async function getReportData(id: string) {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40';

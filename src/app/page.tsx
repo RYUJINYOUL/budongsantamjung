@@ -557,6 +557,7 @@ function HomePageContent() {
               <KakaoMap
                 properties={mapProperties}
                 selectedProperty={selectedMapProperty}
+                navigationZoomLevel={4}
                 initialCenter={mapCenter}
                 onPropertySelect={property => {
                   const analysis = analyses.find(a => a.id === property.id);

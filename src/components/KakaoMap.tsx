@@ -42,6 +42,8 @@ interface KakaoMapProps {
   benefitParcels?: any[];
   selectedBenefitParcel?: any;
   onBenefitParcelSelect?: (parcel: any) => void;
+  /** 검색·내 위치 이동 시 줌 (카카오: 숫자↑=축소). 기본 4 */
+  navigationZoomLevel?: number;
 }
 
 // 전역 스크립트 로딩 상태 관리
@@ -65,6 +67,7 @@ export default function KakaoMap({
   benefitParcels,
   selectedBenefitParcel,
   onBenefitParcelSelect,
+  navigationZoomLevel = 4,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -459,7 +462,9 @@ export default function KakaoMap({
     } else {
       const position = new window.kakao.maps.LatLng(lat, lng);
       map.setCenter(position);
-      map.setLevel(isAnalyzeMode ? 3 : 5);
+      if (isAnalyzeMode) {
+        map.setLevel(3);
+      }
     }
   }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
@@ -529,7 +534,7 @@ export default function KakaoMap({
     const x = parseFloat(result.x);
     const coords = new window.kakao.maps.LatLng(y, x);
     map.setCenter(coords);
-    map.setLevel(4);
+    map.setLevel(navigationZoomLevel);
     setSearchInput(result.place_name || result.address_name);
     setSearchResults([]);
   };
@@ -542,7 +547,7 @@ export default function KakaoMap({
       const { lat, lng } = await getCurrentPosition();
       const coords = new window.kakao.maps.LatLng(lat, lng);
       map.setCenter(coords);
-      map.setLevel(4);
+      map.setLevel(navigationZoomLevel);
     } catch (err) {
       const message =
         err instanceof GeolocationError

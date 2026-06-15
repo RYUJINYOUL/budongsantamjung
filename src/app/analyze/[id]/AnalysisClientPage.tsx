@@ -15,10 +15,11 @@ const globalStyles = `
   .tab-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
 `;
 
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '../../../lib/firebase';
+import { isAdminUser } from '../../../lib/adminUids';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -31,15 +32,16 @@ import {
     Landmark, Activity, FileText, CheckCircle2, ChevronRight,
     Camera, Info, ArrowUpRight, DollarSign, Ruler, Layers,
     ShieldCheck, Hexagon, Search, ArrowLeft, Plus, Heart, Star, ChevronDown,
-    Clipboard, ExternalLink, ShieldAlert, Gavel, Check, Copy,
+    Clipboard, ExternalLink, ShieldAlert, Gavel, Check, Copy, Download, X,
     Users, Map, Lightbulb, ShoppingBag, School, GraduationCap,
-    Stethoscope, Trees, Train, Car, Tag, Clock, Zap
+    Stethoscope, Trees, Train, Car, Tag, Clock
 } from 'lucide-react';
 
-import AiReportView from '../../../components/AiReportView';
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
 import AmenitiesView from '../../../components/AmenitiesView';
 import AiAnalysisBottomBar from '../../../components/AiAnalysisBottomBar';
+import AiReportView from '../../../components/AiReportView';
+import ComparableMap from '../../../components/ComparableMap';
 import AiAnalysisInputModal, {
     defaultAiAnalysisInput,
     isAiInputValid,
@@ -98,6 +100,7 @@ interface AnalysisMetadata {
         estimatedPrice?: number | null;
         sampleCount: number;
     };
+    [key: string]: any;
 }
 
 interface DetectiveReport {
@@ -113,6 +116,89 @@ interface DetectiveReport {
     "8_finalVerdict"?: string | { verdict?: string; investmentGrade?: string; reason?: string; condition?: string };
     "9_originalText"?: string;
     analysisMetadata?: AnalysisMetadata;
+}
+
+const IN_DEPTH_LABELS: Record<string, string> = {
+    economy: '경제성 · 수익성 분석',
+    defects: '구조 · 하자 리스크',
+    outlook: '미래 가치 · 전망',
+    investmentValue: '투자 가치 분석',
+    reconstruction: '재건축 · 리모델링 가능성',
+};
+
+function buildAiReportCopyText(
+    parsedAi: DetectiveReport | Record<string, any>,
+    options: { address: string; detectiveNote?: string },
+) {
+    const compRisk = parsedAi['1_comprehensiveRisk'] || {};
+    const priceReas = parsedAi['5_priceReasonableness'] || {};
+    const score = compRisk.totalScore ?? compRisk.score ?? 0;
+    const grade = priceReas.conclusion ?? compRisk.coreJudgement ?? '';
+    const summary = compRisk.coreJudgement ?? options.detectiveNote ?? '상세 분석 리포트가 파싱을 완료했습니다.';
+
+    const lines: string[] = [
+        '🔍 땅파고 부동산 탐정 AI 분석 결과',
+        `주소: ${options.address}`,
+        `종합 스코어: ${score}점 | 등급: ${grade}`,
+        '',
+        '[AI 요약 평가]',
+        summary,
+    ];
+
+    const scoreItems = compRisk.scoreItems;
+    if (scoreItems && typeof scoreItems === 'object' && Object.keys(scoreItems).length > 0) {
+        lines.push('', '[세부 리스크 평가]');
+        Object.entries(scoreItems).forEach(([k, v]) => {
+            const item = v as { score?: number; reason?: string } | number;
+            const s = typeof item === 'object' && item !== null ? (item.score ?? 0) : item;
+            const r = typeof item === 'object' && item !== null ? (item.reason ?? '') : '';
+            lines.push(`- ${k}: ${s}점${r ? ` (${r})` : ''}`);
+        });
+    }
+
+    if (priceReas && Object.keys(priceReas).length > 0) {
+        lines.push('', '[가격 타당성 검증]');
+        if (priceReas.conclusion) lines.push(`- 결론: ${priceReas.conclusion}`);
+        if ((priceReas as any).gap) lines.push(`- 오차율: ${(priceReas as any).gap}`);
+        if (priceReas.opinion) lines.push(`- 의견: ${priceReas.opinion}`);
+    }
+
+    const priceAnalysis = parsedAi['3_priceAnalysisReport'] || {};
+    if (priceAnalysis && Object.keys(priceAnalysis).length > 0) {
+        lines.push('', '[실거래가 및 시세 비교]');
+        const firesale = priceAnalysis.landFiresaleSummary ?? (priceAnalysis as any).comparableSummary;
+        if (firesale) lines.push(`- 급매 및 비교 요약: ${firesale}`);
+        if (priceAnalysis.comparableAnalysis) lines.push(`- 사례 분석: ${priceAnalysis.comparableAnalysis}`);
+        const tradeVolume = priceAnalysis.buildingTradeVolume ?? (priceAnalysis as any).tradeVolume;
+        if (tradeVolume) lines.push(`- 시장 분석: ${tradeVolume}`);
+    }
+
+    const inDepth = parsedAi['7_inDepthReport'];
+    if (inDepth && typeof inDepth === 'object' && Object.keys(inDepth).length > 0) {
+        lines.push('', '[심층 정성 분석]');
+        Object.entries(inDepth).forEach(([k, v]) => {
+            if (v != null && String(v).trim()) {
+                const label = IN_DEPTH_LABELS[k] ?? k;
+                lines.push(`■ ${label}\n${v}\n`);
+            }
+        });
+    }
+
+    const mustCheck = parsedAi['6_mustCheckList'];
+    if (Array.isArray(mustCheck) && mustCheck.length > 0) {
+        lines.push('', '[중요 체크 리스트]');
+        mustCheck.forEach((q) => lines.push(`- ${q}`));
+    }
+
+    lines.push(
+        '',
+        '──────────────────────────────────────────',
+        '본 분석 결과는 국가 공공 데이터를 기반으로 AI가 자동 분석한 참고용 자료이며, 어떠한 법률적·재정적 보증도 제공하지 않습니다. 데이터의 수집 시점이나 실제 원본 서류(등기부등본 등)와 차이가 있을 수 있으며, 분석 이후의 권리관계 변동은 반영되지 않습니다.',
+        '',
+        '부동산탐정은 투자 결정을 대신해 드리지 않으므로, 최종 투자 및 계약 전에는 반드시 전문가(변호사, 법무사 등)의 상담과 현장 실사를 통해 사실관계를 재확인하시기 바랍니다. 본 서비스 이용으로 발생한 손해에 대해 부동산탐정은 책임을 지지 않습니다.'
+    );
+
+    return lines.join('\n').trim();
 }
 
 // ── Utility Components ──
@@ -915,6 +1001,24 @@ function getDefaultActiveTab(data: any): string {
 export default function AnalysisDetailPage({ initialData }: { initialData?: any }) {
     const { id } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const adminSample = searchParams.get('adminSample') === '1';
+    const returnQs = searchParams.get('return');
+
+    const goBack = useCallback(() => {
+        if (returnQs) {
+            router.push(`/?${returnQs}`);
+            return;
+        }
+        if (typeof window !== 'undefined' && window.history.length > 1) {
+            router.back();
+            return;
+        }
+        router.push('/');
+    }, [router, returnQs]);
+
+    const backLabel = returnQs ? '리포트 목록' : '홈으로';
+    const adminAutoTriggered = useRef(false);
     const [analysisData, setAnalysisData] = useState<any>(initialData || null);
     const [loading, setLoading] = useState(!initialData);
     const [error, setError] = useState<string | null>(null);
@@ -955,6 +1059,23 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const [hasAccess, setHasAccess] = useState<boolean>(false);
 
     const [isMapDropdownOpen, setIsMapDropdownOpen] = useState(false);
+    const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+    const [isAiReportCopyOpen, setIsAiReportCopyOpen] = useState(false);
+    const [isDesktopReportPanel, setIsDesktopReportPanel] = useState(false);
+
+    useEffect(() => {
+        const mq = window.matchMedia('(min-width: 768px)');
+        const update = () => setIsDesktopReportPanel(mq.matches);
+        update();
+        mq.addEventListener('change', update);
+        return () => mq.removeEventListener('change', update);
+    }, []);
+
+    useEffect(() => {
+        if (!shareToast) return;
+        const timer = window.setTimeout(() => setShareToast(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [shareToast]);
     const propertyId = analysisData?.report?.pnu as string | undefined;
 
     const aiSteps = [
@@ -981,6 +1102,9 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         }
         if (analysisData.rawData && typeof analysisData.rawData === 'object') {
             Object.assign(base, analysisData.rawData);
+        }
+        if (analysisData.storeData && typeof analysisData.storeData === 'object') {
+            Object.assign(base, analysisData.storeData);
         }
         return base;
     }, [analysisData]);
@@ -1457,6 +1581,40 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         );
     }, [reportData, report]);
 
+    const aiReportCopyText = useMemo(() => {
+        if (!reportData) return '';
+        return buildAiReportCopyText(reportData, {
+            address: report?.address || mergedData?.address || reportData.propertyTitle || '매물 상세',
+            detectiveNote: report?.detectiveNote || analysisData?.detectiveNote,
+        });
+    }, [reportData, report, mergedData, analysisData]);
+
+    const isAdmin = isAdminUser(user?.uid);
+
+    /** 관리자 샘플 분석: 리포트 로드 후 AI 분석 자동 실행 (버튼 1회 통일) */
+    useEffect(() => {
+        if (!adminSample || !isAdmin || adminAutoTriggered.current) return;
+        if (loading || !analysisData || !user || isAiAnalyzing) return;
+
+        const status =
+            report?.ai_analysis_status ||
+            analysisData?.ai_analysis_status ||
+            analysisData?.report?.ai_analysis_status ||
+            '';
+        if (status === 'completed' || status === 'processing' || status === 'failed') {
+            if (id) router.replace(`/analyze/${id}`, { scroll: false });
+            return;
+        }
+
+        if (!isAiInputValid(aiInput)) return;
+
+        adminAutoTriggered.current = true;
+        if (id) router.replace(`/analyze/${id}`, { scroll: false });
+        void runAiAnalysis();
+        // runAiAnalysis는 매 렌더마다 갱신되므로 의존성에서 제외 (1회 트리거 ref로 보호)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [adminSample, isAdmin, loading, analysisData, user, isAiAnalyzing, aiInput, report, id, router]);
+
     if (loading) {
         return (
             <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center">
@@ -1490,10 +1648,10 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                     <h2 className="text-xl font-bold text-white mb-2">분석 리포트 로드 실패</h2>
                     <p className="text-slate-400 mb-8">{error || '분석 결과를 찾을 수 없습니다.'}</p>
                     <button
-                        onClick={() => router.back()}
+                        onClick={goBack}
                         className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
                     >
-                        <ArrowLeft className="w-4 h-4" /> 리스트로 돌아가기
+                        <ArrowLeft className="w-4 h-4" /> {backLabel}
                     </button>
                 </motion.div>
             </div>
@@ -1520,13 +1678,13 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             <nav className="sticky top-0 z-50 bg-[#0a0a0c]/80 backdrop-blur-xl border-b border-white/5">
                 <div className="max-w-5xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between">
                     <button
-                        onClick={() => router.back()}
+                        onClick={goBack}
                         className="group flex items-center gap-3 text-slate-400 hover:text-white transition-all"
                     >
                         <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white/10 group-hover:scale-105 transition-all">
                             <ArrowLeft className="w-5 h-5" />
                         </div>
-                        <span className="hidden md:inline font-bold">리포트 목록</span>
+                        <span className="hidden md:inline font-bold">{backLabel}</span>
                     </button>
 
                     <div className="flex items-center gap-3">
@@ -1622,6 +1780,16 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                 </div>
                             );
                         })()}
+                        <button
+                            type="button"
+                            onClick={() => setIsAiReportCopyOpen(true)}
+                            disabled={!aiReportCopyText}
+                            title="AI 분석 결과 복사"
+                            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 sm:px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/5"
+                        >
+                            <Download className="w-4 h-4 text-sky-400" />
+                            <span className="hidden sm:inline">리포트</span>
+                        </button>
                         {/* <button
                             onClick={handleAiAnalysisClick}
                             disabled={isCheckingAccess}
@@ -1662,11 +1830,15 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                         <Building2 className="w-3.5 h-3.5 text-emerald-400" />
                                         {report.category === 'land' ? '토지' : report.category === 'apartment' ? '아파트' : report.category === 'house' ? '주택' : '상가'}
                                     </span>
-                                    {report.address && report.address !== reportData?.propertyTitle && (
-                                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] rounded-lg border border-white/[0.06] text-xs font-medium text-white/50">
-                                            <MapPin className="w-3.5 h-3.5" />
-                                            {report.address}
-                                        </span>
+                                    {reportData?.analysisMetadata?.comparables && reportData.analysisMetadata.comparables.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsMapModalOpen(true)}
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-lg text-xs font-bold text-sky-400 transition-colors cursor-pointer"
+                                        >
+                                            <Map className="w-3.5 h-3.5 text-sky-400" />
+                                            지도 비교
+                                        </button>
                                     )}
                                 </div>
                                 {dashboardSummary && (
@@ -2494,6 +2666,42 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                                         ) : (
                                                             <p className="text-sm text-white/40 py-6 text-center">
                                                                 층별 데이터가 제공되지 않았습니다. 관련 지자체 문의
+                                                            </p>
+                                                        )}
+                                                    </section>
+
+                                                    {/* 상가정보 — 전체 폭 */}
+                                                    <section className="bg-slate-900/80 border border-white/[0.06] rounded-[32px] p-5 lg:p-6 mt-6">
+                                                        <div className="flex items-center justify-between mb-5 pb-4 border-b border-white/[0.06]">
+                                                            <h4 className="text-sm font-semibold text-white/90">입점 상가 정보</h4>
+                                                            {rawData?.commercialData?.buildingStores?.length > 0 && (
+                                                                <span className="text-[11px] text-white/35 font-medium">총 {rawData.commercialData.buildingStores.length}개 점포</span>
+                                                            )}
+                                                        </div>
+                                                        {rawData?.commercialData?.buildingStores?.length > 0 ? (
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                                                                {rawData.commercialData.buildingStores.map((store: any, i: number) => (
+                                                                    <div
+                                                                        key={i}
+                                                                        className="bg-white/[0.03] px-4 py-3 rounded-xl border border-white/[0.06] flex flex-col justify-center gap-1.5"
+                                                                    >
+                                                                        <div className="flex items-center justify-between gap-2 min-w-0">
+                                                                            <span className="shrink-0 text-[10px] font-semibold bg-emerald-400/10 text-emerald-400 px-2 py-1 rounded-md">
+                                                                                {store.flrNoNm || '-'}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-medium text-white/40 truncate">
+                                                                                {store.indsLclsNm} {'>'} {store.indsSclsNm}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-sm font-bold text-white/80 truncate">
+                                                                            {store.bizesNm || '-'}
+                                                                        </p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-white/40 py-6 text-center">
+                                                                해당 건물에 등록된 상가 데이터가 없습니다. (소상공인시장진흥공단 기준)
                                                             </p>
                                                         )}
                                                     </section>
@@ -4091,14 +4299,15 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             {/* Footer */}
             <footer className="relative z-10 py-20 border-t border-white/5 bg-slate-900/20 text-center">
                 <div className="max-w-md mx-auto px-6">
-                    <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <Link href="/" className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-6 hover:bg-white/10 active:scale-95 transition-all cursor-pointer">
                         <CheckCircle2 className="w-6 h-6 text-slate-600" />
-                    </div>
+                    </Link>
                     <p className="text-slate-400 text-xs font-extrabold tracking-widest mb-2.5 font-noto-sans-kr">공공데이터와 AI가 만나다 - 부동산탐정</p>
-                    <p className="text-slate-600 text-[10px] leading-relaxed">
-                        본 분석 결과는 국가 공공 데이터를 기반으로 AI가 분석하였습니다.<br />
-                        최종 투자 및 계약 결정은 반드시 전문가와의 상담이 필요합니다.
-                    </p>
+                    <div className="text-slate-600 text-[10px] leading-[1.75] font-noto-sans-kr text-left whitespace-pre-wrap max-w-md mx-auto">
+                        {`본 분석 결과는 국가 공공 데이터를 기반으로 AI가 자동 분석한 참고용 자료이며, 어떠한 법률적·재정적 보증도 제공하지 않습니다. 데이터의 수집 시점이나 실제 원본 서류(등기부등본 등)와 차이가 있을 수 있으며, 분석 이후의 권리관계 변동은 반영되지 않습니다.
+
+부동산탐정은 투자 결정을 대신해 드리지 않으므로, 최종 투자 및 계약 전에는 반드시 전문가(변호사, 법무사 등)의 상담과 현장 실사를 통해 사실관계를 재확인하시기 바랍니다. 본 서비스 이용으로 발생한 손해에 대해 부동산탐정은 책임을 지지 않습니다.`}
+                    </div>
                 </div>
             </footer>
 
@@ -4136,6 +4345,88 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                 )}
             </AnimatePresence>
 
+            {/* AI 리포트 복사 다이얼로그 */}
+            <AnimatePresence>
+                {isAiReportCopyOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[110] flex items-end md:items-stretch md:justify-end bg-black/55 backdrop-blur-sm"
+                        onClick={() => setIsAiReportCopyOpen(false)}
+                    >
+                        <motion.div
+                            initial={isDesktopReportPanel ? { x: '100%' } : { y: '100%' }}
+                            animate={{ x: 0, y: 0 }}
+                            exit={isDesktopReportPanel ? { x: '100%' } : { y: '100%' }}
+                            transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+                            className="relative w-full md:max-w-[440px] md:h-full max-h-[88vh] md:max-h-none flex flex-col overflow-hidden rounded-t-[28px] md:rounded-none md:rounded-l-[28px] border border-white/[0.08] border-b-0 md:border-b md:border-r-0 bg-[#0f172a]/95 shadow-[-8px_0_40px_rgba(14,165,233,0.12)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/[0.08] via-transparent to-transparent" />
+                            <div className="absolute top-0 inset-x-8 h-px bg-gradient-to-r from-transparent via-sky-400/30 to-transparent" />
+                            <div className="md:hidden flex justify-center pt-3 pb-1">
+                                <div className="w-10 h-1 rounded-full bg-white/15" />
+                            </div>
+
+                            <div className="relative z-10 flex items-start justify-between gap-3 px-5 sm:px-6 pt-4 md:pt-6 pb-4 border-b border-white/[0.06]">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500/25 via-cyan-500/10 to-transparent border border-sky-400/30 flex items-center justify-center shadow-[0_0_16px_rgba(14,165,233,0.15)]">
+                                        <FileText className="w-5 h-5 text-sky-300" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h2 className="text-base font-bold text-white tracking-tight">AI 분석 리포트</h2>
+                                        <p className="text-[11px] text-white/45 mt-0.5">텍스트 선택 후 복사하거나 버튼을 누르세요</p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAiReportCopyOpen(false)}
+                                    className="shrink-0 w-9 h-9 rounded-xl border border-white/10 bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center"
+                                    aria-label="닫기"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar px-5 sm:px-6 py-4">
+                                <div className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/[0.12] via-sky-500/[0.05] to-transparent p-4 sm:p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                    <pre className="whitespace-pre-wrap break-words text-[13px] sm:text-sm leading-[1.75] text-white/85 font-sans select-text">
+                                        {aiReportCopyText}
+                                    </pre>
+                                </div>
+                            </div>
+
+                            <div className="relative z-10 flex items-center gap-2 px-5 sm:px-6 py-4 md:py-5 border-t border-white/[0.06] bg-[#0a0f1a]/80 backdrop-blur-md">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAiReportCopyOpen(false)}
+                                    className="flex-1 md:flex-none px-4 py-3 rounded-xl text-sm font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.05] transition-colors"
+                                >
+                                    닫기
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        try {
+                                            await navigator.clipboard.writeText(aiReportCopyText);
+                                            setIsAiReportCopyOpen(false);
+                                            setShareToast('AI 분석 리포트 전문이 클립보드에 복사되었습니다!');
+                                        } catch {
+                                            setShareToast('복사에 실패했습니다.');
+                                        }
+                                    }}
+                                    className="flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold text-white bg-sky-500 hover:bg-sky-400 shadow-lg shadow-sky-500/20 transition-colors"
+                                >
+                                    <Copy className="w-4 h-4" />
+                                    클립보드 복사
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* AI 분석 입력 모달 */}
             <AiAnalysisInputModal
                 isOpen={isInputModalOpen}
@@ -4154,10 +4445,17 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         initial={{ opacity: 0, y: 50, x: '-50%' }}
                         animate={{ opacity: 1, y: 0, x: '-50%' }}
                         exit={{ opacity: 0, y: 20, x: '-50%' }}
-                        className="fixed bottom-10 left-1/2 z-[100] bg-white text-black px-8 py-4 rounded-3xl shadow-2xl font-black text-sm flex items-center gap-3 border-4 border-sky-500"
+                        className="fixed bottom-10 left-1/2 z-[100] bg-[#1E1E24] text-white px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-semibold flex items-center gap-3 border border-white/10 min-w-[280px] max-w-[min(92vw,420px)]"
                     >
-                        <Zap className="w-5 h-5 text-sky-500" />
-                        {shareToast}
+                        <span className="flex-1 leading-snug">{shareToast}</span>
+                        <button
+                            type="button"
+                            onClick={() => setShareToast(null)}
+                            className="shrink-0 w-7 h-7 rounded-lg text-white/45 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center"
+                            aria-label="닫기"
+                        >
+                            ✕
+                        </button>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -4175,6 +4473,80 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             setTimeout(() => runAiAnalysis(), 800);
                         }}
                     />
+                )}
+            </AnimatePresence>
+
+            {/* Comparable Map Bottom Sheet Modal */}
+            <AnimatePresence>
+                {isMapModalOpen && reportData?.analysisMetadata && (
+                    <div className="fixed inset-0 z-[999] flex items-end justify-center">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                            onClick={() => setIsMapModalOpen(false)}
+                        />
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                            className="relative w-full max-w-4xl h-[85vh] bg-white rounded-t-[32px] overflow-hidden flex flex-col z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.35)]"
+                        >
+                            {/* Bottom sheet drag handle indicator */}
+                            <div className="w-full flex justify-center pt-3 pb-1.5 bg-gradient-to-r from-sky-50 via-white to-emerald-50 shrink-0">
+                                <div className="w-12 h-1.5 bg-slate-300/80 rounded-full" />
+                            </div>
+                            <div className="flex justify-between items-center px-6 pb-4 border-b border-slate-200/80 bg-gradient-to-r from-sky-50 via-white to-emerald-50">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+                                        <Map className="w-5 h-5 text-sky-600" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-slate-900 text-base font-black">비교사례 위치 지도</span>
+                                        <span className="text-slate-500 text-[11px] font-medium">
+                                            마커에 실거래가(억) 표시 · 클릭 시 상세 정보
+                                            {reportData.analysisMetadata.comparables?.length
+                                                ? ` · ${reportData.analysisMetadata.comparables.length}건`
+                                                : ''}
+                                        </span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setIsMapModalOpen(false)}
+                                    className="p-2 rounded-xl hover:bg-slate-900/5 text-slate-400 hover:text-slate-700 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="flex-1 p-3 bg-slate-100">
+                                <ComparableMap
+                                    mapData={reportData.analysisMetadata}
+                                    category={report?.category}
+                                    targetArea={(() => {
+                                        let targetArea = 0;
+                                        if (reportData?.analysisMetadata && reportData.analysisMetadata.target) {
+                                            const t = reportData.analysisMetadata.target;
+                                            const directTargetArea = reportData.analysisMetadata.targetArea !== undefined && reportData.analysisMetadata.targetArea !== null
+                                                ? parseFloat(reportData.analysisMetadata.targetArea.toString())
+                                                : null;
+                                            if (directTargetArea !== null && directTargetArea > 0) {
+                                                targetArea = directTargetArea;
+                                            } else if (report?.category === 'building' || report?.category === '빌딩') {
+                                                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+                                            } else if (report?.category === 'apartment' || report?.category === '아파트') {
+                                                targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+                                            } else {
+                                                targetArea = parseFloat(t.area_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.area_sqm || '0');
+                                            }
+                                        }
+                                        return targetArea;
+                                    })()}
+                                />
+                            </div>
+                        </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
 
