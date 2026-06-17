@@ -2494,7 +2494,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
 
         const getPriceText = () => {
             if (!txType) return '미입력';
-            if (txType === '매매') {
+            if (txType === '매매' || txType === '실거래' || txType === '경매') {
                 return priceVal ? `${formatVal(priceVal)}` : '미입력';
             } else if (txType === '전세') {
                 return deposit ? `보증금 ${formatVal(deposit)}` : '보증금 미입력';

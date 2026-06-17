@@ -74,6 +74,7 @@ export default function KakaoMap({
   const [map, setMap] = useState<any>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const regionMarkersRef = useRef<any[]>([]);
   const polygonsRef = useRef<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,6 +86,10 @@ export default function KakaoMap({
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const initialCenterRef = useRef(initialCenter);
+
+  // regions.json 전역 캐시 (컴포넌트 간 공유)
+  const regionsDataRef = useRef<any[] | null>(null);
+  const [regionsLoaded, setRegionsLoaded] = useState(false);
 
   const onBoundsChangedRef = useRef(onBoundsChanged);
   useEffect(() => {
@@ -110,6 +115,86 @@ export default function KakaoMap({
   useEffect(() => {
     onMapClickRef.current = onMapClick;
   }, [onMapClick]);
+
+  // regions.json 로드 (최초 1회)
+  useEffect(() => {
+    if (regionsDataRef.current !== null) {
+      setRegionsLoaded(true);
+      return;
+    }
+    fetch('/regions.json')
+      .then(r => r.json())
+      .then(data => {
+        regionsDataRef.current = data;
+        setRegionsLoaded(true);
+      })
+      .catch(e => console.warn('regions.json 로드 실패:', e));
+  }, []);
+
+  // ── 행정구역 클러스터 마커 헬퍼 ────────────────────────────────
+  const clearRegionMarkers = () => {
+    regionMarkersRef.current.forEach(ov => ov.setMap(null));
+    regionMarkersRef.current = [];
+  };
+
+  const drawRegionMarkers = (kakaoMap: any, zoom: number) => {
+    clearRegionMarkers();
+    if (!regionsDataRef.current) return;
+
+    const type = zoom >= 11 ? 'sido' : zoom >= 8 ? 'sgg' : 'emd';
+    const bounds = kakaoMap.getBounds();
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const swLat = sw.getLat(), neLat = ne.getLat();
+    const swLng = sw.getLng(), neLng = ne.getLng();
+
+    const filtered = regionsDataRef.current.filter(r => {
+      if (r.t !== type) return false;
+      if (type === 'sido') return true;
+      return r.y >= swLat && r.y <= neLat && r.x >= swLng && r.x <= neLng;
+    });
+
+    const newOverlays = filtered.map(r => {
+      const el = document.createElement('div');
+      el.style.cssText = [
+        'display:flex;align-items:center;justify-content:center;',
+        'width:48px;height:48px;border-radius:50%;',
+        'background:rgba(15,23,42,0.82);border:2px solid rgba(255,255,255,0.5);',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.35);cursor:pointer;',
+        'font-size:11px;font-weight:700;color:#fff;text-align:center;',
+        'line-height:1.2;padding:4px;word-break:keep-all;',
+        'transition:transform 0.15s,box-shadow 0.15s;',
+      ].join('');
+      el.textContent = r.n;
+      el.title = r.n;
+      el.addEventListener('mouseenter', () => {
+        el.style.transform = 'scale(1.12)';
+        el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.5)';
+      });
+      el.addEventListener('mouseleave', () => {
+        el.style.transform = '';
+        el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.35)';
+      });
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nextLevel = r.t === 'sido' ? 8 : r.t === 'sgg' ? 5 : 3;
+        kakaoMap.setCenter(new window.kakao.maps.LatLng(r.y, r.x));
+        kakaoMap.setLevel(nextLevel, { animate: true });
+      });
+
+      const ov = new window.kakao.maps.CustomOverlay({
+        position: new window.kakao.maps.LatLng(r.y, r.x),
+        content: el,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 5,
+      });
+      ov.setMap(kakaoMap);
+      return ov;
+    });
+
+    regionMarkersRef.current = newOverlays;
+  };
 
   const initializeMap = () => {
     console.log('지도 초기화 시작...');
@@ -356,6 +441,8 @@ export default function KakaoMap({
     }
 
     const validProperties = (properties || []).filter(hasValidCoords);
+    // 줌 레벨 >= 5 이면 행정구역 마커 모드 → 분석 마커는 생성만 하고 지도에 올리지 않음
+    const isRegionMode = !isAnalyzeMode && !isBenefitMode && zoomLevel >= 5;
 
     const newMarkers = validProperties.map((property) => {
       const isSelected = selectedProperty?.id === property.id;
@@ -372,7 +459,8 @@ export default function KakaoMap({
         zIndex: isSelected ? 30 : 10,
       });
 
-      customOverlay.setMap(map);
+      // 행정구역 모드: 지도에 올리지 않음(숨김) → region useEffect에서 show/hide 제어
+      customOverlay.setMap(isRegionMode ? null : map);
 
       markerElement.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -383,8 +471,24 @@ export default function KakaoMap({
     });
 
     markersRef.current = newMarkers;
-    setMarkerCount(newMarkers.length);
+    setMarkerCount(isRegionMode ? 0 : newMarkers.length);
   }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect]);
+
+
+  // 행정구역 클러스터 마커 (줌 레벨 ≥ 5)
+  useEffect(() => {
+    if (!map || !regionsLoaded || isAnalyzeMode || isBenefitMode) return;
+    if (zoomLevel >= 5) {
+      // 분석 마커 숨기기 (setMap(null))
+      markersRef.current.forEach(m => m.setMap(null));
+      drawRegionMarkers(map, zoomLevel);
+    } else {
+      // 분석 마커 다시 보이기
+      markersRef.current.forEach(m => m.setMap(map));
+      clearRegionMarkers();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, zoomLevel, regionsLoaded, isAnalyzeMode, isBenefitMode]);
 
   // 분석 지적도 폴리곤 다각형 생성 및 업데이트
   useEffect(() => {
