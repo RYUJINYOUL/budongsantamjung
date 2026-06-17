@@ -159,7 +159,7 @@ export default function KakaoMap({
       el.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'width:48px;height:48px;border-radius:50%;',
-        'background:rgba(15,23,42,0.82);border:2px solid rgba(255,255,255,0.5);',
+        'background:rgba(16,185,129,0.85);border:2px solid rgba(255,255,255,0.5);',
         'box-shadow:0 4px 12px rgba(0,0,0,0.35);cursor:pointer;',
         'font-size:11px;font-weight:700;color:#fff;text-align:center;',
         'line-height:1.2;padding:4px;word-break:keep-all;',
@@ -441,8 +441,8 @@ export default function KakaoMap({
     }
 
     const validProperties = (properties || []).filter(hasValidCoords);
-    // 줌 레벨 >= 5 이면 행정구역 마커 모드 → 분석 마커는 생성만 하고 지도에 올리지 않음
-    const isRegionMode = !isAnalyzeMode && !isBenefitMode && zoomLevel >= 5;
+    // 줌 레벨 >= 8 이면 행정구역 마커 모드(시도, 구 단위) → 분석 마커는 생성만 하고 지도에 올리지 않음
+    const isRegionMode = !isAnalyzeMode && !isBenefitMode && zoomLevel >= 8;
 
     const newMarkers = validProperties.map((property) => {
       const isSelected = selectedProperty?.id === property.id;
@@ -475,15 +475,19 @@ export default function KakaoMap({
   }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect]);
 
 
-  // 행정구역 클러스터 마커 (줌 레벨 ≥ 5)
+  // 행정구역 클러스터 마커 (줌 레벨 변경 및 표시 조건 분기)
   useEffect(() => {
     if (!map || !regionsLoaded || isAnalyzeMode || isBenefitMode) return;
-    if (zoomLevel >= 5) {
-      // 분석 마커 숨기기 (setMap(null))
+    if (zoomLevel >= 11) {
+      // 시·도(sido) 레벨: 분석/매물 마커 숨기고 시·도 마커 그리기
+      markersRef.current.forEach(m => m.setMap(null));
+      drawRegionMarkers(map, zoomLevel);
+    } else if (zoomLevel >= 8) {
+      // 구(sgg) 레벨: 분석/매물 마커 숨기고 구(sgg) 마커 그리기
       markersRef.current.forEach(m => m.setMap(null));
       drawRegionMarkers(map, zoomLevel);
     } else {
-      // 분석 마커 다시 보이기
+      // 동(emd) 이하 레벨: 매물 마커만 노출하고 행정구역 마커(구/동)는 보이지 않도록 제거
       markersRef.current.forEach(m => m.setMap(map));
       clearRegionMarkers();
     }
