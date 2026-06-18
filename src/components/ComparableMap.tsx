@@ -39,8 +39,9 @@ export default function ComparableMap({ mapData, category, targetArea }: Compara
     const formatEokCompact = (won: number): string => {
         if (!won || won <= 0) return '-';
         const eok = won / 100000000;
+        if (eok < 1) return `${Math.round(won / 10000).toLocaleString()}만`;
         if (eok >= 10) return `${Math.round(eok)}억`;
-        return `${eok.toFixed(1).replace(/\.0$/, '')}억`;
+        return `${eok.toFixed(2).replace(/\.?0+$/, '')}억`;
     };
 
     const formatSqmManwon = (wonPerSqm: number): string => {

@@ -387,21 +387,26 @@ export default function DetectiveSummaryView({
     const monthlyProfit = findValue(rawData, 'monthly_profit') || findValue(rawData, 'monthlyProfit');
 
     const getPriceText = () => {
-        if (!txType) return '미입력';
-        const formatVal = (v: any) => {
-            const parsed = parseFloat(String(v).replace(/,/g, ''));
-            return isNaN(parsed) ? '-' : formatKoreanCurrency(parsed);
+        const formatValWon = (v: any) => {
+            let parsed = parseFloat(String(v).replace(/,/g, ''));
+            if (isNaN(parsed) || parsed === 0) return '-';
+            if (parsed <= 1000000) parsed *= 10000;
+            return formatKoreanCurrency(parsed);
         };
-        if (txType === '매매' || txType === '실거래' || txType === '경매') {
-            return priceVal ? `${formatVal(priceVal)}` : '미입력';
-        } else if (txType === '전세') {
-            return deposit ? `보증금 ${formatVal(deposit)}` : '보증금 미입력';
+        
+        if (txType === '전세') {
+            return deposit ? `보증금 ${formatValWon(deposit)}` : '보증금 미입력';
         } else if (txType === '월세') {
-            const depText = deposit ? `보증금 ${formatVal(deposit)}` : '보증금 -';
-            const rentText = monthlyRent ? `월세 ${formatVal(monthlyRent)}` : '월세 -';
+            const depText = deposit ? `보증금 ${formatValWon(deposit)}` : '보증금 -';
+            const rentText = monthlyRent ? `월세 ${formatValWon(monthlyRent)}` : '월세 -';
             return `${depText} / ${rentText}`;
+        } else {
+            if (userPrice > 0) {
+                return formatKoreanCurrency(userPrice > 1000000 ? userPrice : userPrice * 10000);
+            }
+            if (priceVal) return formatValWon(priceVal);
+            return '미입력';
         }
-        return '미입력';
     };
 
     // ──────────────────────────────────────────

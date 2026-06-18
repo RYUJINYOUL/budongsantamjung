@@ -315,12 +315,23 @@ function buildHogangnonoSpecialNotes(
 }
 
 async function extractHogangnono(propertyUrl: string): Promise<UrlExtractPrefill> {
-  const match = propertyUrl.match(/item-catalog\/(\d+)/);
-  if (!match) {
-    throw new Error('올바른 호갱노노 URL이 아닙니다. item-catalog/숫자 형식이 필요합니다.');
+  let match = propertyUrl.match(/item-catalog\/(\d+)\/(\d+)/);
+  let catalogId = '';
+  let tradeType = 0;
+  
+  if (match) {
+    catalogId = match[1];
+    tradeType = parseInt(match[2], 10);
+  } else {
+    const match2 = propertyUrl.match(/item-catalog\/(\d+)/);
+    if (!match2) {
+      throw new Error('올바른 호갱노노 URL이 아닙니다. item-catalog/숫자 형식이 필요합니다.');
+    }
+    catalogId = match2[1];
+    tradeType = 0;
   }
 
-  const apiUrl = `https://hogangnono.com/api/v2/item-catalogs/${match[1]}?tradeType=0&offset=0&limit=20`;
+  const apiUrl = `https://hogangnono.com/api/v2/item-catalogs/${catalogId}?tradeType=${tradeType}&offset=0&limit=20`;
   const data = await scrapeProxy(apiUrl, 'hogangnono');
 
   if (data.status !== 'success') throw new Error('호갱노노에서 데이터를 찾을 수 없습니다.');
@@ -339,18 +350,45 @@ async function extractHogangnono(propertyUrl: string): Promise<UrlExtractPrefill
     hoInfo.floor ?? hoInfo.floorLevel ?? hoInfo.floorType ?? firstItem.floor,
   );
 
+  const itemTradeType = firstItem.tradeType !== undefined ? firstItem.tradeType : tradeType;
+  const rawPrice = firstItem.deposit || 0;
+  const rawRent = firstItem.rent || 0;
+  
+  let finalTxType: '매매' | '전세' | '월세' = '매매';
+  let salePrice: number | '' = '';
+  let deposit: number | '' = '';
+  let monthlyRent: number | '' = '';
+
+  if (itemTradeType === 0) {
+    finalTxType = '매매';
+    salePrice = parseHanpriceToManwon(rawPrice);
+  } else if (itemTradeType === 1) {
+    finalTxType = '전세';
+    deposit = parseHanpriceToManwon(rawPrice);
+  } else if (itemTradeType === 2) {
+    finalTxType = '월세';
+    deposit = parseHanpriceToManwon(rawPrice);
+    monthlyRent = parseHanpriceToManwon(rawRent);
+  }
+
+  const summaryPrice = rawPrice ? `${rawPrice.toLocaleString()}만원` : '';
+  const summaryRent = rawRent ? ` / 월세 ${rawRent.toLocaleString()}만원` : '';
+  const summaryText = `${aptInfo.aptName} · ${finalTxType} ${summaryPrice}${summaryRent} · ${hoInfo.privateArea}㎡${specialNotes ? ' · 설명 포함' : ''}`;
+
   return buildPrefill({
     category: 'apartment',
     address,
     ...coords,
     specialNotes: specialNotes || undefined,
     detailInput: {
-      salePrice: parseHanpriceToManwon(firstItem.deposit),
+      salePrice,
+      deposit,
+      monthlyRent,
       area: hoInfo.privateArea ? Number(hoInfo.privateArea) : '',
       floor,
-      transactionType: '매매',
+      transactionType: finalTxType,
     },
-    summary: `${aptInfo.aptName} · ${firstItem.deposit?.toLocaleString?.() || firstItem.deposit}만원 · ${hoInfo.privateArea}㎡${specialNotes ? ' · 설명 포함' : ''}`,
+    summary: summaryText,
   });
 }
 

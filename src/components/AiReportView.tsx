@@ -451,8 +451,9 @@ const normalizeIncomeInputWon = (raw: any): number => normalizeDealAmountWon(raw
 const formatEokCompact = (won: number): string => {
     if (!won || won <= 0) return '-';
     const eok = won / 100000000;
+    if (eok < 1) return `${Math.round(won / 10000).toLocaleString()}만`;
     if (eok >= 10) return `${Math.round(eok)}억`;
-    return `${eok.toFixed(1).replace(/\.0$/, '')}억`;
+    return `${eok.toFixed(2).replace(/\.?0+$/, '')}억`;
 };
 
 const formatSqmManwon = (wonPerSqm: number): string => {
@@ -807,46 +808,46 @@ const LedgerSummaryCard = ({
 }) => {
     const accent = LEDGER_ACCENTS.summary;
     return (
-    <div
-        className="p-6 bg-[#0f172a]/55 rounded-[40px]"
-        style={{
-            border: `1px solid ${hexToRgba(accent, 0.2)}`,
-            boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
-        }}
-    >
-        <div className="flex justify-between items-center w-full">
-            <div className="flex items-center gap-3">
-                <div
-                    className="p-2 rounded-xl"
-                    style={{
-                        backgroundColor: hexToRgba(accent, 0.12),
-                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
-                    }}
-                >
-                    <List className="w-4 h-4" style={{ color: accent }} />
+        <div
+            className="p-6 bg-[#0f172a]/55 rounded-[40px]"
+            style={{
+                border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
+            }}
+        >
+            <div className="flex justify-between items-center w-full">
+                <div className="flex items-center gap-3">
+                    <div
+                        className="p-2 rounded-xl"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.12),
+                            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                        }}
+                    >
+                        <List className="w-4 h-4" style={{ color: accent }} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-white text-base font-bold tracking-tight">{title}</span>
+                        <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
+                    </div>
                 </div>
-                <div className="flex flex-col">
-                    <span className="text-white text-base font-bold tracking-tight">{title}</span>
-                    <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
-                </div>
+                {showMapButton && (
+                    <button
+                        type="button"
+                        onClick={onMapOpen}
+                        className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.1),
+                            border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                            color: accent,
+                        }}
+                    >
+                        <Map className="w-3.5 h-3.5" />
+                        <span>지도 보기</span>
+                    </button>
+                )}
             </div>
-            {showMapButton && (
-                <button
-                    type="button"
-                    onClick={onMapOpen}
-                    className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
-                    style={{
-                        backgroundColor: hexToRgba(accent, 0.1),
-                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
-                        color: accent,
-                    }}
-                >
-                    <Map className="w-3.5 h-3.5" />
-                    <span>지도 보기</span>
-                </button>
-            )}
         </div>
-    </div>
     );
 };
 
@@ -877,8 +878,8 @@ const LedgerComparablesSection = ({
     const title = isBuilding
         ? '프리미엄 · 선별된 상업건물과 실거래 비교'
         : isHouse
-        ? '프리미엄 · 선별된 주택건물과 실거래 비교'
-        : '프리미엄 · 선별된 토지와 실거래 비교';
+            ? '프리미엄 · 선별된 주택건물과 실거래 비교'
+            : '프리미엄 · 선별된 토지와 실거래 비교';
     const accent = LEDGER_ACCENTS.comparables;
 
     return (
@@ -901,7 +902,7 @@ const LedgerComparablesSection = ({
                     ) : (
                         <>
                             <span className="text-white/70 text-[11px] font-bold">
-                            정밀 필터 (0.9~1.1배, 300m 이내) · {tier1.length}건
+                                정밀 필터 (0.9~1.1배, 300m 이내) · {tier1.length}건
                             </span>
                             <ComparableHorizontalScroll items={tier1} targetArea={targetArea} startIndex={0} accent={accent} />
                         </>
@@ -1658,11 +1659,10 @@ const PriceSpectrumNarrativeSection = ({
                     <span className="text-[10px] text-white/40 font-semibold">제시가 vs 추정 범위</span>
                     <div className="flex justify-between items-center">
                         <span className="text-white/50 text-xs font-bold">제시 매매가</span>
-                        <span className={`font-black text-lg ${
-                            userVsCombined === 'above' ? 'text-amber-400'
+                        <span className={`font-black text-lg ${userVsCombined === 'above' ? 'text-amber-400'
                                 : userVsCombined === 'below' ? 'text-emerald-400'
                                     : 'text-white'
-                        }`}>
+                            }`}>
                             {formatEokCompact(userPrice)}원
                         </span>
                     </div>
@@ -1763,21 +1763,19 @@ const resolveBuildingIncomeInputs = (mergedData: any) => {
 const resolveIncomeCapRates = (mergedData: any, ai: any) => {
     const metadata = ai?.analysisMetadata || mergedData?.analysisMetadata || {};
 
-    let officeCapRate = parseFloat(String(
+    let baseCapRate = parseFloat(String(
         metadata.officeCapRate
         ?? mergedData?.officeCapRate
         ?? findDeepValue(mergedData, 'officeCapRate')
-        ?? metadata.capRate
-        ?? mergedData?.capRate
         ?? 0,
     )) || 0;
 
-    if (officeCapRate <= 0) {
+    if (baseCapRate <= 0) {
         const ind = mergedData?.marketIndicators || findDeepValue(mergedData, 'marketIndicators');
         const incomeSeries = ind?.yieldRates?.income?.data;
         if (Array.isArray(incomeSeries) && incomeSeries.length > 0) {
             const sorted = [...incomeSeries].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-            officeCapRate = parseFloat(String(sorted[sorted.length - 1]?.value)) || 0;
+            baseCapRate = parseFloat(String(sorted[sorted.length - 1]?.value)) || 0;
         }
     }
 
@@ -1794,10 +1792,19 @@ const resolveIncomeCapRates = (mergedData: any, ai: any) => {
         householdLoanRate = 4.43;
     }
 
-    const capRate = officeCapRate > 0 ? officeCapRate : householdLoanRate;
-    const isRoneBased = officeCapRate > 0;
+    let adjustedCapRate = parseFloat(String(
+        metadata.capRate
+        ?? mergedData?.capRate
+        ?? findDeepValue(mergedData, 'capRate')
+        ?? 0,
+    )) || 0;
 
-    return { capRate, householdLoanRate, isRoneBased };
+    const isRoneBased = baseCapRate > 0;
+
+    // If backend provided an adjustedCapRate, use it. Otherwise use baseCapRate or householdLoanRate.
+    const finalCapRate = adjustedCapRate > 0 ? adjustedCapRate : (baseCapRate > 0 ? baseCapRate : householdLoanRate);
+
+    return { capRate: finalCapRate, baseCapRate, householdLoanRate, isRoneBased };
 };
 
 const formatIncomePriceEok = (won: number): string => {
@@ -1905,7 +1912,7 @@ const IncomeApproachSection = ({
         );
     }
 
-    const { capRate, householdLoanRate, isRoneBased } = resolveIncomeCapRates(mergedData, ai);
+    const { capRate, baseCapRate, householdLoanRate, isRoneBased } = resolveIncomeCapRates(mergedData, ai);
     const depositIncome = depositWon * (householdLoanRate / 100);
     const annualRentIncome = monthlyRentWon * 12;
 
@@ -2003,7 +2010,11 @@ const IncomeApproachSection = ({
                             <div className="flex flex-col">
                                 <span className="font-bold" style={{ color: accent }}>적용 환원율 (CAP Rate)</span>
                                 {isRoneBased ? (
-                                    <span className="text-white/40 text-[10px]">R-ONE 오피스 소득수익률 기준</span>
+                                    <span className="text-white/40 text-[10px]">
+                                        {baseCapRate > 0 && capRate !== baseCapRate
+                                            ? `입지 보정 적용 (R-ONE 원본: ${baseCapRate.toFixed(2)}%)`
+                                            : 'R-ONE 오피스 소득수익률 기준'}
+                                    </span>
                                 ) : (
                                     <span className="text-[10px]" style={{ color: hexToRgba(accent, 0.75) }}>
                                         ※ R-ONE 데이터 미존재 · 가계대출금리 대체 적용
@@ -2044,9 +2055,11 @@ const IncomeApproachSection = ({
                     <div className="text-white/50 text-[11px] leading-relaxed font-medium space-y-1">
                         <p>
                             ※ 빌딩 추정가 = 연간 순영업소득(NOI) ÷ 캡레이트(환원율).{' '}
-                            {isRoneBased
-                                ? 'R-ONE 오피스 소득수익률(분기)을 연환산하여 적용.'
-                                : '가계대출금리를 환원율로 대체 적용한 참고치입니다.'}
+                            {isRoneBased && baseCapRate > 0 && capRate !== baseCapRate
+                                ? `R-ONE 기준 ${baseCapRate.toFixed(2)}%에서 입지 프리미엄을 반영하여 ${capRate.toFixed(2)}%로 조정됨.`
+                                : isRoneBased
+                                    ? 'R-ONE 오피스 소득수익률(분기)을 연환산하여 적용.'
+                                    : '가계대출금리를 환원율로 대체 적용한 참고치입니다.'}
                         </p>
                         <p>
                             ※ 보증금 운용수익은 가계대출금리({householdLoanRate.toFixed(2)}%) 기준으로 산출한 참고치이며
@@ -2261,7 +2274,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         } else {
             targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
         }
-    } catch (_) {}
+    } catch (_) { }
 
     const renderPriceReasonMethods = (spectrum: any) => {
         if (!spectrum) return null;
@@ -2485,25 +2498,31 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         const monthlyRevenue = findDeepValue(mergedData, 'monthly_revenue') || findDeepValue(mergedData, 'monthlyRevenue');
         const monthlyProfit = findDeepValue(mergedData, 'monthly_profit') || findDeepValue(mergedData, 'monthlyProfit');
 
-        const formatVal = (val: any) => {
+        const formatValWon = (val: any) => {
             if (val === null || val === undefined) return '-';
-            const num = parseFloat(val.toString());
+            let num = parseFloat(val.toString().replace(/,/g, ''));
             if (isNaN(num) || num === 0) return '-';
+            // 만약 단위가 만원 이하라면(예: 20000) 원 단위로 변환
+            if (num <= 1000000) num *= 10000;
             return formatKoreanCurrency(num);
         };
 
         const getPriceText = () => {
-            if (!txType) return '미입력';
-            if (txType === '매매' || txType === '실거래' || txType === '경매') {
-                return priceVal ? `${formatVal(priceVal)}` : '미입력';
-            } else if (txType === '전세') {
-                return deposit ? `보증금 ${formatVal(deposit)}` : '보증금 미입력';
+            const meta = ai?.analysisMetadata || {};
+            const userPrice = resolveUserPriceWon(meta, mergedData);
+
+            if (txType === '전세') {
+                return deposit ? `보증금 ${formatValWon(deposit)}` : '보증금 미입력';
             } else if (txType === '월세') {
-                const depText = deposit ? `보증금 ${formatVal(deposit)}` : '보증금 -';
-                const rentText = monthlyRent ? `월세 ${formatVal(monthlyRent)}` : '월세 -';
+                const depText = deposit ? `보증금 ${formatValWon(deposit)}` : '보증금 -';
+                const rentText = monthlyRent ? `월세 ${formatValWon(monthlyRent)}` : '월세 -';
                 return `${depText} / ${rentText}`;
+            } else {
+                // 매매, 실거래, 경매, 또는 미입력(기본 매매로 간주하여 userPrice 표출)
+                if (userPrice > 0) return formatKoreanCurrency(userPrice);
+                if (priceVal) return formatValWon(priceVal);
+                return '미입력';
             }
-            return '미입력';
         };
 
         const detailsList = [];
@@ -2515,12 +2534,12 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         detailsList.push({ label: '층수 / 면적', value: `${floorText} | 전용 ${areaText}`, icon: Layers });
 
         if (premium || currentBusiness || desiredBusiness || monthlyRevenue || monthlyProfit) {
-            if (premium) detailsList.push({ label: '권리금', value: formatVal(premium), icon: Award });
+            if (premium) detailsList.push({ label: '권리금', value: formatValWon(premium), icon: Award });
             if (currentBusiness || desiredBusiness) {
                 detailsList.push({ label: '업종 현황', value: `현재: ${currentBusiness || '-'} | 희망: ${desiredBusiness || '-'}`, icon: Store });
             }
             if (monthlyRevenue || monthlyProfit) {
-                detailsList.push({ label: '운영 수익', value: `매출 ${formatVal(monthlyRevenue)} / 수익 ${formatVal(monthlyProfit)}`, icon: TrendingUp });
+                detailsList.push({ label: '운영 수익', value: `매출 ${formatValWon(monthlyRevenue)} / 수익 ${formatValWon(monthlyProfit)}`, icon: TrendingUp });
             }
         }
 
@@ -2583,8 +2602,8 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         const ledgerTitle = isBuilding
             ? '빌딩 프리미엄 검증 및 분석'
             : isHouse
-            ? '주택 프리미엄 검증 및 분석'
-            : '토지 프리미엄 검증 및 분석';
+                ? '주택 프리미엄 검증 및 분석'
+                : '토지 프리미엄 검증 및 분석';
 
         let targetArea = 0;
         try {
@@ -2601,7 +2620,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
             } else {
                 targetArea = parseFloat(t.area_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.area_sqm || '0');
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
@@ -3118,7 +3137,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             <div className="flex flex-col gap-0.5">
                                 <span className="text-white text-base font-bold tracking-tight">종합 데이터로 현 매물의 가격을 분석합니다
                                 </span>
-                               
+
                             </div>
                         </div>
 
