@@ -42,6 +42,8 @@ interface KakaoMapProps {
   benefitParcels?: any[];
   selectedBenefitParcel?: any;
   onBenefitParcelSelect?: (parcel: any) => void;
+  /** 검색·내 위치 이동 시 줌 (카카오: 숫자↑=축소). 기본 4 */
+  navigationZoomLevel?: number;
 }
 
 // 전역 스크립트 로딩 상태 관리
@@ -65,6 +67,7 @@ export default function KakaoMap({
   benefitParcels,
   selectedBenefitParcel,
   onBenefitParcelSelect,
+  navigationZoomLevel = 4,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -459,7 +462,9 @@ export default function KakaoMap({
     } else {
       const position = new window.kakao.maps.LatLng(lat, lng);
       map.setCenter(position);
-      map.setLevel(isAnalyzeMode ? 3 : 5);
+      if (isAnalyzeMode) {
+        map.setLevel(3);
+      }
     }
   }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
@@ -529,7 +534,7 @@ export default function KakaoMap({
     const x = parseFloat(result.x);
     const coords = new window.kakao.maps.LatLng(y, x);
     map.setCenter(coords);
-    map.setLevel(4);
+    map.setLevel(navigationZoomLevel);
     setSearchInput(result.place_name || result.address_name);
     setSearchResults([]);
   };
@@ -542,7 +547,7 @@ export default function KakaoMap({
       const { lat, lng } = await getCurrentPosition();
       const coords = new window.kakao.maps.LatLng(lat, lng);
       map.setCenter(coords);
-      map.setLevel(4);
+      map.setLevel(navigationZoomLevel);
     } catch (err) {
       const message =
         err instanceof GeolocationError
@@ -668,15 +673,15 @@ export default function KakaoMap({
         </button>
       )}
 
-      {/* 범례 + 영역 매물 수 (PC만) */}
+      {/* 영역 매물 수 (모바일·PC) + 범례 (PC만) */}
       {!isAnalyzeMode && !isLoading && (
-        <div className="absolute bottom-4 left-4 z-20 hidden lg:flex flex-col gap-2 max-w-[200px]">
+        <div className="absolute bottom-20 lg:bottom-4 left-4 z-20 flex flex-col gap-2 max-w-[200px]">
           {markerCount > 0 && (
             <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-lg border border-slate-200/80 text-[11px] font-bold text-slate-700">
-              현재 위치 분석 <span className="text-emerald-600">{markerCount}</span>건
+              반경 <span className="text-emerald-600">{markerCount}</span>건
             </div>
           )}
-          <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2.5 shadow-lg border border-slate-200/80">
+          <div className="hidden lg:block bg-white/95 backdrop-blur-md rounded-xl px-3 py-2.5 shadow-lg border border-slate-200/80">
             <div className="flex flex-wrap gap-x-2 gap-y-1">
               {LEGEND_ITEMS.map(item => (
                 <span key={item.label} className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600">

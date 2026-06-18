@@ -112,7 +112,7 @@ export function createMarkerElement(
     badge.title = `AI 평가 ${Math.round(property.riskScore)}점 · ${score.label}`;
     badge.style.cssText = `
       position:absolute;top:-6px;right:-8px;min-width:22px;height:22px;padding:0 5px;
-      border-radius:999px;background:${score.bg};color:${score.text};
+      border-radius:999px;background:${score.bg};color:#000000;
       font-size:11px;font-weight:800;line-height:22px;text-align:center;
       border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;
     `;

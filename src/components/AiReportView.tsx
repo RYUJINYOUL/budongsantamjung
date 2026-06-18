@@ -1,17 +1,50 @@
+'use client';
+
 import React from 'react';
-import { motion } from 'framer-motion';
 import RiskBubbleChart from './RiskBubbleChart';
 import PremiumRiskGauge from './PremiumRiskGauge';
+import ComparableMap from './ComparableMap';
 import {
     Zap, ShieldCheck, DollarSign, Layers, TrendingUp, ShieldAlert,
     CheckCircle2, Search, Gavel, MapPin, Hexagon, BarChart3,
     AlertCircle, Sparkles, LogOut, Wrench, Percent, Coins,
     Compass, Lock, Award, Building, Activity, Info, ExternalLink,
-    HelpCircle, CheckSquare, RefreshCw, Eye, Shield,
-    List, ChevronRight, Store, ArrowRightLeft, Calendar, FileText,
-    Milestone, Play, Map, X
+    CheckSquare, RefreshCw, Eye, Shield,
+    List, ChevronRight, ChevronDown, Store, ArrowRightLeft, Calendar, FileText,
+    Milestone, Play, Map, X, SlidersHorizontal, Calculator
 } from 'lucide-react';
-import ComparableMap from './ComparableMap';
+
+/** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
+const REPORT_PASTEL_PALETTE = [
+    '#EDDCD2', '#C5DEDD', '#D6E2E9', '#FDE2E4', '#DBE7E4', '#FAD2E1', '#BCD4E6', '#F0EFEB',
+] as const;
+
+const PRICE_METHOD_ACCENTS = {
+    summary: '#C5DEDD',
+    comparables: '#C5DEDD',
+    building: '#BCD4E6',
+    official: '#EDDCD2',
+    regional: '#D6E2E9',
+    income: '#FAD2E1',
+    narrative: '#FDE2E4',
+} as const;
+
+/** 가치 정밀 검증 원장 — 타당성 검증 카드와 동일 팔레트 매핑 */
+const LEDGER_ACCENTS = {
+    summary: PRICE_METHOD_ACCENTS.summary,
+    comparables: PRICE_METHOD_ACCENTS.comparables,
+    multipliers: PRICE_METHOD_ACCENTS.building,
+    location: PRICE_METHOD_ACCENTS.official,
+    zoning: PRICE_METHOD_ACCENTS.regional,
+} as const;
+
+const hexToRgba = (hex: string, alpha: number) => {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+};
 
 // Typewriter 컴포넌트
 const Typewriter = ({ text, delay = 30 }: { text: string; delay?: number }) => {
@@ -53,58 +86,308 @@ const MiniBar = ({ label, score, reason, max = 10, customColor }: { label: strin
     );
 };
 
-// MultiplierTile 컴포넌트
-const MultiplierTile = ({
+// ── 2단계: 개별 요인 보정 계수 (Multipliers) ─────────────────
+
+type LedgerMultiplierTile = {
+    name: string;
+    factor: number;
+    desc: string;
+    infoText?: string;
+    customDescElement?: React.ReactNode;
+};
+
+const getMultiplierFactorStyle = (factor: number) => {
+    if (factor > 1.001) {
+        return { color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)' };
+    }
+    if (factor < 0.999) {
+        return { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)' };
+    }
+    return { color: 'rgba(255,255,255,0.38)', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.1)' };
+};
+
+const LedgerMultiplierFactorCard = ({
     indexStr,
     name,
     factor,
     desc,
     infoText,
-    customDescElement
-}: {
-    indexStr: string;
-    name: string;
-    factor: number;
-    desc: string;
-    infoText: string;
-    customDescElement?: React.ReactNode;
-}) => {
-    const [isOpen, setIsOpen] = React.useState(false);
-    const isUp = factor > 1.001;
-    const isDown = factor < 0.999;
-    const badgeColor = isUp ? "rgba(16,185,129,0.12)" : isDown ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.06)";
-    const textColor = isUp ? "#10b981" : isDown ? "#f59e0b" : "rgba(255,255,255,0.38)";
-    const strokeColor = isUp ? "rgba(16,185,129,0.2)" : isDown ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.1)";
+    customDescElement,
+    accentColor = LEDGER_ACCENTS.multipliers,
+}: LedgerMultiplierTile & { indexStr: string; accentColor?: string }) => {
+    const [expanded, setExpanded] = React.useState(false);
+    const style = getMultiplierFactorStyle(factor);
+    const hasDetail = Boolean(desc || infoText || customDescElement);
 
     return (
-        <div className="p-3 bg-white/20 border border-white/5 rounded-2xl flex flex-col gap-2 transition-all">
-            <div className="flex justify-between items-start">
-                <div className="flex items-center gap-1.5">
-                    <span className="text-[#c5dedd] text-xs font-bold">{indexStr}</span>
-                    <span className="text-white text-xs font-bold">{name}</span>
-                    <button
-                        type="button"
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="p-0.5 hover:bg-white/10 rounded-full transition-colors text-white/40 hover:text-white flex items-center justify-center shrink-0"
-                        title="보정 설명 보기"
-                    >
-                        <HelpCircle className="w-3.5 h-3.5" />
-                    </button>
+        <div
+            className="rounded-xl border bg-white/[0.02] overflow-hidden"
+            style={{ borderColor: style.border }}
+        >
+            <div className="px-3 pt-2.5 pb-0 flex items-start justify-between gap-2.5">
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold" style={{ color: accentColor }}>{indexStr}</span>
+                        <span className="text-white text-[11px] font-bold">{name}</span>
+                    </div>
+                    {desc && !expanded && (
+                        <p className="text-white/50 text-[10px] leading-relaxed mt-1.5 line-clamp-2">{desc}</p>
+                    )}
                 </div>
-                <div style={{ backgroundColor: badgeColor, color: textColor, borderColor: strokeColor }} className="px-2 py-1 rounded-lg border text-[11px] font-black font-mono">
+                <div
+                    className="shrink-0 px-2.5 py-1.5 rounded-lg border text-[13px] font-black font-mono leading-none"
+                    style={{
+                        color: style.color,
+                        background: `linear-gradient(135deg, ${style.bg}, rgba(255,255,255,0.02))`,
+                        borderColor: style.border,
+                    }}
+                >
                     {factor.toFixed(3)}x
                 </div>
             </div>
-
-            {isOpen && (
-                <div className="text-[10px] text-[#c5dedd] bg-white/5 border border-white/5 p-2.5 rounded-xl leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200">
-                    {infoText}
+            {hasDetail && (
+                <button
+                    type="button"
+                    onClick={() => setExpanded(v => !v)}
+                    className="w-full mt-2 px-3 py-2 border-t border-white/5 flex items-center justify-between text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+                >
+                    <span>보정 근거 보기</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+            )}
+            {expanded && hasDetail && (
+                <div className="px-3 pb-3 flex flex-col gap-2">
+                    {infoText && (
+                        <p
+                            className="text-[10px] leading-relaxed bg-white/5 border border-white/5 p-2.5 rounded-xl"
+                            style={{ color: hexToRgba(accentColor, 0.85) }}
+                        >
+                            {infoText}
+                        </p>
+                    )}
+                    {customDescElement || (desc ? (
+                        <p className="text-white/50 text-[10px] leading-relaxed">{desc}</p>
+                    ) : null)}
                 </div>
             )}
-
-            {!customDescElement && <span className="text-white/50 text-[11px] leading-relaxed">{desc}</span>}
-            {customDescElement}
         </div>
+    );
+};
+
+const LedgerMultipliersSection = ({ tiles }: { tiles: LedgerMultiplierTile[] }) => {
+    const combined = tiles.reduce((p, t) => p * (t.factor || 1), 1);
+    const appliedCount = tiles.filter(t => t.factor > 1.001 || t.factor < 0.999).length;
+    const indexMap = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
+    const accent = LEDGER_ACCENTS.multipliers;
+
+    return (
+        <PriceReasonMethodCard
+            icon={SlidersHorizontal}
+            title="프리미엄 · 중요 항목 ㎡당 대입 단가 보정"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('실거래 기반', accent)}
+                    {metaChip(`${tiles.length}개 요인`)}
+                    {appliedCount > 0
+                        ? metaChip(`${appliedCount}개 적용`, '#10b981')
+                        : metaChip('보정 없음')}
+                </>
+            )}
+        >
+            <div
+                className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                style={{
+                    border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                    boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                }}
+            >
+                <div
+                    className="mx-3.5 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>합산 보정 계수</span>
+                    <p className="text-[22px] font-black mt-0.5 leading-none" style={{ color: accent }}>{combined.toFixed(3)}x</p>
+                    <p className="text-[10px] text-white/35 mt-1.5">
+                        {tiles.length}개 요인 곱셈 · {appliedCount > 0 ? `${appliedCount}개 실제 반영` : '모두 1.000x'}
+                    </p>
+                </div>
+                <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+                    {tiles.map((tile, i) => (
+                        <LedgerMultiplierFactorCard
+                            key={i}
+                            indexStr={indexMap[i] || `${i + 1}`}
+                            accentColor={accent}
+                            {...tile}
+                        />
+                    ))}
+                </div>
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
+// ── 3단계: 입지 등급 및 CBD 프리미엄 ─────────────────────────
+
+const LedgerLocationSection = ({
+    cbdGrade,
+    cbdScore,
+    cbdEst,
+    targetArea,
+    isBuildingOrHouse,
+}: {
+    cbdGrade: string;
+    cbdScore: number;
+    cbdEst: any;
+    targetArea: number;
+    isBuildingOrHouse: boolean;
+}) => {
+    const minMult = cbdEst?.multiplier?.min ?? 1.0;
+    const maxMult = cbdEst?.multiplier?.max ?? 1.0;
+    const officialPerSqm = cbdEst?.officialPerSqm ?? 0;
+    const minTotalMan = cbdEst && targetArea > 0
+        ? Math.round((officialPerSqm * minMult * targetArea) / 10000)
+        : 0;
+    const maxTotalMan = cbdEst && targetArea > 0
+        ? Math.round((officialPerSqm * maxMult * targetArea) / 10000)
+        : 0;
+    const hasRange = Boolean(cbdEst && minTotalMan > 0 && maxTotalMan > 0);
+    const title = isBuildingOrHouse
+        ? '프리미엄 등급과 중심상업지역 입지 등급 참고'
+        : '중심상업지역 접근성 · 용도지역 배율로 토지 잠재 가치 추정';
+    const accent = LEDGER_ACCENTS.location;
+
+    return (
+        <PriceReasonMethodCard
+            icon={MapPin}
+            title={title}
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('입지 분석', accent)}
+                    {metaChip(`CBD ${cbdGrade}`)}
+                    {metaChip(`${cbdScore}점`, LEDGER_ACCENTS.comparables)}
+                    {hasRange && metaChip(`배율 ${minMult.toFixed(1)}~${maxMult.toFixed(1)}배`, LEDGER_ACCENTS.multipliers)}
+                </>
+            )}
+        >
+            <div
+                className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                style={{
+                    border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                    boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                }}
+            >
+                <div
+                    className="mx-3.5 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>입지 등급</span>
+                    <p className="text-[22px] font-black mt-0.5 leading-none" style={{ color: accent }}>{cbdGrade}</p>
+                    <p className="text-[10px] text-white/35 mt-1.5">
+                        종합 점수 {cbdScore}점
+                        {hasRange ? ` · 추정 ${minTotalMan.toLocaleString()}~${maxTotalMan.toLocaleString()}만원` : ''}
+                    </p>
+                </div>
+                <div className="px-3.5 pb-3.5 flex flex-col gap-2">
+                    {hasRange ? (
+                        <>
+                            <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 flex flex-col gap-1">
+                                <span className="text-[10px] text-white/40">일반 용도/주거 기준</span>
+                                <span className="text-white font-bold text-[13px]">
+                                    {minTotalMan.toLocaleString()}만원 ~ {maxTotalMan.toLocaleString()}만원
+                                </span>
+                                <span className="text-[10px] text-white/35">
+                                    공시지가 × 배율 {minMult.toFixed(1)}~{maxMult.toFixed(1)}배 · {targetArea.toLocaleString()}㎡
+                                </span>
+                            </div>
+                            <div
+                                className="rounded-xl px-3 py-2.5"
+                                style={{
+                                    border: `1px solid ${hexToRgba(LEDGER_ACCENTS.multipliers, 0.15)}`,
+                                    backgroundColor: hexToRgba(LEDGER_ACCENTS.multipliers, 0.04),
+                                }}
+                            >
+                                <span className="text-[10px] font-semibold" style={{ color: hexToRgba(LEDGER_ACCENTS.multipliers, 0.85) }}>상업화 · 개발 성공 시 잠재 가치</span>
+                                <p className="text-white/55 text-[10px] leading-relaxed mt-1">
+                                    공시지가의 3.5배 ~ 5.0배 범위 적용 가능 (개발 호재·용도변경 성공 시)
+                                </p>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                            <p className="text-white/55 text-[11px] leading-relaxed">
+                                빌딩/주택 실거래가에는 입지 프리미엄이 이미 반영되어 있으므로 별도 CBD 배율 산출 불필요
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
+// ── 4단계: 인접 필지 용도변경 이력 ───────────────────────────
+
+const LedgerZoningChangeSection = ({ comment }: { comment: string }) => {
+    const noHistory = /이력 없음|없습니다|미감지|해당 없음/i.test(comment);
+    const accent = LEDGER_ACCENTS.zoning;
+
+    return (
+        <PriceReasonMethodCard
+            icon={ArrowRightLeft}
+            title="대상 인접 필지 용도변경 이력 조회"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('5년 이내', accent)}
+                    {metaChip('인접 필지')}
+                    {metaChip(noHistory ? '변경 이력 없음' : '변경 이력 감지', noHistory ? undefined : accent)}
+                </>
+            )}
+        >
+            <div
+                className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                style={{
+                    border: `1px solid ${noHistory ? 'rgba(255,255,255,0.1)' : hexToRgba(accent, 0.25)}`,
+                    boxShadow: noHistory ? undefined : `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                }}
+            >
+                <div
+                    className="mx-3.5 mt-3.5 mb-3 rounded-xl px-4 py-3 border"
+                    style={{
+                        background: noHistory
+                            ? 'rgba(255,255,255,0.03)'
+                            : `linear-gradient(135deg, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        borderColor: noHistory ? 'rgba(255,255,255,0.06)' : hexToRgba(accent, 0.3),
+                    }}
+                >
+                    <span
+                        className="text-[10px] font-semibold uppercase tracking-wide"
+                        style={{ color: noHistory ? 'rgba(255,255,255,0.35)' : hexToRgba(accent, 0.85) }}
+                    >
+                        용도변경 조회 결과
+                    </span>
+                    <p
+                        className="text-[13px] font-bold mt-1 leading-snug"
+                        style={{ color: noHistory ? 'rgba(255,255,255,0.55)' : accent }}
+                    >
+                        {noHistory ? '인접 필지 변경 이력 없음' : '인접 필지 용도변경 감지'}
+                    </p>
+                </div>
+                <div className="px-3.5 pb-3.5">
+                    <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
+                        <p className="text-white/60 text-[11px] leading-relaxed">{comment}</p>
+                    </div>
+                </div>
+            </div>
+        </PriceReasonMethodCard>
     );
 };
 
@@ -154,6 +437,1277 @@ const formatPrice = (val: any) => {
     return `${Math.round(num).toLocaleString()}원`;
 };
 
+// ── 비교사례 대입 리스트 헬퍼 ──────────────────────────────
+
+const normalizeDealAmountWon = (raw: any): number => {
+    const num = Number(raw) || 0;
+    if (num <= 0) return 0;
+    return num > 1000000 ? num : num * 10000;
+};
+
+/** 빌딩 수익환원 입력(만원 또는 원) → 원화 통일 */
+const normalizeIncomeInputWon = (raw: any): number => normalizeDealAmountWon(raw);
+
+const formatEokCompact = (won: number): string => {
+    if (!won || won <= 0) return '-';
+    const eok = won / 100000000;
+    if (eok >= 10) return `${Math.round(eok)}억`;
+    return `${eok.toFixed(1).replace(/\.0$/, '')}억`;
+};
+
+const formatSqmManwon = (wonPerSqm: number): string => {
+    if (!wonPerSqm || wonPerSqm <= 0) return '-';
+    const man = wonPerSqm >= 10000 ? wonPerSqm / 10000 : wonPerSqm;
+    return `${Math.round(man).toLocaleString()}만/㎡`;
+};
+
+const AREA_SIZE_RATIO_SMALL = 1 / 3;  // 사례 면적 < 대상 1/3 → 소형
+const AREA_SIZE_RATIO_LARGE = 2;      // 사례 면적 > 대상 2배 → 대형
+
+const getAreaSizeHint = (compArea: number, targetArea: number): 'small' | 'large' | 'normal' | null => {
+    if (compArea <= 0 || targetArea <= 0) return null;
+    const ratio = compArea / targetArea;
+    if (ratio < AREA_SIZE_RATIO_SMALL) return 'small';
+    if (ratio > AREA_SIZE_RATIO_LARGE) return 'large';
+    return 'normal';
+};
+
+const resolveComparableMetrics = (c: any, targetArea: number) => {
+    const platPlc = c.platPlc || '';
+    const platAddr = c.platAddr || '';
+    const umdNm = c.umdNm || '';
+    const addr = umdNm || platPlc.split(' ').pop() || platAddr.split(' ').pop() || '';
+    const fullAddr = [c.sggNm, umdNm, c.jibun].filter(Boolean).join(' ').trim() || platPlc || platAddr || addr;
+
+    const dealWon = normalizeDealAmountWon(c.dealAmount);
+    const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
+    const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
+    const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+    const adjTotalWon = targetArea > 0 ? adjSqm * targetArea : 0;
+
+    const simVal = Number(c.similarityScore || c.score) || 0;
+    const simRounded = simVal > 0 ? Math.round(simVal) : 0;
+    const distVal = Number(c.distance ?? c.distanceFromTarget) || 0;
+    const month = String(c.dealMonth || '?').padStart(2, '0');
+    const date = c.dealYear ? `${c.dealYear}.${month}` : '-';
+
+    return {
+        addr: addr || fullAddr,
+        fullAddr,
+        dealWon,
+        dealEok: formatEokCompact(dealWon),
+        area,
+        rawSqm,
+        adjSqm,
+        adjTotalWon,
+        adjTotalEok: formatEokCompact(adjTotalWon),
+        rawSqmStr: formatSqmManwon(rawSqm),
+        adjSqmStr: formatSqmManwon(adjSqm),
+        simVal,
+        simRounded,
+        simStr: simRounded > 0 ? `${simRounded}%` : '참고용',
+        distStr: distVal > 0 ? `${Math.round(distVal)}m` : '-',
+        date,
+        monthsAgo: c.monthsAgo,
+        areaSizeHint: getAreaSizeHint(area, targetArea),
+        areaRatio: targetArea > 0 && area > 0 ? area / targetArea : null,
+        zoning: c.zoning || c.landUse || '-',
+        jimok: c.jimok || '',
+        officialPrice: c.officialPrice,
+        officialPriceRatio: c.officialPriceRatio,
+        timeAdjFactor: c.timeAdjFactor || 1,
+        timeAdjSource: c.timeAdjSource,
+        deductions: Array.isArray(c.deductions) ? c.deductions : [],
+        isRedevelopment: c.isRedevelopment,
+        correctionClamped: c.correctionClamped,
+    };
+};
+
+const getPastelAccent = (index: number) => REPORT_PASTEL_PALETTE[index % REPORT_PASTEL_PALETTE.length];
+
+const ComparableCaseCard = ({
+    c,
+    index,
+    targetArea,
+    accent = PRICE_METHOD_ACCENTS.comparables,
+}: {
+    c: any;
+    index: number;
+    targetArea: number;
+    accent?: string;
+}) => {
+    const [expanded, setExpanded] = React.useState(false);
+    const m = resolveComparableMetrics(c, targetArea);
+    const paletteColor = getPastelAccent(index);
+
+    return (
+        <div
+            className="rounded-2xl bg-white/[0.02] overflow-hidden"
+            style={{
+                border: `1px solid ${hexToRgba(paletteColor, 0.45)}`,
+                boxShadow: `0 0 0 1px ${hexToRgba(paletteColor, 0.1)}`,
+            }}
+        >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-2 px-4 pt-3.5 pb-2">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-white text-xs font-bold">#{index + 1} {m.addr || `사례 ${index + 1}`}</span>
+                        {m.areaSizeHint === 'small' && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
+                                소형 필지
+                            </span>
+                        )}
+                        {m.areaSizeHint === 'large' && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/30">
+                                대형 필지
+                            </span>
+                        )}
+                        {m.areaSizeHint === 'normal' && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-sky-400/10 text-sky-300 border border-sky-400/25">
+                                동일 필지
+                            </span>
+                        )}
+                    </div>
+                    {m.fullAddr && m.fullAddr !== m.addr && (
+                        <p className="text-white/30 text-[10px] truncate mt-0.5">{m.fullAddr}</p>
+                    )}
+                </div>
+                <div className="flex flex-wrap gap-1 justify-end shrink-0">
+                    <span
+                        className="text-[9px] font-semibold px-2 py-0.5 rounded-md border"
+                        style={{
+                            color: accent,
+                            backgroundColor: hexToRgba(accent, 0.1),
+                            borderColor: hexToRgba(accent, 0.2),
+                        }}
+                    >
+                        공시 유사 {m.simStr}
+                    </span>
+                    {m.distStr !== '-' && (
+                        <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-white/5 text-white/45 border border-white/10">
+                            {m.distStr}
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Hero: 대입 가치 */}
+            <div
+                className="mx-3 mb-2 rounded-lg px-3 py-2 flex flex-col gap-0.5"
+                style={{
+                    background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.1)}, ${hexToRgba(accent, 0.04)})`,
+                    border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                }}
+            >
+                <div className="flex items-baseline justify-between gap-2 min-w-0">
+                    <span className="text-[9px] font-semibold shrink-0" style={{ color: hexToRgba(accent, 0.8) }}>본 매물 대입</span>
+                    <p className="text-lg font-black leading-none truncate" style={{ color: accent }}>{m.adjTotalEok}원</p>
+                </div>
+                {targetArea > 0 && (
+                    <p className="text-[9px] text-white/35 leading-tight truncate">
+                        ㎡당 {m.adjSqmStr} × {targetArea.toLocaleString()}㎡
+                    </p>
+                )}
+            </div>
+
+            {/* Sub: 실거래 + 면적/용도 */}
+            <div className="px-4 pb-3 flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-white/35">그 필지 실거래 ({m.date})</span>
+                    <span className="text-white/60 font-semibold">{m.dealEok}원</span>
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
+                    {m.area > 0 && (
+                        <span>
+                            면적 {m.area.toLocaleString()}㎡
+                            {m.areaRatio != null && targetArea > 0 && (
+                                <span className={m.areaSizeHint === 'small' ? ' text-red-400/80' : m.areaSizeHint === 'large' ? ' text-amber-300/80' : m.areaSizeHint === 'normal' ? ' text-sky-300/80' : ''}>
+                                    {' '} · ( {Math.round(m.areaRatio * 100)}% )
+                                </span>
+                            )}
+                        </span>
+                    )}
+                    <span>{m.rawSqmStr}</span>
+                    {m.zoning !== '-' && <span>{m.zoning}</span>}
+                    {m.jimok && <span>지목 {m.jimok}</span>}
+                    {m.isRedevelopment && (
+                        <span className="text-amber-400/80">정비사업</span>
+                    )}
+                </div>
+            </div>
+
+            {/* Accordion: 보정 상세 */}
+            <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-2 border-t border-white/5 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+            >
+                <span>보정 어떻게 했나?</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+            {expanded && (
+                <div className="px-4 pb-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/10">
+                    {m.officialPriceRatio != null && (
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">공시지가 비율</span>
+                            <span className="text-white/70 font-mono">×{Number(m.officialPriceRatio).toFixed(3)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between text-[10px]">
+                        <span className="text-white/35">시점 보정</span>
+                        <span className="text-white/70 font-mono">
+                            ×{Number(m.timeAdjFactor).toFixed(4)}
+                            {m.timeAdjSource ? ` (${m.timeAdjSource})` : ''}
+                        </span>
+                    </div>
+                    {m.officialPrice > 0 && (
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">사례 공시지가</span>
+                            <span className="text-white/70">{formatSqmManwon(Number(m.officialPrice))}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between text-[10px]">
+                        <span className="text-white/35">보정 전 → 후 ㎡당</span>
+                        <span className="text-white/70">{m.rawSqmStr} → <span style={{ color: accent }}>{m.adjSqmStr}</span></span>
+                    </div>
+                    {m.correctionClamped && (
+                        <span className="text-amber-400/70 text-[9px]">⚠ 보정 클램프 적용됨</span>
+                    )}
+                    {m.deductions.map((d: any, i: number) => (
+                        <p key={i} className="text-[9px] text-white/40 leading-relaxed pt-0.5">
+                            {d.detail || d.item || JSON.stringify(d)}
+                        </p>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const NTS_BASE_PRICE_PER_SQM = 820000;
+
+const parseBuildingValueNote = (note: string) => {
+    if (!note) return null;
+    const structureMatch = note.match(/구조지수\(([^)]+)\)/);
+    const usageMatch = note.match(/용도지수\(([^)]+)\)/);
+    const locationMatch = note.match(/위치지수\(([^)]+)\)/);
+    const residualMatch = note.match(/잔가율\(([^)]+)\)/);
+    const totalMatch = note.match(/총 건물가치\s*([\d,]+)원/);
+    return {
+        structureIndex: structureMatch ? parseFloat(structureMatch[1]) : null,
+        usageIndex: usageMatch ? parseFloat(usageMatch[1]) : null,
+        locationIndex: locationMatch ? parseFloat(locationMatch[1]) : null,
+        residualRate: residualMatch ? parseFloat(residualMatch[1]) : null,
+        totalFromNote: totalMatch ? parseInt(totalMatch[1].replace(/,/g, ''), 10) : null,
+    };
+};
+
+const getLandAdjSpectrum = (comparables: any[], targetArea: number) => {
+    const totals = comparables
+        .map(c => resolveComparableMetrics(c, targetArea).adjTotalWon)
+        .filter(v => v > 0);
+    if (totals.length === 0) return null;
+    return { min: Math.min(...totals), max: Math.max(...totals), count: totals.length };
+};
+
+// ── 가격 타당성 검증: 방법론별 독립 카드 셸 ─────────────────
+
+const PriceReasonMethodCard = ({
+    icon: Icon,
+    title,
+    description,
+    chips,
+    accent,
+    children,
+}: {
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    title: string;
+    description?: React.ReactNode;
+    chips?: React.ReactNode;
+    accent: string;
+    children: React.ReactNode;
+}) => (
+    <div
+        className="p-5 sm:p-6 rounded-[32px] bg-[#0f172a]/55 flex flex-col gap-4 shadow-sm"
+        style={{
+            border: `1px solid ${hexToRgba(accent, 0.2)}`,
+            boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
+        }}
+    >
+        <div className="flex items-start gap-3.5">
+            <div
+                className="p-2 rounded-xl shrink-0"
+                style={{
+                    backgroundColor: hexToRgba(accent, 0.12),
+                    border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                }}
+            >
+                <Icon className="w-5 h-5" style={{ color: accent }} />
+            </div>
+            <div className="min-w-0 flex-1 flex flex-col gap-2 pt-0.5">
+                <span className="text-base font-bold leading-snug text-white">{title}</span>
+                {description && (
+                    <p className="text-white/40 text-[11px] leading-relaxed">{description}</p>
+                )}
+                {chips && <div className="flex flex-wrap gap-1.5">{chips}</div>}
+            </div>
+        </div>
+        {children}
+    </div>
+);
+
+const metaChip = (label: string, accent?: string) => (
+    <span
+        className="text-[9px] font-semibold px-2 py-0.5 rounded-md border"
+        style={accent ? {
+            color: accent,
+            backgroundColor: `${accent}18`,
+            borderColor: `${accent}40`,
+        } : {
+            color: 'rgba(255,255,255,0.45)',
+            backgroundColor: 'rgba(255,255,255,0.05)',
+            borderColor: 'rgba(255,255,255,0.1)',
+        }}
+    >
+        {label}
+    </span>
+);
+
+const ComparableHorizontalScroll = ({
+    items,
+    targetArea,
+    startIndex = 0,
+    accent = PRICE_METHOD_ACCENTS.comparables,
+}: {
+    items: any[];
+    targetArea: number;
+    startIndex?: number;
+    accent?: string;
+}) => (
+    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory -mx-1 px-1">
+        {items.map((c, index) => (
+            <div key={index} className="min-w-[300px] max-w-[300px] shrink-0 snap-center">
+                <ComparableCaseCard c={c} index={startIndex + index} targetArea={targetArea} accent={accent} />
+            </div>
+        ))}
+    </div>
+);
+
+// ── 가치 정밀 검증 원장: 요약 + 비교사례 카드 ─────────────────
+
+const LedgerSummaryCard = ({
+    title,
+    showMapButton,
+    onMapOpen,
+}: {
+    title: string;
+    showMapButton: boolean;
+    onMapOpen: () => void;
+}) => {
+    const accent = LEDGER_ACCENTS.summary;
+    return (
+    <div
+        className="p-6 bg-[#0f172a]/55 rounded-[40px]"
+        style={{
+            border: `1px solid ${hexToRgba(accent, 0.2)}`,
+            boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
+        }}
+    >
+        <div className="flex justify-between items-center w-full">
+            <div className="flex items-center gap-3">
+                <div
+                    className="p-2 rounded-xl"
+                    style={{
+                        backgroundColor: hexToRgba(accent, 0.12),
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <List className="w-4 h-4" style={{ color: accent }} />
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-white text-base font-bold tracking-tight">{title}</span>
+                    <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
+                </div>
+            </div>
+            {showMapButton && (
+                <button
+                    type="button"
+                    onClick={onMapOpen}
+                    className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
+                    style={{
+                        backgroundColor: hexToRgba(accent, 0.1),
+                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                        color: accent,
+                    }}
+                >
+                    <Map className="w-3.5 h-3.5" />
+                    <span>지도 보기</span>
+                </button>
+            )}
+        </div>
+    </div>
+    );
+};
+
+const LedgerComparablesSection = ({
+    categoryStr,
+    isBuilding,
+    isHouse,
+    comparables,
+    tier1Comparables,
+    tier2Comparables,
+    targetArea,
+    confidenceGrade,
+}: {
+    categoryStr: string;
+    isBuilding: boolean;
+    isHouse: boolean;
+    comparables: any[];
+    tier1Comparables?: any[];
+    tier2Comparables?: any[];
+    targetArea: number;
+    confidenceGrade?: string;
+}) => {
+    const useTier = ['land', 'building'].includes(categoryStr);
+    const tier1 = tier1Comparables || [];
+    const tier2 = tier2Comparables || [];
+    const totalCount = useTier ? tier1.length + tier2.length : comparables.length;
+
+    const title = isBuilding
+        ? '프리미엄 · 선별된 상업건물과 실거래 비교'
+        : isHouse
+        ? '프리미엄 · 선별된 주택건물과 실거래 비교'
+        : '프리미엄 · 선별된 토지와 실거래 비교';
+    const accent = LEDGER_ACCENTS.comparables;
+
+    return (
+        <PriceReasonMethodCard
+            icon={List}
+            title={title}
+            accent={accent}
+            chips={(
+                <>
+                    {targetArea > 0 && metaChip(`대상 ${targetArea.toLocaleString()}㎡`, accent)}
+                    {metaChip(`${totalCount}건`)}
+                    {confidenceGrade && metaChip(`신뢰 ${confidenceGrade}`, accent)}
+                </>
+            )}
+        >
+            {useTier ? (
+                <>
+                    {tier1.length === 0 ? (
+                        <span className="text-white/38 text-xs">정밀 필터에 부합하는 비교 사례가 없어 아래 완화 사례와 비교합니다.</span>
+                    ) : (
+                        <>
+                            <span className="text-white/70 text-[11px] font-bold">
+                            정밀 필터 (0.9~1.1배, 300m 이내) · {tier1.length}건
+                            </span>
+                            <ComparableHorizontalScroll items={tier1} targetArea={targetArea} startIndex={0} accent={accent} />
+                        </>
+                    )}
+                    {tier2.length > 0 && (
+                        <div className="pt-3 border-t border-white/5 flex flex-col gap-2">
+                            <span className="text-white/50 text-[11px] font-semibold">
+                                완화 기준 · {tier2.length}건
+                            </span>
+                            <ComparableHorizontalScroll items={tier2} targetArea={targetArea} startIndex={tier1.length} accent={accent} />
+                        </div>
+                    )}
+                </>
+            ) : comparables.length === 0 ? (
+                <span className="text-white/38 text-xs">부합하는 비교 사례가 없습니다.</span>
+            ) : (
+                <ComparableHorizontalScroll items={comparables} targetArea={targetArea} accent={accent} />
+            )}
+        </PriceReasonMethodCard>
+    );
+};
+
+const LandComparableValueSection = ({
+    comparables,
+    meta,
+    targetArea,
+    categoryStr,
+    isBuildingCat,
+}: {
+    comparables: any[];
+    meta: any;
+    targetArea: number;
+    categoryStr: string;
+    isBuildingCat: boolean;
+}) => {
+    const methodLabel = meta.method || meta.tierLabel || '-';
+    const confidenceGrade = meta.confidenceGrade || '';
+    const ratioTier = meta.ratioTier || '';
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
+    const landMin = landSpectrum?.min ?? 0;
+    const landMax = landSpectrum?.max ?? 0;
+    const hasRange = landMin > 0;
+
+    const title = categoryStr === 'house'
+        ? '인근 실거래 사례와 비교 분석합니다.'
+        : '인근 실거래 사례와 비교 분석합니다.';
+    const accent = PRICE_METHOD_ACCENTS.comparables;
+
+    return (
+        <PriceReasonMethodCard
+            icon={List}
+            title={title}
+            accent={accent}
+            chips={(
+                <>
+                    {targetArea > 0 && metaChip(`대상 ${targetArea.toLocaleString()}㎡`, accent)}
+                    {metaChip(methodLabel)}
+                    {confidenceGrade && metaChip(`신뢰 ${confidenceGrade}`, accent)}
+                    {ratioTier && metaChip(ratioTier)}
+                    {isBuildingCat && metaChip('토지 대입 + 건물 별도', PRICE_METHOD_ACCENTS.building)}
+                </>
+            )}
+        >
+            {hasRange && (
+                <div
+                    className="rounded-xl px-4 py-3"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>토지 대입 추정 범위</span>
+                    <p className="text-xl font-black mt-0.5 leading-none" style={{ color: accent }}>
+                        {landMin === landMax
+                            ? `${formatEokCompact(landMin)}원`
+                            : `${formatEokCompact(landMin)} ~ ${formatEokCompact(landMax)}원`}
+                    </p>
+                    <p className="text-[10px] text-white/35 mt-1.5">
+                        비교사례 {landSpectrum?.count ?? comparables.length}건 · 보정 단가 × {targetArea.toLocaleString()}㎡
+                    </p>
+                </div>
+            )}
+
+            {comparables.length === 0 ? (
+                <span className="text-white/38 text-xs">분석된 비교사례가 없습니다.</span>
+            ) : (
+                <>
+                    {['land', 'building'].includes(categoryStr) && (meta.tier1Comparables || meta.tier2Comparables) ? (
+                        <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-2">
+                                <span className="text-white/70 text-[11px] font-bold">
+                                    엄격 필터 · {(meta.tier1Comparables || []).length}건
+                                </span>
+                                {(!meta.tier1Comparables || meta.tier1Comparables.length === 0) ? (
+                                    <span className="text-white/38 text-[11px]">부합하는 사례가 없습니다.</span>
+                                ) : (
+                                    <ComparableHorizontalScroll
+                                        items={meta.tier1Comparables || []}
+                                        targetArea={targetArea}
+                                        startIndex={0}
+                                        accent={accent}
+                                    />
+                                )}
+                            </div>
+                            {meta.tier2Comparables && meta.tier2Comparables.length > 0 && (
+                                <div className="flex flex-col gap-2 pt-3 border-t border-white/5">
+                                    <span className="text-white/50 text-[11px] font-semibold">
+                                        완화 기준 · {meta.tier2Comparables.length}건
+                                    </span>
+                                    <ComparableHorizontalScroll
+                                        items={meta.tier2Comparables}
+                                        targetArea={targetArea}
+                                        startIndex={(meta.tier1Comparables || []).length}
+                                        accent={accent}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <ComparableHorizontalScroll
+                            items={comparables}
+                            targetArea={targetArea}
+                            accent={accent}
+                        />
+                    )}
+                </>
+            )}
+        </PriceReasonMethodCard>
+    );
+};
+
+const resolveBuildingVitals = (mergedData: any) => {
+    const titleList = mergedData?.rawData?.vitals?.building?.title
+        || mergedData?.vitals?.building?.title
+        || [];
+    const title = Array.isArray(titleList) && titleList.length > 0 ? titleList[0] : {};
+    const useAprDay = String(title.useAprDay || '');
+    const buildYear = useAprDay.length >= 4 ? parseInt(useAprDay.substring(0, 4), 10) : null;
+    const grossFloorArea = parseFloat(title.totArea || mergedData?.totalArea_sqm || mergedData?.area || '0') || 0;
+    const grnd = parseInt(title.grndFlrCnt || '0', 10) || 0;
+    const ugrnd = parseInt(title.ugrndFlrCnt || '0', 10) || 0;
+    const floorText = grnd > 0
+        ? (ugrnd > 0 ? `지상 ${grnd}층 · 지하 ${ugrnd}층` : `지상 ${grnd}층`)
+        : '';
+    const elapsedYears = buildYear ? new Date().getFullYear() - buildYear : null;
+
+    return {
+        bldNm: title.bldNm || '',
+        structure: title.strctCdNm || '',
+        usage: title.mainPurpsCdNm || '',
+        buildYear,
+        buildYearLabel: buildYear ? `${buildYear}년` : '',
+        elapsedYears,
+        grossFloorArea,
+        floorText,
+        vlRat: title.vlRat,
+        bcRat: title.bcRat,
+    };
+};
+
+const BuildingResidualSection = ({
+    meta,
+    spectrum,
+    comparables,
+    targetArea,
+    estimatedTotalWon,
+    mergedData,
+}: {
+    meta: any;
+    spectrum: any;
+    comparables: any[];
+    targetArea: number;
+    estimatedTotalWon: number;
+    mergedData: any;
+}) => {
+    const [expanded, setExpanded] = React.useState(false);
+    const buildingResidualWon = Number(meta.buildingResidualValue) || 0;
+    const buildingFloorAi = spectrum?.buildingFloor || '';
+    const noteParsed = parseBuildingValueNote(meta.buildingValueNote || '');
+    const vitals = resolveBuildingVitals(mergedData);
+    const grossFloorArea = vitals.grossFloorArea > 0
+        ? vitals.grossFloorArea
+        : (Number(meta.target?.totalArea) || Number(meta.target?.totalArea_sqm) || 0);
+
+    const displayWon = buildingResidualWon > 0
+        ? buildingResidualWon
+        : (noteParsed?.totalFromNote || 0);
+
+    if (!displayWon && !buildingFloorAi) return null;
+
+    const perSqm = displayWon > 0 && grossFloorArea > 0
+        ? Math.round(displayWon / grossFloorArea)
+        : (noteParsed?.structureIndex != null
+            ? Math.round(
+                NTS_BASE_PRICE_PER_SQM
+                * (noteParsed.structureIndex || 1)
+                * (noteParsed.usageIndex || 1)
+                * (noteParsed.locationIndex || 1)
+                * (noteParsed.residualRate || 1)
+            )
+            : 0);
+
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
+    const landMin = landSpectrum?.min ?? (estimatedTotalWon > 0 ? estimatedTotalWon : 0);
+    const landMax = landSpectrum?.max ?? landMin;
+    const hasLandRange = landMin > 0;
+    const combinedMin = hasLandRange ? landMin + displayWon : 0;
+    const combinedMax = hasLandRange ? landMax + displayWon : 0;
+    const aiMismatch = buildingFloorAi && displayWon > 0
+        && !buildingFloorAi.includes(String(Math.round(displayWon / 100000000)))
+        && !buildingFloorAi.replace(/[^\d]/g, '').includes(String(Math.round(displayWon / 10000)).slice(0, 4));
+    const accent = PRICE_METHOD_ACCENTS.building;
+    const landAccent = PRICE_METHOD_ACCENTS.comparables;
+
+    return (
+        <PriceReasonMethodCard
+            icon={Building}
+            title="건축물 연식 고려, 잔존 가치를 검토합니다."
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('원가법 하한', accent)}
+                    {metaChip('토지가 미포함')}
+                    {metaChip('시장가 아님', PRICE_METHOD_ACCENTS.official)}
+                </>
+            )}
+        >
+            <div
+                className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                style={{
+                    border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                    boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                }}
+            >
+                <div
+                    className="mx-4 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.15)}, ${hexToRgba(accent, 0.08)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>건물 잔존가 (원가법)</span>
+                    <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
+                        {formatEokCompact(displayWon)}원
+                    </p>
+                    {(perSqm > 0 || grossFloorArea > 0) && (
+                        <p className="text-[10px] text-white/35 mt-1.5">
+                            {perSqm > 0 && <>㎡당 {formatSqmManwon(perSqm)}</>}
+                            {perSqm > 0 && grossFloorArea > 0 && ' × '}
+                            {grossFloorArea > 0 && <>연면적 {grossFloorArea.toLocaleString()}㎡</>}
+                        </p>
+                    )}
+                    {aiMismatch && (
+                        <p className="text-[9px] text-white/25 mt-1">AI 서술: {buildingFloorAi}</p>
+                    )}
+                </div>
+
+                {/* Building vitals */}
+                {(vitals.structure || vitals.usage || vitals.buildYearLabel || vitals.floorText) && (
+                    <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
+                        {vitals.bldNm && <span className="text-white/45 font-semibold">{vitals.bldNm}</span>}
+                        {vitals.usage && <span>{vitals.usage}</span>}
+                        {vitals.structure && <span>{vitals.structure}</span>}
+                        {vitals.buildYearLabel && (
+                            <span>
+                                준공 {vitals.buildYearLabel}
+                                {vitals.elapsedYears != null && vitals.elapsedYears > 0 && ` (경과 ${vitals.elapsedYears}년)`}
+                            </span>
+                        )}
+                        {vitals.floorText && <span>{vitals.floorText}</span>}
+                        {vitals.vlRat && <span>용적률 {vitals.vlRat}%</span>}
+                        {vitals.bcRat && <span>건폐율 {vitals.bcRat}%</span>}
+                    </div>
+                )}
+
+                {/* Accordion: 산출식 */}
+                <button
+                    type="button"
+                    onClick={() => setExpanded(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2 border-t border-white/5 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+                >
+                    <span>산출식 · 지수 상세</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded && (
+                    <div className="px-4 pb-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/10">
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">국세청 기준가</span>
+                            <span className="text-white/70 font-mono">{formatSqmManwon(NTS_BASE_PRICE_PER_SQM)}</span>
+                        </div>
+                        {noteParsed?.structureIndex != null && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">구조지수{vitals.structure ? ` (${vitals.structure})` : ''}</span>
+                                <span className="text-white/70 font-mono">×{noteParsed.structureIndex}</span>
+                            </div>
+                        )}
+                        {noteParsed?.usageIndex != null && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">용도지수{vitals.usage ? ` (${vitals.usage})` : ''}</span>
+                                <span className="text-white/70 font-mono">×{noteParsed.usageIndex}</span>
+                            </div>
+                        )}
+                        {noteParsed?.locationIndex != null && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">위치지수 (공시지가 구간)</span>
+                                <span className="text-white/70 font-mono">×{noteParsed.locationIndex}</span>
+                            </div>
+                        )}
+                        {noteParsed?.residualRate != null && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">잔가율 (연식 반영)</span>
+                                <span className="text-white/70 font-mono">×{noteParsed.residualRate}</span>
+                            </div>
+                        )}
+                        {perSqm > 0 && (
+                            <div className="flex justify-between text-[10px] pt-0.5 border-t border-white/5">
+                                <span className="text-white/35">㎡당 건물가</span>
+                                <span className="font-semibold" style={{ color: accent }}>{formatSqmManwon(perSqm)}</span>
+                            </div>
+                        )}
+                        {grossFloorArea > 0 && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">× 연면적</span>
+                                <span className="text-white/70">{grossFloorArea.toLocaleString()}㎡</span>
+                            </div>
+                        )}
+                        {meta.buildingValueNote && (
+                            <p className="text-[9px] text-white/30 leading-relaxed pt-1">{meta.buildingValueNote}</p>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* 토지 + 건물 합산 */}
+            {hasLandRange && displayWon > 0 && (
+                <div
+                    className="p-3 rounded-xl flex flex-col gap-2"
+                    style={{
+                        background: `linear-gradient(to bottom right, rgba(255,255,255,0.03), ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.12)}`,
+                    }}
+                >
+                    <div className="flex items-center gap-1.5 text-[10px] text-white/45 font-semibold">
+                        <Layers className="w-3.5 h-3.5" style={{ color: hexToRgba(accent, 0.75) }} />
+                        빌딩 총 가치 참고 (토지 + 건물)
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/35">토지 대입 (비교사례)</span>
+                        <span className="font-semibold" style={{ color: landAccent }}>
+                            {landMin === landMax
+                                ? formatEokCompact(landMin)
+                                : `${formatEokCompact(landMin)} ~ ${formatEokCompact(landMax)}`}
+                        </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/35">건물 잔존 (원가법)</span>
+                        <span className="font-semibold" style={{ color: accent }}>{formatEokCompact(displayWon)}</span>
+                    </div>
+                    <div className="h-px bg-white/5" />
+                    <div className="flex justify-between items-center">
+                        <span className="text-white/50 text-xs font-bold">합산 참고 범위</span>
+                        <span className="text-white font-black text-base">
+                            {combinedMin === combinedMax
+                                ? formatEokCompact(combinedMin)
+                                : `${formatEokCompact(combinedMin)} ~ ${formatEokCompact(combinedMax)}`}
+                        </span>
+                    </div>
+                    {(spectrum?.min || spectrum?.max) && (
+                        <p className="text-[9px] text-white/25">
+                            AI 스펙트럼: {spectrum.min || '-'} · {spectrum.max || '-'}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            <p className="text-white/25 text-[9px] leading-relaxed">
+                ※ 국세청 신축가격기준액 기준 하한선이며 시장가·임대수익·리모델링 가치는 반영되지 않습니다.
+            </p>
+        </PriceReasonMethodCard>
+    );
+};
+
+const resolveOfficialPerSqm = (meta: any, attached: any, targetArea: number) => {
+    const cbd = meta.cbdMultiplierEstimate;
+    if (cbd?.officialPerSqm > 0) return Number(cbd.officialPerSqm);
+    const opr = meta.officialPriceRatio?.targetOfficialPerSqm;
+    if (opr > 0) return Number(opr);
+    const minMult = Number(attached?.minMult) || 0;
+    const minTotal = Number(attached?.minTotal) || 0;
+    if (minMult > 0 && minTotal > 0 && targetArea > 0) {
+        return Math.round(minTotal / (minMult * targetArea));
+    }
+    return 0;
+};
+
+const OfficialMultiplierSection = ({
+    attached,
+    meta,
+    comparables,
+    targetArea,
+    isListAppended,
+    estimateNarrative,
+}: {
+    attached: any;
+    meta: any;
+    comparables: any[];
+    targetArea: number;
+    isListAppended?: boolean;
+    estimateNarrative?: string;
+}) => {
+    const [expanded, setExpanded] = React.useState(false);
+    if (!attached) return null;
+
+    const minTotal = Number(attached.minTotal) || 0;
+    const maxTotal = Number(attached.maxTotal) || 0;
+    const midTotal = Number(attached.midTotal) || 0;
+    const minMult = Number(attached.minMult) || 0;
+    const maxMult = Number(attached.maxMult) || 0;
+    const midMult = Number(attached.midMult) || 0;
+    const zoning = attached.zoning || meta.cbdMultiplierEstimate?.zoning || '-';
+    const officialPerSqm = resolveOfficialPerSqm(meta, attached, targetArea);
+    const cbdGrade = meta.cbdMultiplierEstimate?.grade || '';
+
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
+    const compMin = landSpectrum?.min || 0;
+    const compMax = landSpectrum?.max || 0;
+    const hasCompContrast = compMin > 0 && minTotal > 0 && (minTotal > compMax * 1.5 || maxTotal > compMax * 2);
+
+    const accent = PRICE_METHOD_ACCENTS.official;
+    const landAccent = PRICE_METHOD_ACCENTS.comparables;
+
+    return (
+        <PriceReasonMethodCard
+            icon={Percent}
+            title="공시지가 배율 추정 (사례 부족 시)"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('공시지가 기반', accent)}
+                    {metaChip('보조 추정')}
+                    {cbdGrade && metaChip(`CBD ${cbdGrade}`, PRICE_METHOD_ACCENTS.building)}
+                </>
+            )}
+        >
+            <div
+                className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                style={{
+                    border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                    boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                }}
+            >
+                <div
+                    className="mx-4 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>공시 배율 추정 범위</span>
+                    <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
+                        {formatEokCompact(minTotal)} ~ {formatEokCompact(maxTotal)}원
+                    </p>
+                    {midTotal > 0 && (
+                        <p className="text-[10px] text-white/35 mt-1.5">
+                            중간값 {formatEokCompact(midTotal)}원 ({midMult}배)
+                        </p>
+                    )}
+                </div>
+
+                <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
+                    <span>용도지역 {zoning}</span>
+                    <span>배율 {minMult}~{maxMult}배</span>
+                    {officialPerSqm > 0 && targetArea > 0 && (
+                        <span>
+                            {formatSqmManwon(officialPerSqm)} × {targetArea.toLocaleString()}㎡
+                        </span>
+                    )}
+                </div>
+
+                {estimateNarrative && String(estimateNarrative).trim() && (
+                    <div className="mx-4 mb-3 pt-3 border-t border-white/5">
+                        <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
+                            {String(estimateNarrative).trim()}
+                        </p>
+                    </div>
+                )}
+
+                {hasCompContrast && (
+                    <div className="mx-4 mb-3 p-2.5 rounded-xl bg-red-500/5 border border-red-500/15 flex flex-col gap-1">
+                        <span className="text-[9px] font-semibold text-red-400/90">실거래 대입과 큰 차이</span>
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">비교사례 대입 (토지)</span>
+                            <span className="font-semibold" style={{ color: landAccent }}>
+                                {compMin === compMax
+                                    ? formatEokCompact(compMin)
+                                    : `${formatEokCompact(compMin)} ~ ${formatEokCompact(compMax)}`}
+                            </span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">공시 배율 추정</span>
+                            <span className="font-semibold" style={{ color: accent }}>
+                                {formatEokCompact(minTotal)} ~ {formatEokCompact(maxTotal)}
+                            </span>
+                        </div>
+                        <p className="text-[9px] text-white/30 leading-relaxed pt-0.5">
+                            공시 배율법은 CBD·입지 프리미엄을 반영해 실거래 대입보다 높게 나올 수 있습니다. 판단 시 실거래 대입을 우선 참고하세요.
+                        </p>
+                    </div>
+                )}
+
+                <button
+                    type="button"
+                    onClick={() => setExpanded(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2 border-t border-white/5 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+                >
+                    <span>산출식 · 배율 상세</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                </button>
+                {expanded && (
+                    <div className="px-4 pb-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/10">
+                        {officialPerSqm > 0 && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">개별공시지가</span>
+                                <span className="text-white/70 font-mono">{formatSqmManwon(officialPerSqm)}</span>
+                            </div>
+                        )}
+                        {targetArea > 0 && (
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">대상 토지면적</span>
+                                <span className="text-white/70">{targetArea.toLocaleString()}㎡</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">최저 배율 × 공시지가</span>
+                            <span className="text-white/70 font-mono">{minMult}배 → {formatEokCompact(minTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">중간 배율 × 공시지가</span>
+                            <span className="font-semibold font-mono" style={{ color: accent }}>{midMult}배 → {formatEokCompact(midTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">최고 배율 × 공시지가</span>
+                            <span className="text-white/70 font-mono">{maxMult}배 → {formatEokCompact(maxTotal)}</span>
+                        </div>
+                        <p className="text-[9px] text-white/30 leading-relaxed pt-1">
+                            ※ 용도지역({zoning})과 CBD 등급({cbdGrade || '-'})에 따른 배율표를 적용합니다. 건물 가치는 포함되지 않습니다.
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            <div className="p-4 bg-white/5 rounded-2xl flex items-start gap-3">
+                <Info className="w-4 h-4 text-white/40 shrink-0 mt-0.5" />
+                <p className="text-white/50 text-[11px] leading-relaxed font-medium">
+                    ※ 인근 유사 거래사례 수량이 부족한 경우, 해당 용도지역의 평균 공시지가 거래배율을 적용하여 산출한 참고 가격입니다.
+                </p>
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
+const resolveRegionalTrade = (t: any, isRent: boolean) => {
+    const addr = `${t.sggNm || t.시군구 || ''} ${t.umdNm || t.법정동 || ''} ${t.jibun || t.지번 || ''}`.trim();
+    const year = t.dealYear || t.년 || '';
+    const month = String(t.dealMonth || t.월 || '').padStart(2, '0');
+    const day = t.dealDay || t.일 || '';
+    const dateStr = year ? `${year}.${month}${day ? `.${day}` : ''}` : '-';
+
+    const deposit = t.deposit ?? t.보증금액;
+    const monthly = t.monthlyRent ?? t.월세금액;
+    const dealAmt = t.dealAmount ?? t.거래금액;
+
+    let priceLabel = '';
+    let priceWon = 0;
+    if (isRent || (deposit != null && deposit !== '')) {
+        const depWon = normalizeDealAmountWon(deposit);
+        const monWon = normalizeDealAmountWon(monthly);
+        priceLabel = monthly != null && String(monthly) !== '0' && monWon > 0
+            ? `보증금 ${formatKoreanCurrency(depWon)} / 월세 ${formatKoreanCurrency(monWon)}`
+            : `전세 ${formatKoreanCurrency(depWon)}`;
+        priceWon = depWon;
+    } else {
+        priceWon = normalizeDealAmountWon(dealAmt);
+        priceLabel = `매매 ${formatEokCompact(priceWon)}원`;
+    }
+
+    const area = Number(t.excluUseAr || t.exArea || t.area || t.plottage || t.totArea || t.buildingAr) || 0;
+    const floor = t.floor || t.층 || '';
+    const buildYear = t.buildYear || t.건축년도 || '';
+
+    return { addr, dateStr, priceLabel, priceWon, area, floor, buildYear };
+};
+
+const RegionalTradeRow = ({ t, isRent }: { t: any; isRent: boolean }) => {
+    const m = resolveRegionalTrade(t, isRent);
+    return (
+        <div className="flex items-start justify-between gap-2 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-white/45 font-mono">{m.dateStr}</span>
+                    {m.floor && <span className="text-[9px] text-white/30">{m.floor}층</span>}
+                    {m.buildYear && <span className="text-[9px] text-white/30">{m.buildYear}년</span>}
+                </div>
+                <p className="text-[11px] text-white/55 truncate mt-0.5">{m.addr || '주소 미상'}</p>
+                {m.area > 0 && (
+                    <span className="text-[9px] text-white/30">{m.area.toLocaleString()}㎡</span>
+                )}
+            </div>
+            <span className="text-[11px] text-white/70 font-semibold shrink-0 text-right">{m.priceLabel}</span>
+        </div>
+    );
+};
+
+const REGIONAL_TRADES_VISIBLE = 3;
+
+const RegionalTradesReferenceSection = ({ groups }: { groups: any[] }) => {
+    const [expandedGroups, setExpandedGroups] = React.useState<Record<number, boolean>>({});
+
+    if (!groups || groups.length === 0) return null;
+
+    const totalCount = groups.reduce((sum, g) => sum + (Array.isArray(g.data) ? g.data.length : 0), 0);
+    const accent = PRICE_METHOD_ACCENTS.regional;
+
+    return (
+        <PriceReasonMethodCard
+            icon={MapPin}
+            title="주변 최근 실거래가 (참고사항)"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip(`총 ${totalCount}건`, accent)}
+                    {metaChip('참고용', accent)}
+                    {metaChip('대입 미적용')}
+                </>
+            )}
+        >
+            <div className="flex flex-col gap-4">
+                {groups.map((group: any, idx: number) => {
+                    const items = Array.isArray(group.data) ? group.data : [];
+                    if (items.length === 0) return null;
+                    const isRent = (group.type || '').includes('전월세');
+                    const isExpanded = expandedGroups[idx] ?? false;
+                    const visible = isExpanded ? items : items.slice(0, REGIONAL_TRADES_VISIBLE);
+
+                    return (
+                        <div key={idx} className="rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
+                            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5">
+                                <div className="flex items-center gap-2">
+                                    <Store className="w-3.5 h-3.5" style={{ color: hexToRgba(accent, 0.65) }} />
+                                    <span className="text-white/70 text-xs font-bold">{group.type}</span>
+                                </div>
+                                <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-white/5 text-white/40 border border-white/10">
+                                    {items.length}건
+                                </span>
+                            </div>
+                            <div className="p-2 flex flex-col gap-1.5">
+                                {visible.map((t: any, i: number) => (
+                                    <RegionalTradeRow key={i} t={t} isRent={isRent} />
+                                ))}
+                            </div>
+                            {items.length > REGIONAL_TRADES_VISIBLE && (
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandedGroups(prev => ({ ...prev, [idx]: !isExpanded }))}
+                                    className="w-full py-2 border-t border-white/5 text-[10px] text-white/35 hover:text-white/55 hover:bg-white/[0.02] transition-colors"
+                                >
+                                    {isExpanded ? '접기' : `... 외 ${items.length - REGIONAL_TRADES_VISIBLE}건 더 보기`}
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
+const resolveUserPriceWon = (meta: any, mergedData: any): number => {
+    if (meta.userPriceWon > 0) return Number(meta.userPriceWon);
+    const raw = findDeepValue(mergedData, 'price') || findDeepValue(mergedData, 'sale_price');
+    if (!raw) return 0;
+    const num = Number(String(raw).replace(/,/g, '')) || 0;
+    return num > 1000000 ? num : num * 10000;
+};
+
+const PriceSpectrumNarrativeSection = ({
+    narrative,
+    spectrum,
+    meta,
+    comparables,
+    targetArea,
+    estimatedTotalWon,
+    attachedMultiplier,
+    mergedData,
+    compactSummary = true,
+}: {
+    narrative: string;
+    spectrum: any;
+    meta: any;
+    comparables: any[];
+    targetArea: number;
+    estimatedTotalWon: number;
+    attachedMultiplier: any;
+    mergedData: any;
+    compactSummary?: boolean;
+}) => {
+    if (!narrative) return null;
+
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
+    const landMin = landSpectrum?.min ?? (estimatedTotalWon > 0 ? estimatedTotalWon : 0);
+    const landMax = landSpectrum?.max ?? landMin;
+    const buildingWon = Number(meta.buildingResidualValue) || 0;
+    const combinedMin = landMin > 0 && buildingWon > 0 ? landMin + buildingWon : 0;
+    const combinedMax = landMax > 0 && buildingWon > 0 ? landMax + buildingWon : 0;
+    const userPrice = resolveUserPriceWon(meta, mergedData);
+
+    const paragraphs = narrative.split(/\n+/).map(p => p.trim()).filter(Boolean);
+
+    const userVsCombined = userPrice > 0 && combinedMax > 0
+        ? userPrice > combinedMax
+            ? 'above'
+            : userPrice < combinedMin
+                ? 'below'
+                : 'within'
+        : null;
+
+    const showUserPriceBlock = userPrice > 0;
+    const accent = PRICE_METHOD_ACCENTS.narrative;
+    const landAccent = PRICE_METHOD_ACCENTS.comparables;
+    const buildingAccent = PRICE_METHOD_ACCENTS.building;
+
+    return (
+        <PriceReasonMethodCard
+            icon={Sparkles}
+            title="현 매물의 분석 추정 가격"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('AI 해설', accent)}
+                    {userVsCombined === 'above' && metaChip('제시가 높음', PRICE_METHOD_ACCENTS.official)}
+                    {userVsCombined === 'below' && metaChip('제시가 낮음', '#10b981')}
+                    {userVsCombined === 'within' && metaChip('범위 내', '#94a3b8')}
+                </>
+            )}
+        >
+            {showUserPriceBlock && (
+                <div
+                    className="rounded-xl px-4 py-3 flex flex-col gap-2"
+                    style={{
+                        background: `linear-gradient(to bottom right, rgba(255,255,255,0.03), ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.15)}`,
+                    }}
+                >
+                    <span className="text-[10px] text-white/40 font-semibold">제시가 vs 추정 범위</span>
+                    <div className="flex justify-between items-center">
+                        <span className="text-white/50 text-xs font-bold">제시 매매가</span>
+                        <span className={`font-black text-lg ${
+                            userVsCombined === 'above' ? 'text-amber-400'
+                                : userVsCombined === 'below' ? 'text-emerald-400'
+                                    : 'text-white'
+                        }`}>
+                            {formatEokCompact(userPrice)}원
+                        </span>
+                    </div>
+                    {combinedMax > 0 && (
+                        <p className="text-[10px] text-white/35">
+                            실거래 기반 합산 참고: {formatEokCompact(combinedMin)} ~ {formatEokCompact(combinedMax)}
+                        </p>
+                    )}
+                    {userVsCombined === 'above' && combinedMax > 0 && (
+                        <p className="text-[10px] text-amber-400/80 leading-relaxed">
+                            제시가가 실거래 기반 합산 범위보다 높습니다.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {!compactSummary && landMin > 0 && (
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-2">
+                    <span className="text-[10px] text-white/40 font-semibold">핵심 수치 한눈에</span>
+                    <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-white/35">토지 대입</span>
+                        <span className="font-semibold" style={{ color: landAccent }}>
+                            {landMin === landMax
+                                ? formatEokCompact(landMin)
+                                : `${formatEokCompact(landMin)} ~ ${formatEokCompact(landMax)}`}
+                        </span>
+                    </div>
+                    {buildingWon > 0 && (
+                        <div className="flex justify-between items-center text-[11px]">
+                            <span className="text-white/35">건물 잔존</span>
+                            <span className="font-semibold" style={{ color: buildingAccent }}>{formatEokCompact(buildingWon)}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <div className="flex flex-col gap-2.5">
+                {paragraphs.map((p, i) => (
+                    <p key={i} className="text-white/65 text-xs leading-relaxed">{p}</p>
+                ))}
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
 // helper: find deep nested value in object
 const findDeepValue = (map: any, key: string): any => {
     if (!map) return null;
@@ -173,12 +1727,428 @@ const findDeepValue = (map: any, key: string): any => {
     return null;
 };
 
+const resolveBuildingIncomeInputs = (mergedData: any) => {
+    const buildingData = findDeepValue(mergedData, 'buildingData');
+    const isRentEstimated = buildingData?.isRentEstimated === true;
+
+    if (isRentEstimated) {
+        const depositWon = parseFloat(String(buildingData?.estimatedDeposit)) || 0;
+        const monthlyRentWon = parseFloat(String(buildingData?.totalEstimatedMonthlyRent)) || 0;
+        return { depositWon, monthlyRentWon, isEstimated: true, isEmpty: false, buildingData };
+    }
+
+    const depositRaw =
+        findDeepValue(mergedData, 'totalDeposit')
+        ?? findDeepValue(mergedData, 'total_deposit')
+        ?? buildingData?.deposit
+        ?? findDeepValue(mergedData, 'deposit');
+    const rentRaw =
+        findDeepValue(mergedData, 'totalMonthlyRent')
+        ?? findDeepValue(mergedData, 'total_monthly_rent')
+        ?? buildingData?.monthlyRent
+        ?? buildingData?.monthly_rent
+        ?? findDeepValue(mergedData, 'monthlyRent')
+        ?? findDeepValue(mergedData, 'monthly_rent');
+
+    const hasDeposit = depositRaw !== null && depositRaw !== undefined && String(depositRaw).trim() !== '';
+    const hasRent = rentRaw !== null && rentRaw !== undefined && String(rentRaw).trim() !== '';
+
+    const depositWon = normalizeIncomeInputWon(depositRaw);
+    const monthlyRentWon = normalizeIncomeInputWon(rentRaw);
+
+    const isEmpty = !hasDeposit || !hasRent || (depositWon <= 0 && monthlyRentWon <= 0);
+    return { depositWon, monthlyRentWon, isEstimated: false, isEmpty, buildingData };
+};
+
+const resolveIncomeCapRates = (mergedData: any, ai: any) => {
+    const metadata = ai?.analysisMetadata || mergedData?.analysisMetadata || {};
+
+    let officeCapRate = parseFloat(String(
+        metadata.officeCapRate
+        ?? mergedData?.officeCapRate
+        ?? findDeepValue(mergedData, 'officeCapRate')
+        ?? metadata.capRate
+        ?? mergedData?.capRate
+        ?? 0,
+    )) || 0;
+
+    if (officeCapRate <= 0) {
+        const ind = mergedData?.marketIndicators || findDeepValue(mergedData, 'marketIndicators');
+        const incomeSeries = ind?.yieldRates?.income?.data;
+        if (Array.isArray(incomeSeries) && incomeSeries.length > 0) {
+            const sorted = [...incomeSeries].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+            officeCapRate = parseFloat(String(sorted[sorted.length - 1]?.value)) || 0;
+        }
+    }
+
+    const macro = mergedData?.macroIndicators || findDeepValue(mergedData, 'macroIndicators');
+    let householdLoanRate = parseFloat(String(
+        metadata.householdLoanRate
+        ?? mergedData?.householdLoanRate
+        ?? findDeepValue(mergedData, 'householdLoanRate')
+        ?? macro?.loanRate?.value
+        ?? 0,
+    )) || 0;
+
+    if (householdLoanRate <= 0) {
+        householdLoanRate = 4.43;
+    }
+
+    const capRate = officeCapRate > 0 ? officeCapRate : householdLoanRate;
+    const isRoneBased = officeCapRate > 0;
+
+    return { capRate, householdLoanRate, isRoneBased };
+};
+
+const formatIncomePriceEok = (won: number): string => {
+    if (!won || won <= 0) return '-';
+    if (won >= 100000000) return `${(won / 100000000).toFixed(1)}억`;
+    return `${(won / 10000).toFixed(0)}억`;
+};
+
+const FloorBreakdownTable = ({
+    floorBreakdown,
+    accent,
+}: {
+    floorBreakdown: any[];
+    accent: string;
+}) => (
+    <div className="flex flex-col gap-2.5">
+        <span className="text-white/50 text-xs font-bold">[층별 보정계수 산출 내역]</span>
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr className="bg-white/5 border-b border-white/10 text-white/40 font-bold">
+                            <th className="p-3">층</th>
+                            <th className="p-3">용도</th>
+                            <th className="p-3 text-right">면적</th>
+                            <th className="p-3 text-center">최종계수</th>
+                            <th className="p-3 text-right">추정월세</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {floorBreakdown.map((f, index) => {
+                            const isNonRental = f.isNonRental === true;
+                            const floor = f.floor?.toString() || '-';
+                            const usage = f.usage?.toString() || '-';
+                            const area = parseFloat(String(f.area)) || 0;
+                            const finalCoeff = parseFloat(String(f.finalCoeff)) || 0;
+                            const monthlyRent = parseFloat(String(f.monthlyRent)) || 0;
+
+                            return (
+                                <tr key={index} className="border-b border-white/5 last:border-b-0 hover:bg-white/[0.02]">
+                                    <td className="p-3 font-semibold text-white">{floor}</td>
+                                    <td className={`p-3 ${isNonRental ? 'text-white/30' : 'text-white/80'}`}>{usage}</td>
+                                    <td className={`p-3 text-right ${isNonRental ? 'text-white/30' : 'text-white/80'}`}>
+                                        {Math.round(area).toLocaleString()}㎡
+                                    </td>
+                                    <td
+                                        className={`p-3 text-center font-bold ${isNonRental ? 'text-white/30' : ''}`}
+                                        style={isNonRental ? undefined : { color: accent }}
+                                    >
+                                        {isNonRental ? '—' : finalCoeff.toFixed(2)}
+                                    </td>
+                                    <td className={`p-3 text-right font-bold ${isNonRental ? 'text-white/30' : 'text-white'}`}>
+                                        {isNonRental ? '비임대' : `${Math.round(monthlyRent).toLocaleString()}원`}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+);
+
+const IncomeApproachSection = ({
+    mergedData,
+    ai,
+    categoryStr,
+}: {
+    mergedData: any;
+    ai: any;
+    categoryStr: string;
+}) => {
+    const lowerCat = categoryStr.toLowerCase().trim();
+    if (lowerCat !== 'building' && lowerCat !== '빌딩') return null;
+
+    const accent = PRICE_METHOD_ACCENTS.income;
+    const { depositWon, monthlyRentWon, isEstimated, isEmpty, buildingData } = resolveBuildingIncomeInputs(mergedData);
+
+    if (isEmpty) {
+        return (
+            <PriceReasonMethodCard
+                icon={TrendingUp}
+                title="수익환원법 기반 빌딩 추정가"
+                accent={accent}
+                chips={(
+                    <>
+                        {metaChip('수익환원법', accent)}
+                        {metaChip('빌딩 전용', accent)}
+                    </>
+                )}
+            >
+                <div className="rounded-2xl bg-white/[0.02] border border-white/5 px-4 py-8 flex flex-col items-center justify-center gap-3 text-center">
+                    <Info className="w-7 h-7 text-white/30" />
+                    <p className="text-white/60 text-sm font-bold leading-relaxed">
+                        보증금과 총월세를 입력하지 않아
+                        <br />
+                        수익환원법이 산출되지 않았습니다.
+                    </p>
+                    <p className="text-white/35 text-[11px] leading-relaxed max-w-[280px]">
+                        수집 정보에 보증금/월세가 누락되어 임대수익 분석을 생략합니다. 직접 보증금과 월세를 기입하시면 정확한 빌딩 추정가가 계산됩니다.
+                    </p>
+                </div>
+            </PriceReasonMethodCard>
+        );
+    }
+
+    const { capRate, householdLoanRate, isRoneBased } = resolveIncomeCapRates(mergedData, ai);
+    const depositIncome = depositWon * (householdLoanRate / 100);
+    const annualRentIncome = monthlyRentWon * 12;
+
+    const estimatedPrice = isEstimated
+        ? (parseFloat(String(buildingData?.estimatedPrice)) || 0)
+        : (capRate > 0 ? annualRentIncome / (capRate / 100) : 0);
+
+    const estimatedPriceWithDeposit = isEstimated
+        ? (parseFloat(String(buildingData?.estimatedPriceWithDeposit)) || 0)
+        : (capRate > 0 ? (annualRentIncome + depositIncome) / (capRate / 100) : 0);
+
+    const floorBreakdown = Array.isArray(buildingData?.floorBreakdown) ? buildingData.floorBreakdown : [];
+
+    return (
+        <PriceReasonMethodCard
+            icon={TrendingUp}
+            title="수익환원법 기반 빌딩 추정가"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('수익환원법', accent)}
+                    {metaChip(`CAP ${capRate.toFixed(2)}%`)}
+                    {metaChip('빌딩 전용', accent)}
+                    {isEstimated && metaChip('자동 추정', accent)}
+                </>
+            )}
+        >
+            <div className="flex flex-col gap-4">
+                <div className="space-y-2">
+                    <span className="text-white/50 text-xs font-bold">
+                        {isEstimated ? '[자동 추정된 임대 정보]' : '[입력된 임대 정보]'}
+                    </span>
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-3">
+                        <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2 text-white/70">
+                                <Lock className="w-4 h-4 text-white/40" />
+                                <span>총 보증금</span>
+                            </div>
+                            <span className="text-white font-extrabold">{Math.round(depositWon).toLocaleString()} 원</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2 text-white/70">
+                                <Coins className="w-4 h-4 text-white/40" />
+                                <span>총 월세</span>
+                            </div>
+                            <span className="text-white font-extrabold">{Math.round(monthlyRentWon).toLocaleString()} 원</span>
+                        </div>
+                    </div>
+                </div>
+
+                {isEstimated && floorBreakdown.length > 0 && (
+                    <FloorBreakdownTable floorBreakdown={floorBreakdown} accent={accent} />
+                )}
+
+                <div className="space-y-2">
+                    <span className="text-white/50 text-xs font-bold">[수익 산출]</span>
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-3">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-white/70 font-bold">연간 순영업소득 (NOI)</span>
+                            <span className="text-white font-extrabold">{Math.round(annualRentIncome).toLocaleString()} 원/년</span>
+                        </div>
+                        <div className="text-white/40 text-[10px] text-right -mt-2">
+                            {isEstimated
+                                ? `(추정 월세 ${Math.round(monthlyRentWon).toLocaleString()}원 × 12개월)`
+                                : `(입력 월세 ${Math.round(monthlyRentWon).toLocaleString()}원 × 12개월)`}
+                        </div>
+                        {depositWon > 0 && (
+                            <>
+                                <div className="h-px w-full bg-white/10" />
+                                <div className="flex items-center justify-between text-sm">
+                                    <div className="flex flex-col">
+                                        <span className="text-white/70 font-bold">보증금 운용수익 (참고)</span>
+                                        <span className="text-white/40 text-[10px]">가계대출금리 {householdLoanRate.toFixed(2)}% 기준</span>
+                                    </div>
+                                    <span className="text-white font-extrabold">{Math.round(depositIncome).toLocaleString()} 원/년</span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <span className="text-white/50 text-xs font-bold">[추정 결과]</span>
+                    <div
+                        className="p-5 rounded-2xl flex flex-col gap-4 relative overflow-hidden"
+                        style={{
+                            background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, transparent)`,
+                            border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                        }}
+                    >
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Calculator className="w-16 h-16" style={{ color: accent }} />
+                        </div>
+                        <div className="flex items-center justify-between text-sm relative z-10">
+                            <div className="flex flex-col">
+                                <span className="font-bold" style={{ color: accent }}>적용 환원율 (CAP Rate)</span>
+                                {isRoneBased ? (
+                                    <span className="text-white/40 text-[10px]">R-ONE 오피스 소득수익률 기준</span>
+                                ) : (
+                                    <span className="text-[10px]" style={{ color: hexToRgba(accent, 0.75) }}>
+                                        ※ R-ONE 데이터 미존재 · 가계대출금리 대체 적용
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-white font-extrabold">{capRate.toFixed(2)}%</span>
+                        </div>
+                        <div className="h-px w-full bg-white/10 relative z-10" />
+                        <div className="flex items-center justify-between relative z-10">
+                            <span className="text-white font-black">▶ 빌딩 추정가 (NOI 기준)</span>
+                            <span className="text-xl font-black" style={{ color: accent }}>
+                                약 {formatIncomePriceEok(estimatedPrice)} 원
+                            </span>
+                        </div>
+                        <div className="text-white/30 text-[10px] relative z-10 text-right">
+                            ({Math.round(estimatedPrice).toLocaleString()} 원)
+                        </div>
+                        {depositWon > 0 && estimatedPriceWithDeposit !== estimatedPrice && (
+                            <>
+                                <div className="h-px w-full bg-white/5 relative z-10" />
+                                <div className="flex items-center justify-between relative z-10 text-xs">
+                                    <span className="text-white/60 font-bold">※ 보증금 운용수익 포함 시 (참고)</span>
+                                    <span className="text-white/80 font-bold">
+                                        약 {(estimatedPriceWithDeposit / 100000000).toFixed(1)}억 원
+                                    </span>
+                                </div>
+                                <div className="text-white/30 text-[9px] relative z-10 text-right -mt-3">
+                                    ({Math.round(estimatedPriceWithDeposit).toLocaleString()} 원)
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-2xl flex items-start gap-3">
+                    <Info className="w-4 h-4 text-white/40 shrink-0 mt-0.5" />
+                    <div className="text-white/50 text-[11px] leading-relaxed font-medium space-y-1">
+                        <p>
+                            ※ 빌딩 추정가 = 연간 순영업소득(NOI) ÷ 캡레이트(환원율).{' '}
+                            {isRoneBased
+                                ? 'R-ONE 오피스 소득수익률(분기)을 연환산하여 적용.'
+                                : '가계대출금리를 환원율로 대체 적용한 참고치입니다.'}
+                        </p>
+                        <p>
+                            ※ 보증금 운용수익은 가계대출금리({householdLoanRate.toFixed(2)}%) 기준으로 산출한 참고치이며
+                            메인 추정가 계산에서는 제외되었습니다.
+                        </p>
+                    </div>
+                </div>
+
+                {isEstimated && (
+                    <div
+                        className="p-4 rounded-2xl flex items-start gap-3"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.06),
+                            border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                        }}
+                    >
+                        <Sparkles className="w-4 h-4 shrink-0 mt-0.5" style={{ color: accent }} />
+                        <div className="text-[11px] leading-relaxed font-bold" style={{ color: hexToRgba(accent, 0.9) }}>
+                            사용자가 보증금과 월세를 입력하지 않아, 주변 임대료 시세 평균(R-ONE 및 실거래)을 바탕으로
+                            자동 추정한 값입니다. 정확한 분석을 원하시면 실제 임대료를 직접 입력해 주세요.
+                        </div>
+                    </div>
+                )}
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
+const resolveBuildingStores = (mergedData: any): any[] => {
+    const commercial =
+        mergedData?.commercialData
+        ?? mergedData?.rawData?.commercialData
+        ?? findDeepValue(mergedData, 'commercialData');
+    const stores = commercial?.buildingStores;
+    return Array.isArray(stores) ? stores : [];
+};
+
+const BuildingStoresSection = ({
+    mergedData,
+    categoryStr,
+}: {
+    mergedData: any;
+    categoryStr: string;
+}) => {
+    const lowerCat = categoryStr.toLowerCase().trim();
+    if (lowerCat !== 'building' && lowerCat !== '빌딩') return null;
+
+    const stores = resolveBuildingStores(mergedData);
+    const accent = PRICE_METHOD_ACCENTS.regional;
+
+    return (
+        <PriceReasonMethodCard
+            icon={Store}
+            title="입점 상가 정보"
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('소상공인시장진흥공단', accent)}
+                    {stores.length > 0 && metaChip(`총 ${stores.length}개 점포`, accent)}
+                </>
+            )}
+        >
+            {stores.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {stores.map((store: any, i: number) => (
+                        <div
+                            key={i}
+                            className="bg-white/[0.03] px-3.5 py-2.5 rounded-xl border border-white/[0.06] flex flex-col gap-1 min-w-0"
+                        >
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <span className="shrink-0 text-[10px] font-semibold bg-emerald-400/10 text-emerald-400 px-2 py-0.5 rounded-md">
+                                    {store.flrNoNm || '-'}
+                                </span>
+                                <span className="text-[10px] font-medium text-white/40 truncate">
+                                    {store.indsLclsNm}{store.indsSclsNm ? ` > ${store.indsSclsNm}` : ''}
+                                </span>
+                            </div>
+                            <p className="text-[13px] font-bold text-white/80 truncate">
+                                {store.bizesNm || '-'}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <p className="text-sm text-white/40 py-4 text-center">
+                    해당 건물 등록된 상가 임대 내역 데이터가 오류로 인해 불러오지 못할 수 있습니다. (소상공인시장진흥공단)
+                </p>
+            )}
+        </PriceReasonMethodCard>
+    );
+};
+
 // helper: filter items based on category
 const shouldHideItem = (keyOrLabel: string, category: string): boolean => {
     const lower = keyOrLabel.toLowerCase().replace(/\s+/g, '');
     const cat = (category || 'land').toLowerCase().trim();
     const isLand = cat === 'land' || cat === '토지';
     const isApartment = cat === 'apartment' || cat === '아파트';
+
+    if (lower.includes('buildingagephoto') || lower.includes('건물노후도(사진)')) {
+        return true;
+    }
 
     if (isLand) {
         if (lower.includes('노후도') ||
@@ -215,186 +2185,127 @@ const shouldHideItem = (keyOrLabel: string, category: string): boolean => {
     return false;
 };
 
+const SHORT_VERDICT_LABELS = [
+    '매우 고평가', '매우 저평가', '고평가', '저평가',
+    '적정 수준', '적정가', '적정',
+    '선반영', '미반영', '주의', '위험', '적합',
+];
+
+const getScoreTier = (score: number) => {
+    if (score >= 80) return { label: '우수', color: '#34d399' };
+    if (score >= 60) return { label: '양호', color: '#0EA5E9' };
+    if (score >= 40) return { label: '보통', color: '#fbbf24' };
+    return { label: '검토 필요', color: '#f87171' };
+};
+
+const extractShortLabel = (...sources: (string | undefined | null)[]): string | null => {
+    for (const raw of sources) {
+        if (!raw) continue;
+        const text = String(raw).trim();
+        if (!text) continue;
+        for (const label of SHORT_VERDICT_LABELS) {
+            if (text.includes(label)) return label;
+        }
+        if (text.length <= 8 && !/[.!?]/.test(text)) return text;
+    }
+    return null;
+};
+
+const getVerdictBadgeStyle = (label: string) => {
+    if (label.includes('저평가') || label === '미반영') {
+        return { color: '#10b981', borderColor: '#10b98144', backgroundColor: '#10b98114' };
+    }
+    if (label.includes('고평가') || label === '선반영') {
+        return { color: '#f59e0b', borderColor: '#f59e0b44', backgroundColor: '#f59e0b14' };
+    }
+    if (label.includes('적정')) {
+        return { color: '#94a3b8', borderColor: '#94a3b844', backgroundColor: '#94a3b814' };
+    }
+    if (label === '주의' || label === '위험') {
+        return { color: '#f87171', borderColor: '#f8717144', backgroundColor: '#f8717114' };
+    }
+    const tier = getScoreTier(0);
+    return { color: tier.color, borderColor: `${tier.color}44`, backgroundColor: `${tier.color}14` };
+};
+
 
 export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isCheckingAccess }: any) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
     const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
 
-    const renderPriceSpectrumSection = (spectrum: any) => {
-        if (!spectrum) return null;
-        const narrative = spectrum.narrative || '';
-        const buildingFloorVal = spectrum.buildingFloor || '';
+    const categoryStr = String(mergedData?.category || 'land');
 
+    // Target Area Calculation
+    let targetArea = 0;
+    try {
+        const meta = ai?.analysisMetadata || {};
+        const t = meta.target || {};
+        const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
+            ? parseFloat(meta.targetArea.toString())
+            : null;
+        if (directTargetArea !== null && directTargetArea > 0) {
+            targetArea = directTargetArea;
+        } else if (categoryStr === 'building') {
+            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+        } else {
+            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+        }
+    } catch (_) {}
+
+    const renderPriceReasonMethods = (spectrum: any) => {
+        if (!spectrum) return null;
+        const lowerCat = categoryStr.toLowerCase().trim();
+        const isApartmentCat = lowerCat === 'apartment' || categoryStr.trim() === '아파트';
+        if (isApartmentCat) return null;
+
+        const narrative = spectrum.narrative || '';
         const meta = ai.analysisMetadata || {};
         const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
         const attachedTrades = Array.isArray(meta.uiAttachedRegionalTrades) ? meta.uiAttachedRegionalTrades : [];
         const attachedMultiplier = meta.uiAttachedMultiplier;
-        const categoryStr = String(mergedData?.category || 'land');
-
-        // Target Area Calculation
-        let targetArea = 0;
-        try {
-            const t = meta.target || {};
-            const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
-                ? parseFloat(meta.targetArea.toString())
-                : null;
-            if (directTargetArea !== null && directTargetArea > 0) {
-                targetArea = directTargetArea;
-            } else if (categoryStr === 'building') {
-                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
-            } else {
-                targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
-            }
-        } catch (_) {}
+        const isBuildingCat = categoryStr === 'building' || categoryStr === 'store';
+        const estimatedTotalWon = targetArea > 0 && meta.estimatedPricePerSqm
+            ? Number(meta.estimatedPricePerSqm) * targetArea
+            : Number(meta.estimatedTotalPrice) || 0;
+        const officialMultiplierEstimate = (ai['5_priceReasonableness'] || {}).officialMultiplierEstimate;
 
         return (
-            <div className="p-5 bg-white/[0.02] border border-white/10 rounded-3xl flex flex-col gap-4 mt-2">
-                <div className="flex items-center gap-2">
-                    <List className="w-4 h-4 text-[#c5dedd]" />
-                    <span className="text-white text-sm font-bold">인근 유사 비교사례 가치 대입 리스트</span>
-                </div>
-
-                {comparables.length === 0 ? (
-                    <span className="text-white/38 text-xs">분석된 비교사례가 없습니다.</span>
-                ) : (
-                    <div className="flex flex-col gap-2.5">
-                        {comparables.map((c: any, index: number) => {
-                            const platPlc = c.platPlc || '';
-                            const platAddr = c.platAddr || '';
-                            const sggNm = c.sggNm || '';
-                            const umdNm = c.umdNm || '';
-                            const addr = umdNm || platPlc.split(' ').pop() || platAddr.split(' ').pop() || `사례 #${index + 1}`;
-                            
-                            const simVal = Number(c.similarityScore || c.score) || 0;
-                            const simStr = simVal > 0 ? `${simVal.toFixed(0)}%` : '90%';
-
-                            const distVal = Number(c.distance || c.distanceFromTarget) || 0;
-                            const distStr = distVal > 0 ? `${distVal.toFixed(0)}m` : '-';
-
-                            const date = `${c.dealYear || '?'}.${c.dealMonth || '?'}`;
-
-                            const dealAmountVal = Number(c.dealAmount) || 0;
-                            const dealAmountManwon = dealAmountVal > 1000000 ? dealAmountVal / 10000 : dealAmountVal;
-                            const dealAmountStr = dealAmountManwon > 0 
-                                ? `${(dealAmountManwon / 10000).toFixed(1)}억원`
-                                : '-';
-
-                            const rawPricePerSqm = Number(c.adjustedPricePerSqm || c.pricePerSqm) || 0;
-                            const adjPricePerSqmManwon = rawPricePerSqm > 10000 ? rawPricePerSqm / 10000 : rawPricePerSqm;
-                            const adjTotalManwon = targetArea > 0 ? adjPricePerSqmManwon * targetArea : 0;
-                            const adjTotalStr = adjTotalManwon > 0 
-                                ? `${(adjTotalManwon / 10000).toFixed(1)}억원`
-                                : '계산불가';
-
-                            return (
-                                <div key={index} className="p-4 bg-white/[0.01] border border-white/5 rounded-2xl flex flex-col gap-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white text-xs font-bold">#{index + 1} {addr}</span>
-                                        <span className="text-white/40 text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
-                                            유사도 {simStr} · 거리 {distStr}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs mt-1">
-                                        <span className="text-white/30 text-[11px]">거래 정보 ({date})</span>
-                                        <span className="text-white/70 font-semibold">{dealAmountStr}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs pt-1 border-t border-white/5">
-                                        <span className="text-white/50 font-bold">보정 후 대입 가치</span>
-                                        <span className="text-[#7dd3c0] font-black text-sm">{adjTotalStr}</span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {buildingFloorVal && (
-                    <div className="pt-3 border-t border-white/5 flex flex-col gap-1.5">
-                        <div className="flex justify-between items-center text-xs">
-                            <div className="flex items-center gap-1.5 text-white/50">
-                                <Building className="w-3.5 h-3.5" />
-                                <span>건축물 잔존가 하한선 (원가법)</span>
-                            </div>
-                            <span className="text-[#c5dedd] font-bold">{buildingFloorVal}</span>
-                        </div>
-                        <span className="text-white/30 text-[10px]">※ 국세청 신축가격기준액을 준용한 최소 원가 기준이며, 시장 가격이 아닙니다.</span>
-                    </div>
-                )}
-
-                {attachedMultiplier && (
-                    <div className="pt-3 border-t border-white/5 flex flex-col gap-2">
-                        <div className="flex items-center gap-1.5 text-white/50 text-xs">
-                            <Layers className="w-3.5 h-3.5" />
-                            <span>공시지가 배율 추정 (사례 부족 시)</span>
-                        </div>
-                        <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl flex flex-col gap-1 text-xs">
-                            <span className="text-white/70">용도지역: {attachedMultiplier.zoning || '-'}</span>
-                            <span className="text-white/70">
-                                적용 배율: {attachedMultiplier.minMult || '-'}~{attachedMultiplier.maxMult || '-'}배 (중간값 {attachedMultiplier.midMult || '-'}배)
-                            </span>
-                            <span className="text-[#c5dedd] font-bold text-sm mt-1">
-                                추정 범위: {formatKoreanCurrency(Number(attachedMultiplier.minTotal) || 0)} ~ {formatKoreanCurrency(Number(attachedMultiplier.maxTotal) || 0)}
-                            </span>
-                        </div>
-                    </div>
-                )}
-
-                {attachedTrades.length > 0 && (
-                    <div className="pt-3 border-t border-white/5 flex flex-col gap-2">
-                        <div className="flex items-center gap-1.5 text-white/50 text-xs">
-                            <List className="w-3.5 h-3.5" />
-                            <span>인근 거래사례 참고 리스트</span>
-                        </div>
-                        <div className="flex flex-col gap-3">
-                            {attachedTrades.map((group: any, idx: number) => {
-                                const items = Array.isArray(group.data) ? group.data : [];
-                                if (items.length === 0) return null;
-                                return (
-                                    <div key={idx} className="flex flex-col gap-1.5">
-                                        <span className="text-white/40 text-[10px] font-bold">{group.type} ({items.length}건)</span>
-                                        <div className="flex flex-col gap-1 pl-2">
-                                            {items.slice(0, 5).map((t: any, i: number) => {
-                                                const addr = `${t.sggNm || t.시군구 || ''} ${t.umdNm || t.법정동 || ''} ${t.jibun || t.지번 || ''}`.trim();
-                                                const year = t.dealYear || t.년 || '';
-                                                const month = t.dealMonth || t.월 || '';
-                                                const dateStr = year ? `${year}.${month}` : '-';
-
-                                                const deposit = t.deposit || t.보증금액;
-                                                const monthly = t.monthlyRent || t.월세금액;
-                                                const dealAmt = t.dealAmount || t.거래금액;
-
-                                                let priceStr = '';
-                                                if (deposit !== undefined && deposit !== null) {
-                                                    priceStr = monthly !== undefined && monthly !== null && monthly.toString() !== '0'
-                                                        ? `보증금 ${deposit}만 / 월세 ${monthly}만`
-                                                        : `전세 ${deposit}만`;
-                                                } else {
-                                                    const priceNum = parseInt(String(dealAmt).replace(/,/g, '')) || 0;
-                                                    priceStr = `매매 ${priceNum.toLocaleString()}만`;
-                                                }
-
-                                                return (
-                                                    <span key={i} className="text-white/60 text-[11px] leading-relaxed">
-                                                        - {dateStr} [{addr}] → {priceStr}
-                                                    </span>
-                                                );
-                                            })}
-                                            {items.length > 5 && (
-                                                <span className="text-white/30 text-[10px] pl-2">... 외 {items.length - 5}건</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {narrative && (
-                    <div className="pt-3 border-t border-white/5 text-white/70 text-xs leading-relaxed">
-                        {narrative}
-                    </div>
-                )}
+            <div className="flex flex-col gap-4">
+                <LandComparableValueSection
+                    comparables={comparables}
+                    meta={meta}
+                    targetArea={targetArea}
+                    categoryStr={categoryStr}
+                    isBuildingCat={isBuildingCat}
+                />
+                <OfficialMultiplierSection
+                    attached={attachedMultiplier}
+                    meta={meta}
+                    comparables={comparables}
+                    targetArea={targetArea}
+                    isListAppended={meta.isListAppended}
+                    estimateNarrative={officialMultiplierEstimate}
+                />
+                <BuildingResidualSection
+                    meta={meta}
+                    spectrum={spectrum}
+                    comparables={comparables}
+                    targetArea={targetArea}
+                    estimatedTotalWon={estimatedTotalWon}
+                    mergedData={mergedData}
+                />
+                <RegionalTradesReferenceSection groups={attachedTrades} />
+                <PriceSpectrumNarrativeSection
+                    narrative={narrative}
+                    spectrum={spectrum}
+                    meta={meta}
+                    comparables={comparables}
+                    targetArea={targetArea}
+                    estimatedTotalWon={estimatedTotalWon}
+                    attachedMultiplier={attachedMultiplier}
+                    mergedData={mergedData}
+                    compactSummary
+                />
             </div>
         );
     };
@@ -440,15 +2351,40 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
     // ──────────────────────────────────────────
     // 📊 카테고리 추출
     // ──────────────────────────────────────────
-    const categoryStr = String(mergedData?.category || 'land');
-    const isLand = categoryStr.toLowerCase().trim() === 'land' || categoryStr.trim() === '토지';
-    const isApartment = categoryStr.toLowerCase().trim() === 'apartment' || categoryStr.trim() === '아파트';
+    const lowerCat = categoryStr.toLowerCase().trim();
+    const isLand = lowerCat === 'land' || categoryStr.trim() === '토지';
+    const isBuildingCat = lowerCat === 'building' || lowerCat === '빌딩' || lowerCat === 'store' || lowerCat === '상가';
+    const showLandPriceNotes = isLand || isBuildingCat;
+    const isApartment = lowerCat === 'apartment' || categoryStr.trim() === '아파트';
 
     const compRisk = ai['1_comprehensiveRisk'] || {};
     const priceReas = ai['5_priceReasonableness'] || {};
     const overallScore = typeof (compRisk.totalScore || compRisk.score) === 'number' ? (compRisk.totalScore || compRisk.score) : 0;
-    const riskGrade = priceReas.conclusion || compRisk.coreJudgement || '분석 중';
     const summaryText = compRisk.coreJudgement || mergedData?.detectiveNote || "상세 분석 리포트가 파싱을 완료했습니다.";
+
+    const scoreTier = getScoreTier(overallScore);
+    const finalVerdict = ai['8_finalVerdict'];
+    const verdictText = typeof finalVerdict === 'object'
+        ? (finalVerdict?.verdict || finalVerdict?.verdic)
+        : (typeof finalVerdict === 'string' ? finalVerdict : undefined);
+    const priceLabel = extractShortLabel(
+        priceReas.conclusion,
+        priceReas.gap,
+        priceReas.opinion,
+        priceReas.priceSpectrum?.narrative,
+        verdictText,
+    );
+    const summaryBadges: { label: string; color: string; borderColor: string; backgroundColor: string }[] = [
+        {
+            label: scoreTier.label,
+            color: scoreTier.color,
+            borderColor: `${scoreTier.color}44`,
+            backgroundColor: `${scoreTier.color}14`,
+        },
+    ];
+    if (priceLabel && priceLabel !== scoreTier.label) {
+        summaryBadges.push({ label: priceLabel, ...getVerdictBadgeStyle(priceLabel) });
+    }
 
     // ──────────────────────────────────────────
     // 📊 레이더 차트 및 미니바 데이터 필터링
@@ -517,18 +2453,8 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         'yieldAnalysis': { icon: Percent, label: '수익률(CAP Rate) 분석', color: '#bcd4e6' },
     };
 
-    // 파스텔 색상 목록 (미니바용)
-    const pastelColors = [
-        '#EDDCD2', // Warm Beige
-        '#C5DEDD', // Pale Mint
-        '#FFF1E6', // Peach White
-        '#D6E2E9', // Soft Sky Blue
-        '#FDE2E4', // Soft Pink
-        '#DBE7E4', // Soft Gray Green
-        '#FAD2E1', // Lavender Pink
-        '#BCD4E6', // Beau Blue
-        '#F0EFEB', // Parchment Gray
-    ];
+    // 파스텔 색상 목록 (RiskBubbleChart · 미니바와 동일)
+    const pastelColors = [...REPORT_PASTEL_PALETTE];
 
     // ──────────────────────────────────────────
     // 🛠️ [입력한 상세 정보 Section]
@@ -614,7 +2540,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
     };
 
     // ──────────────────────────────────────────
-    // 📊 [토지 가치 정밀 검증 원장 Section]
+    // [토지 가치 정밀 검증 원장 Section]
     // ──────────────────────────────────────────
     const renderValuationLedgerSection = () => {
         const meta = ai.analysisMetadata;
@@ -640,35 +2566,31 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
 
         const isBuilding = categoryStr === 'building';
         const isHouse = categoryStr === 'house';
+        const showLocationStep = isLand || isBuilding || isHouse;
+        const showZoningStep = isLand || isBuilding;
 
         const ledgerTitle = isBuilding
-            ? '빌딩 가치 정밀 검증 원장'
+            ? '빌딩 프리미엄 검증 및 분석'
             : isHouse
-            ? '주택 가치 정밀 검증 원장'
-            : '토지 가치 정밀 검증 원장';
+            ? '주택 프리미엄 검증 및 분석'
+            : '토지 프리미엄 검증 및 분석';
 
-        const step1Title = isBuilding
-            ? '1단계: 선별된 유사 상업건물 비교 (Comparables)'
-            : isHouse
-            ? '1단계: 선별된 유사 주택 비교 (Comparables)'
-            : '1단계: 선별된 유사 필지 비교 (Comparables)';
-
-        const step3Title = (isBuilding || isHouse)
-            ? '3단계: 입지 등급 분석'
-            : '3단계: 입지 등급 및 CBD 프리미엄 범위';
-
-        const pyeongLabel = isBuilding
-            ? '연면적 평당'
-            : isHouse
-            ? '전용면적 평당'
-            : '대지면적 평당';
-
-        const stepHeader = (stepNum, title) => (
-            <div className="flex items-center gap-2 mt-6 mb-3">
-                <div className="w-[18px] h-[18px] flex items-center justify-center bg-[#c5dedd] text-[#0f172a] rounded-full text-[10px] font-black">{stepNum}</div>
-                <span className="text-white text-[13px] font-bold">{title}</span>
-            </div>
-        );
+        let targetArea = 0;
+        try {
+            const t = meta.target || {};
+            const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
+                ? parseFloat(meta.targetArea.toString())
+                : null;
+            if (directTargetArea !== null && directTargetArea > 0) {
+                targetArea = directTargetArea;
+            } else if (isBuilding) {
+                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+            } else if (isHouse) {
+                targetArea = parseFloat(t.exclusiveArea_sqm || t.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || '0');
+            } else {
+                targetArea = parseFloat(t.area_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.area_sqm || '0');
+            }
+        } catch (_) {}
 
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
@@ -689,7 +2611,16 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                                     <div className="flex justify-between items-center gap-2">
                                         <span className="text-white/30 text-[10px] truncate max-w-[85%]">{detail.title}</span>
                                         {hasLink && (
-                                            <a href={detail.url} target="_blank" rel="noopener noreferrer" className="p-1 bg-[#7dd3c0]/10 rounded hover:bg-[#7dd3c0]/20 transition-all text-[#7dd3c0]">
+                                            <a
+                                                href={detail.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-1 rounded transition-all"
+                                                style={{
+                                                    backgroundColor: hexToRgba(LEDGER_ACCENTS.multipliers, 0.1),
+                                                    color: LEDGER_ACCENTS.multipliers,
+                                                }}
+                                            >
                                                 <ExternalLink className="w-2.5 h-2.5" />
                                             </a>
                                         )}
@@ -698,7 +2629,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             </div>
                         );
                     })}
-                    <span className="text-[#c5dedd] text-[11px] font-bold mt-1">
+                    <span className="text-[11px] font-bold mt-1" style={{ color: LEDGER_ACCENTS.comparables }}>
                         호재 총합: +{totalRate}%{hosaeAdj.capped ? ' (상한 +10.0% cap 적용)' : ''}
                     </span>
                 </div>
@@ -767,139 +2698,49 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         }
 
         if (hosaeAdj) {
+            const hosaeDetails = hosaeAdj.details || [];
             tiles.push({
                 name: "호재 보정 (Hosae)",
                 factor: hosaeAdj.applied ? (hosaeAdj.factor || 1.0) : 1.0,
-                desc: hosaeAdj.applied ? '' : '인근 호재 미감지 — 보정 없음',
+                desc: hosaeDetails.length > 0
+                    ? (hosaeAdj.applied
+                        ? `인근 호재 ${hosaeDetails.length}건 반영`
+                        : '(참고) 단가 보정 미적용')
+                    : (hosaeAdj.reason || '인근 호재 미감지 — 보정 없음'),
                 infoText: "개발 계획, 교통망 신설, 구역 지정 등 인근 지역의 미래 가치 상승 요인(호재)에 따른 가치 상승분을 보정하여 반영합니다.",
-                customDescElement: hosaeAdj.applied ? renderHosaeDetails() : undefined
+                customDescElement: hosaeDetails.length > 0 ? renderHosaeDetails() : undefined
             });
         }
 
         return (
-            <div className="p-6 bg-[#0f172a]/55 border border-[#c5dedd]/20 rounded-[40px] shadow-[0_0_25px_rgba(197,222,221,0.04)]">
-                {/* Header */}
-                <div className="flex justify-between items-center w-full pb-4 border-b border-white/5 mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#c5dedd]/12 border border-[#c5dedd]/30 rounded-xl">
-                            <List className="w-4 h-4 text-[#c5dedd]" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-white text-base font-bold tracking-tight">{ledgerTitle}</span>
-                            <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
-                        </div>
-                    </div>
-                    {comparables.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => setIsMapModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#c5dedd]/10 hover:bg-[#c5dedd]/20 border border-[#c5dedd]/25 text-[#c5dedd] hover:text-white rounded-xl text-xs font-bold transition-all"
-                        >
-                            <Map className="w-3.5 h-3.5" />
-                            <span>지도 보기</span>
-                        </button>
-                    )}
-                </div>
-
-                {/* Step 1: 유사 필지 비교 (Comparables) */}
-                {stepHeader('1', step1Title)}
-                {comparables.length === 0 ? (
-                    <div className="text-white/38 text-xs py-4">유사한 실거래 비교 사례가 없습니다.</div>
-                ) : (
-                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
-                        {comparables.map((c, index) => {
-                            const addr = c.platPlc || c.platAddr || `${c.sggNm || ''} ${c.umdNm || ''}`.trim() || '주소 정보 없음';
-                            const dateStr = `${c.dealYear || '?'}.${c.dealMonth || '?'}`;
-                            const rawPriceStr = c.pricePerPyeong ? `${Math.round(c.pricePerPyeong / 10000).toLocaleString()}만원` : '-';
-                            const adjPriceStr = c.adjustedPricePerPyeong ? `${Math.round(c.adjustedPricePerPyeong / 10000).toLocaleString()}만원` : '-';
-
-                            return (
-                                <div key={index} className="min-w-[220px] max-w-[220px] p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-2 shrink-0 snap-center">
-                                    <div className="flex justify-between items-center gap-2">
-                                        <span className="text-white text-[12px] font-bold truncate">#{index + 1} {addr}</span>
-                                        <span className="text-white/30 text-[10px]">{dateStr}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center mt-1">
-                                        <span className="text-white/50 text-[10px]">보정후 {pyeongLabel}</span>
-                                        <span className="text-[#c5dedd] text-[13px] font-black">{adjPriceStr}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-white/30 text-[10px]">보정전 {pyeongLabel}</span>
-                                        <span className="text-white/50 text-xs line-through">{rawPriceStr}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-white/5">
-                                        <span className="text-white/30 text-[9px] truncate">
-                                            {isBuilding 
-                                                ? `연 ${c.buildingAr || c.area || '-'}㎡/대 ${c.plottageAr || '-'}㎡ · ${c.buildingUse || c.zoning || '-'}`
-                                                : isHouse
-                                                ? `전 ${c.area || '-'}㎡/대 ${c.plottageAr || '-'}㎡ · ${c.zoning || '-'}`
-                                                : `${c.area ? `${c.area}㎡` : '-'} · ${c.zoning || '-'}`
-                                            }
-                                        </span>
-                                        <span className="text-white/30 text-[9px]">시점 x{(c.timeAdjFactor || 1.0).toFixed(3)}</span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+            <div className="flex flex-col gap-5">
+                <LedgerSummaryCard
+                    title={ledgerTitle}
+                    showMapButton={comparables.length > 0}
+                    onMapOpen={() => setIsMapModalOpen(true)}
+                />
+                <LedgerComparablesSection
+                    categoryStr={categoryStr}
+                    isBuilding={isBuilding}
+                    isHouse={isHouse}
+                    comparables={comparables}
+                    tier1Comparables={meta.tier1Comparables}
+                    tier2Comparables={meta.tier2Comparables}
+                    targetArea={meta.areaAdjustment?.targetArea || targetArea}
+                    confidenceGrade={meta.confidenceGrade || ''}
+                />
+                <LedgerMultipliersSection tiles={tiles} />
+                {showLocationStep && (
+                    <LedgerLocationSection
+                        cbdGrade={cbdGrade}
+                        cbdScore={cbdScore}
+                        cbdEst={cbdEst}
+                        targetArea={meta.areaAdjustment?.targetArea || targetArea}
+                        isBuildingOrHouse={isBuilding || isHouse}
+                    />
                 )}
-
-                {/* Step 2: Multipliers */}
-                {stepHeader('2', '2단계: 개별 요인 보정 계수 (Multipliers)')}
-                <div className="flex flex-col gap-2">
-                    {tiles.map((tile, i) => {
-                        const indexMap = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
-                        return (
-                            <MultiplierTile
-                                key={i}
-                                indexStr={indexMap[i] || `${i + 1}`}
-                                name={tile.name}
-                                factor={tile.factor}
-                                desc={tile.desc}
-                                infoText={tile.infoText}
-                                customDescElement={tile.customDescElement}
-                            />
-                        );
-                    })}
-                </div>
-
-                {/* Step 3: Location rank (토지일 때만 노출) */}
-                {isLand && stepHeader('3', step3Title)}
-                {isLand && (
-                    <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-2">
-                        <div className="flex justify-between items-center">
-                            <span className="text-white text-xs font-bold">입지 등급: {cbdGrade}</span>
-                            <div className="px-2 py-0.5 bg-[#c5dedd]/15 text-[#c5dedd] rounded text-[10px] font-bold">점수: {cbdScore}점</div>
-                        </div>
-                        {cbdEst ? (() => {
-                            const minTotalVal = cbdEst.multiplier?.min || 1.0;
-                            const maxTotalVal = cbdEst.multiplier?.max || 1.0;
-                            const officialPricePerSqm = cbdEst.officialPerSqm || 0;
-                            const targetArea = meta.areaAdjustment?.targetArea || 0;
-                            const minTotal = Math.round((officialPricePerSqm * minTotalVal * targetArea) / 10000);
-                            const maxTotal = Math.round((officialPricePerSqm * maxTotalVal * targetArea) / 10000);
-
-                            return (
-                                <div className="text-white/70 text-xs leading-relaxed flex flex-col gap-1.5">
-                                    <span>· 일반 용도/주거 기준 (배율 {minTotalVal.toFixed(1)}~{maxTotalVal.toFixed(1)}배):</span>
-                                    <span className="text-white font-bold text-[13px] pl-2">{minTotal.toLocaleString()}만원 ~ {maxTotal.toLocaleString()}만원</span>
-                                    <span>· 상업화 및 개발 성공 시: 공시지가의 3.5배 ~ 5.0배 범위 적용 가능 (잠재 가치)</span>
-                                </div>
-                            );
-                        })() : (
-                            <span className="text-white/70 text-xs leading-relaxed">
-                                · 빌딩/주택 실거래가에는 입지 프리미엄이 이미 반영되어 있으므로 별도 CBD 배율 산출 불필요
-                            </span>
-                        )}
-                    </div>
-                )}
-
-                {/* Step 4: Surrounding zoning change comment (토지일 때만 노출) */}
-                {isLand && stepHeader('4', '4단계: 최근 5년 이내 인접 필지 용도변경 허가 이력')}
-                {isLand && (
-                    <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
-                        <span className="text-white/70 text-xs leading-relaxed">{zoningChangeComment}</span>
-                    </div>
+                {showZoningStep && (
+                    <LedgerZoningChangeSection comment={zoningChangeComment} />
                 )}
             </div>
         );
@@ -930,11 +2771,14 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         const confidenceScore = meta.confidenceScore || 0;
         const sampleCount = meta.priceSampleCount || comparables.length;
 
-        const accentColor = '#7dd3c0';
+        const accentColor = LEDGER_ACCENTS.comparables;
+        const accentBuilding = LEDGER_ACCENTS.multipliers;
+        const accentOfficial = LEDGER_ACCENTS.location;
+        const accentZoning = LEDGER_ACCENTS.zoning;
 
-        const stepHeader = (stepNum: string, title: string) => (
+        const stepHeader = (stepNum: string, title: string, stepAccent: string) => (
             <div className="flex items-center gap-2 mt-6 mb-3">
-                <div style={{ backgroundColor: accentColor }} className="w-[18px] h-[18px] flex items-center justify-center text-[#0f172a] rounded-full text-[10px] font-black">{stepNum}</div>
+                <div style={{ backgroundColor: stepAccent }} className="w-[18px] h-[18px] flex items-center justify-center text-[#0f172a] rounded-full text-[10px] font-black">{stepNum}</div>
                 <span className="text-white text-[13px] font-bold">{title}</span>
             </div>
         );
@@ -957,15 +2801,27 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         };
 
         return (
-            <div className="p-6 bg-[#0f172a]/55 border border-[#7dd3c0]/20 rounded-[40px] shadow-[0_0_25px_rgba(125,211,192,0.04)]">
+            <div
+                className="p-6 bg-[#0f172a]/55 rounded-[40px]"
+                style={{
+                    border: `1px solid ${hexToRgba(accentColor, 0.2)}`,
+                    boxShadow: `0 0 25px ${hexToRgba(accentColor, 0.04)}`,
+                }}
+            >
                 {/* Header */}
                 <div className="flex justify-between items-center gap-2 pb-4 border-b border-white/5 mb-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#7dd3c0]/12 border border-[#7dd3c0]/30 rounded-xl">
-                            <Building className="w-4 h-4 text-[#7dd3c0]" />
+                        <div
+                            className="p-2 rounded-xl"
+                            style={{
+                                backgroundColor: hexToRgba(accentColor, 0.12),
+                                border: `1px solid ${hexToRgba(accentColor, 0.3)}`,
+                            }}
+                        >
+                            <Building className="w-4 h-4" style={{ color: accentColor }} />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-white text-base font-bold tracking-tight">아파트 가치 정밀 검증 원장</span>
+                            <span className="text-white text-base font-bold tracking-tight">아파트 프리미엄 검증 및 분석</span>
                             <span className="text-white/38 text-[11px] font-medium">Apartment Valuation Ledger · {aptTarget.aptName || ''}</span>
                         </div>
                     </div>
@@ -974,7 +2830,12 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             <button
                                 type="button"
                                 onClick={() => setIsMapModalOpen(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#7dd3c0]/10 hover:bg-[#7dd3c0]/20 border border-[#7dd3c0]/25 text-[#7dd3c0] hover:text-white rounded-xl text-xs font-bold transition-all"
+                                className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
+                                style={{
+                                    backgroundColor: hexToRgba(accentColor, 0.1),
+                                    border: `1px solid ${hexToRgba(accentColor, 0.25)}`,
+                                    color: accentColor,
+                                }}
                             >
                                 <Map className="w-3.5 h-3.5" />
                                 <span>지도 보기</span>
@@ -983,7 +2844,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                         <div style={{
                             borderColor: confidenceGrade === 'A' ? '#007f5f' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
                             color: confidenceGrade === 'A' ? '#10b981' : confidenceGrade === 'B' ? accentColor : '#f59e0b',
-                            backgroundColor: confidenceGrade === 'A' ? 'rgba(0,127,95,0.15)' : confidenceGrade === 'B' ? 'rgba(125,211,192,0.12)' : 'rgba(245,158,11,0.12)'
+                            backgroundColor: confidenceGrade === 'A' ? 'rgba(0,127,95,0.15)' : confidenceGrade === 'B' ? hexToRgba(accentColor, 0.12) : 'rgba(245,158,11,0.12)'
                         }} className="px-2 py-1 rounded-lg border text-[9px] font-black whitespace-nowrap">
                             신뢰도 {confidenceGrade} ({confidenceScore}점)
                         </div>
@@ -991,7 +2852,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 </div>
 
                 {/* Step 1: 비교사례 요약 */}
-                {stepHeader('1', `1단계: 비교사례 요약 (${sampleCount}건)`)}
+                {stepHeader('1', `1단계: 비교사례 요약 (${sampleCount}건)`, accentColor)}
                 {comparables.length === 0 ? (
                     <div className="text-white/38 text-xs py-4">유사한 실거래 비교 사례가 없습니다.</div>
                 ) : (
@@ -1016,11 +2877,11 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? accentColor : '#f59e0b';
 
                             return (
-                                <div key={index} style={{ borderColor: isSame ? 'rgba(125,211,192,0.2)' : 'rgba(255,255,255,0.08)' }} className="min-w-[210px] max-w-[210px] p-4 bg-white/5 border rounded-2xl flex flex-col gap-2 shrink-0 snap-center">
+                                <div key={index} style={{ borderColor: isSame ? hexToRgba(accentColor, 0.2) : 'rgba(255,255,255,0.08)' }} className="min-w-[210px] max-w-[210px] p-4 bg-white/5 border rounded-2xl flex flex-col gap-2 shrink-0 snap-center">
                                     <div className="flex justify-between items-center gap-1.5">
                                         <div className="flex items-center gap-1 min-w-[70%]">
                                             {isSame && (
-                                                <span style={{ color: accentColor, backgroundColor: 'rgba(125,211,192,0.15)' }} className="px-1 py-0.5 rounded text-[8px] font-bold">동일</span>
+                                                <span style={{ color: accentColor, backgroundColor: hexToRgba(accentColor, 0.15) }} className="px-1 py-0.5 rounded text-[8px] font-bold">동일</span>
                                             )}
                                             <span className="text-white text-[12px] font-bold truncate">{c.aptName || dateStr}</span>
                                         </div>
@@ -1050,7 +2911,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 )}
 
                 {/* Step 2: 추정 단가 산출 */}
-                {stepHeader('2', '2단계: 추정 단가 산출 (시점수정 적용)')}
+                {stepHeader('2', '2단계: 추정 단가 산출 (시점수정 적용)', accentBuilding)}
                 <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-3">
                     {aptPriceRow('중위값 (Median)', estPerSqm, estPerPyeong, true)}
                     <div className="h-px bg-white/5" />
@@ -1062,7 +2923,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 </div>
 
                 {/* Step 3: 최종 추정가 */}
-                {stepHeader('3', '3단계: 최종 추정가 산출')}
+                {stepHeader('3', '3단계: 최종 추정가 산출', accentOfficial)}
                 <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-3">
                     <span className="text-white/50 text-[11px]">대상 면적 {aptTarget.exclusiveArea ? parseFloat(aptTarget.exclusiveArea.toString()).toFixed(1) : '-'}㎡ × 추정 단가</span>
                     <div className="flex items-end gap-2 mt-1">
@@ -1095,7 +2956,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 </div>
 
                 {/* Step 4: 시장 분석 코멘트 */}
-                {stepHeader('4', '4단계: 시장 분석 코멘트')}
+                {stepHeader('4', '4단계: 시장 분석 코멘트', accentZoning)}
                 <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-2">
                     {marketSummary.length === 0 ? (
                         <span className="text-white/38 text-xs">시장 분석 데이터가 없습니다.</span>
@@ -1152,12 +3013,31 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                 <div className="absolute top-0 inset-x-10 h-px bg-gradient-to-r from-transparent via-sky-400/25 to-transparent" />
                 <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-10">
                     <div className="shrink-0 flex justify-center">
-                        <PremiumRiskGauge score={overallScore} grade={riskGrade} />
+                        <PremiumRiskGauge score={overallScore} />
                     </div>
                     <div className="flex-1 min-w-0 text-center lg:text-left">
-                        <div className="inline-flex items-center gap-2 mb-4">
-                            <Sparkles className="w-3.5 h-3.5 text-sky-400/60" />
-                            <span className="text-xs font-semibold text-white/45">AI 탐정 종합 판독</span>
+                        <div className="flex items-center gap-3 mb-5 flex-wrap justify-center lg:justify-start">
+                            <div className="flex items-center gap-2.5 shrink-0">
+                                <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500/25 via-cyan-500/10 to-transparent border border-sky-400/30 shadow-[0_0_16px_rgba(14,165,233,0.18)]">
+                                    <div className="absolute inset-0 rounded-xl bg-sky-400/[0.06] pointer-events-none" />
+                                    <Search className="relative w-[18px] h-[18px] text-sky-300" strokeWidth={2.25} />
+                                </div>
+                                <span className="text-sm lg:text-[15px] font-bold tracking-tight text-white/95">
+                                    AI 탐정{' '}
+                                    <span className="bg-gradient-to-r from-sky-200 via-cyan-200 to-sky-300 bg-clip-text text-transparent">
+                                        분석 결과
+                                    </span>
+                                </span>
+                            </div>
+                            {summaryBadges.map(({ label, color, borderColor, backgroundColor }) => (
+                                <span
+                                    key={label}
+                                    className="text-[11px] font-black px-2.5 py-1 rounded-full border"
+                                    style={{ color, borderColor, backgroundColor }}
+                                >
+                                    {label}
+                                </span>
+                            ))}
                         </div>
                         <div className="text-white/90 text-[15px] lg:text-base leading-[1.75] font-medium min-h-[72px]">
                             <Typewriter text={summaryText} delay={30} />
@@ -1205,45 +3085,84 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
 
             {/* 4. 예상 가격 타당성 검증 */}
             {Object.keys(priceReas).length > 0 && (
-                <div className="p-6 bg-[#0f172a] rounded-[40px] border border-[#c5dedd]/20 shadow-[0_0_25px_rgba(197,222,221,0.04)] flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#c5dedd]/12 border border-[#c5dedd]/30 rounded-xl">
-                            <DollarSign className="w-4 h-4 text-[#c5dedd]" />
+                <div className="flex flex-col gap-5">
+                    {/* 요약 */}
+                    <div
+                        className="p-6 bg-[#0f172a] rounded-[40px] flex flex-col gap-4"
+                        style={{
+                            border: `1px solid ${hexToRgba(PRICE_METHOD_ACCENTS.summary, 0.2)}`,
+                            boxShadow: `0 0 25px ${hexToRgba(PRICE_METHOD_ACCENTS.summary, 0.04)}`,
+                        }}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div
+                                className="p-2 rounded-xl"
+                                style={{
+                                    backgroundColor: hexToRgba(PRICE_METHOD_ACCENTS.summary, 0.12),
+                                    border: `1px solid ${hexToRgba(PRICE_METHOD_ACCENTS.summary, 0.3)}`,
+                                }}
+                            >
+                                <DollarSign className="w-4 h-4" style={{ color: PRICE_METHOD_ACCENTS.summary }} />
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-white text-base font-bold tracking-tight">종합 데이터로 현 매물의 가격을 분석합니다
+                                </span>
+                               
+                            </div>
                         </div>
-                        <span className="text-white text-base font-bold tracking-tight">예상 가격 타당성 검증</span>
+
+                        {priceReas.conclusion && (
+                            <span className="text-white text-sm font-bold leading-relaxed">{priceReas.conclusion}</span>
+                        )}
+
+                        {priceReas.gap && (
+                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-white/50 text-xs">
+                                    <TrendingUp className="w-4 h-4 text-[#10b981]" />
+                                    <span>제시가 vs 비준가격 차이</span>
+                                </div>
+                                <span className="text-[#10b981] text-sm font-black">{priceReas.gap}</span>
+                            </div>
+                        )}
+
+                        {priceReas.opinion && (
+                            <span className="text-white/50 text-xs leading-relaxed border-t border-white/5 pt-3">{priceReas.opinion}</span>
+                        )}
                     </div>
 
-                    <span className="text-white text-sm font-bold leading-relaxed">{priceReas.conclusion || ''}</span>
+                    <IncomeApproachSection
+                        mergedData={mergedData}
+                        ai={ai}
+                        categoryStr={categoryStr}
+                    />
 
-                    {priceReas.gap && (
-                        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-white/50 text-xs">
-                                <TrendingUp className="w-4 h-4 text-[#10b981]" />
-                                <span>제시가 vs 비준가격 차이</span>
-                            </div>
-                            <span className="text-[#10b981] text-sm font-black">{priceReas.gap}</span>
-                        </div>
+                    <BuildingStoresSection
+                        mergedData={mergedData}
+                        categoryStr={categoryStr}
+                    />
+
+                    {/* 방법론별 독립 카드 + 보조 참고 카드 */}
+                    {priceReas.priceSpectrum && renderPriceReasonMethods(priceReas.priceSpectrum)}
+
+                    {showLandPriceNotes && priceReas.cbdEstimate && (
+                        priceSubCard(MapPin, '도심 중심업무지구(CBD) 추정', String(priceReas.cbdEstimate), PRICE_METHOD_ACCENTS.building)
                     )}
 
-                    {priceReas.priceSpectrum && renderPriceSpectrumSection(priceReas.priceSpectrum)}
-
-                    {priceReas.opinion && <span className="text-white/50 text-xs leading-relaxed">{priceReas.opinion}</span>}
-
-                    {/* Sub-Cards for CBD, zoning notes, etc. */}
-                    {isLand && priceReas.cbdEstimate && (
-                        priceSubCard(MapPin, '도심 중심업무지구(CBD) 추정', String(priceReas.cbdEstimate), '#bcd4e6')
+                    {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier && (
+                        priceSubCard(Percent, '공시지가 배율 추정', String(priceReas.officialMultiplierEstimate), PRICE_METHOD_ACCENTS.official)
                     )}
 
-                    {isLand && priceReas.zoningChangeNote && (
-                        priceSubCard(TrendingUp, '토지 용도지역 변경 동향', String(priceReas.zoningChangeNote), '#eddcd2')
+                    {showLandPriceNotes && priceReas.zoningChangeNote && (
+                        priceSubCard(TrendingUp, '토지 용도지역 변경 동향', String(priceReas.zoningChangeNote), PRICE_METHOD_ACCENTS.narrative)
                     )}
 
+                    {/* priceSpectrum 없을 때 아파트 레거시 서브 카드 */}
                     {isApartment && priceReas.estimatedTotalPriceNote && (
-                        priceSubCard(Calculator, '최종 추정가 산출', String(priceReas.estimatedTotalPriceNote), '#7dd3c0')
+                        priceSubCard(Coins, '최종 추정가 산출', String(priceReas.estimatedTotalPriceNote), PRICE_METHOD_ACCENTS.comparables)
                     )}
 
                     {isApartment && priceReas.marketSummaryComment && (
-                        priceSubCard(BarChart3, '시장 분석 코멘트', stripEmojis(String(priceReas.marketSummaryComment)), '#90e0ef')
+                        priceSubCard(BarChart3, '시장 분석 코멘트', stripEmojis(String(priceReas.marketSummaryComment)), PRICE_METHOD_ACCENTS.regional)
                     )}
                 </div>
             )}
@@ -1499,27 +3418,37 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
 
             {/* Comparable Map Modal */}
             {isMapModalOpen && (
-                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-                    {/* Background Overlay */}
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsMapModalOpen(false)} />
-                    {/* Modal Content */}
-                    <div className="relative w-full max-w-4xl h-[80vh] bg-slate-950 border border-white/10 rounded-[32px] overflow-hidden flex flex-col z-10 animate-in zoom-in-95 duration-200">
-                        {/* Modal Header */}
-                        <div className="flex justify-between items-center px-6 py-4 border-b border-white/5 bg-slate-900/50">
-                            <div className="flex items-center gap-2">
-                                <Map className="w-5 h-5 text-sky-400" />
-                                <span className="text-white text-base font-bold">비교사례 위치 시각화 지도</span>
+                <div className="fixed inset-0 z-[999] flex items-end justify-center">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsMapModalOpen(false)} />
+                    <div className="relative w-full max-w-4xl h-[85vh] bg-white rounded-t-[32px] overflow-hidden flex flex-col z-10 animate-in slide-in-from-bottom duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.35)]">
+                        {/* Bottom sheet drag handle indicator */}
+                        <div className="w-full flex justify-center pt-3 pb-1.5 bg-gradient-to-r from-sky-50 via-white to-emerald-50 shrink-0">
+                            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full" />
+                        </div>
+                        <div className="flex justify-between items-center px-6 pb-4 border-b border-slate-200/80 bg-gradient-to-r from-sky-50 via-white to-emerald-50">
+                            <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+                                    <Map className="w-5 h-5 text-sky-600" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-slate-900 text-base font-black">비교사례 위치 지도</span>
+                                    <span className="text-slate-500 text-[11px] font-medium">
+                                        마커에 실거래가(억) 표시 · 클릭 시 상세 정보
+                                        {ai.analysisMetadata?.comparables?.length
+                                            ? ` · ${ai.analysisMetadata.comparables.length}건`
+                                            : ''}
+                                    </span>
+                                </div>
                             </div>
                             <button
                                 onClick={() => setIsMapModalOpen(false)}
-                                className="p-1 rounded-lg hover:bg-white/5 text-white/40 hover:text-white transition-colors"
+                                className="p-2 rounded-xl hover:bg-slate-900/5 text-slate-400 hover:text-slate-700 transition-colors"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        {/* Map Body */}
-                        <div className="flex-1 p-4 bg-slate-950">
-                            <ComparableMap mapData={ai.analysisMetadata} category={categoryStr} />
+                        <div className="flex-1 p-3 bg-slate-100">
+                            <ComparableMap mapData={ai.analysisMetadata} category={categoryStr} targetArea={targetArea} />
                         </div>
                     </div>
                 </div>
@@ -1527,6 +3456,3 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         </div>
     );
 }
-
-// Dummy Calculator variable used above (if we imported custom icons, it needs to be imported or defined)
-const Calculator = Building;

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, DollarSign } from 'lucide-react';
 import { primaryPricePreview } from '../lib/manwonPriceFormatter';
+import { toDbSafeFloor } from '../lib/collectAnalysisInputData';
 
 export type TransactionType = '매매' | '전세' | '월세';
 export type RentType = 'jeonse' | 'wolse' | null;
@@ -18,9 +19,9 @@ export interface AiAnalysisInputState {
     desiredBusiness: string;
     monthlyRevenue: number | '';
     monthlyProfit: number | '';
-    floor: number | '';
+    floor: number | string | '';
     dong: string;
-    area: number | '';
+    area: number | string | '';
     rentType: RentType;
     jeonseDeposit: number | '';
     wolseDeposit: number | '';
@@ -75,6 +76,15 @@ function wonToManwon(value: unknown): number | '' {
     const num = typeof value === 'string' ? parseInt(value.replace(/,/g, ''), 10) : Number(value);
     if (!num || Number.isNaN(num)) return '';
     return Math.floor(num / 10000);
+}
+
+function parseFloorField(value: unknown): number | string | '' {
+    if (value === null || value === undefined || value === '') return '';
+    const str = String(value).trim();
+    if (!str) return '';
+    const num = Number(str);
+    if (!Number.isNaN(num) && str === String(num)) return num;
+    return str; // UI 표시용 ("4층" 등). API 전송 시 toDbSafeFloor로 제외
 }
 
 function toNumField(value: unknown): number | '' {
@@ -154,7 +164,7 @@ export function parseAiInputFromReportData(data: unknown): AiAnalysisInputState 
         monthlyProfit: wonToManwon(
             findReportValue(data, 'monthly_profit') ?? findReportValue(data, 'monthlyProfit'),
         ),
-        floor: toNumField(findReportValue(data, 'floor')),
+        floor: parseFloorField(findReportValue(data, 'floor')),
         dong: toStrField(findReportValue(data, 'dong')),
         area: toNumField(findReportValue(data, 'area')),
         rentType,
@@ -199,7 +209,8 @@ export function buildAiAnalysisFormData(
         formData.append('monthlyRent', toWon(input.monthlyRent));
     }
 
-    if (input.floor !== '') formData.append('floor', input.floor.toString());
+    const dbFloor = toDbSafeFloor(input.floor);
+    if (dbFloor !== null) formData.append('floor', String(dbFloor));
     if (input.area !== '') formData.append('area', input.area.toString());
     if (input.dong) formData.append('dong', input.dong);
     if (input.specialNotes) formData.append('specialNotes', input.specialNotes);
@@ -557,12 +568,18 @@ export default function AiAnalysisInputModal({
                                         03 상세 정보
                                     </p>
                                     <div className={`grid gap-3 ${isApartment ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                                        <NumField
-                                            label="층수"
-                                            value={input.floor}
-                                            onChange={(v) => onChange({ floor: v })}
-                                            placeholder="예: 5"
-                                        />
+                                        <div>
+                                            <label className="text-[10px] font-black text-slate-500 mb-1.5 block uppercase tracking-widest">
+                                                층수
+                                            </label>
+                                            <input
+                                                type="text"
+                                                placeholder="예: 5, 저층, 중층, 고층"
+                                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 text-white font-bold outline-none focus:border-sky-500 transition-all text-sm"
+                                                value={input.floor}
+                                                onChange={(e) => onChange({ floor: e.target.value })}
+                                            />
+                                        </div>
                                         {isApartment && (
                                             <div>
                                                 <label className="text-[10px] font-black text-slate-500 mb-1.5 block uppercase tracking-widest">
@@ -588,8 +605,12 @@ export default function AiAnalysisInputModal({
                                                 placeholder="예: 84.5"
                                                 value={input.area}
                                                 onChange={(e) => {
-                                                    const val = e.target.value.replace(/[^0-9.]/g, '');
-                                                    onChange({ area: val === '' ? '' : Number(val) });
+                                                    let val = e.target.value.replace(/[^0-9.]/g, '');
+                                                    const parts = val.split('.');
+                                                    if (parts.length > 2) {
+                                                        val = parts[0] + '.' + parts.slice(1).join('');
+                                                    }
+                                                    onChange({ area: val });
                                                 }}
                                             />
                                         </div>

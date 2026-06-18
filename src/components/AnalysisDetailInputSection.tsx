@@ -184,10 +184,10 @@ export default function AnalysisDetailInputSection({ category, input, onChange }
                     <div className={PANEL_DIVIDER} />
                     <SubSection title="층수 / 면적">
                         <div className={`${isApartment ? 'grid grid-cols-2 gap-1.5' : 'space-y-1.5'}`}>
-                            <PanelNumInput
-                                value={input.floor}
+                            <PanelTextInput
+                                value={String(input.floor)}
                                 onChange={(v) => onChange({ floor: v })}
-                                placeholder="층수"
+                                placeholder="층수 (예: 5, 저층, 중층, 고층)"
                             />
                             <div className={PANEL_INPUT_WRAP}>
                                 <input
@@ -197,12 +197,37 @@ export default function AnalysisDetailInputSection({ category, input, onChange }
                                     className={PANEL_INPUT}
                                     value={input.area}
                                     onChange={(e) => {
-                                        const val = e.target.value.replace(/[^0-9.]/g, '');
-                                        onChange({ area: val === '' ? '' : Number(val) });
+                                        let val = e.target.value.replace(/[^0-9.]/g, '');
+                                        const parts = val.split('.');
+                                        if (parts.length > 2) {
+                                            val = parts[0] + '.' + parts.slice(1).join('');
+                                        }
+                                        onChange({ area: val });
                                     }}
                                 />
                             </div>
                         </div>
+                    </SubSection>
+                </>
+            )}
+
+            {category === 'building' && (
+                <>
+                    <div className={PANEL_DIVIDER} />
+                    <SubSection title="총 보증금 / 총 월세">
+                        <div className="grid grid-cols-2 gap-1.5">
+                            <PanelNumInput
+                                value={input.totalDeposit}
+                                onChange={(v) => onChange({ totalDeposit: v })}
+                                placeholder="총 보증금 (만원)"
+                            />
+                            <PanelNumInput
+                                value={input.totalMonthlyRent}
+                                onChange={(v) => onChange({ totalMonthlyRent: v })}
+                                placeholder="총 월세 (만원)"
+                            />
+                        </div>
+                        <p className={PANEL_HINT}>선택 입력 — 수익환원법 빌딩 추정가 계산에 사용됩니다</p>
                     </SubSection>
                 </>
             )}

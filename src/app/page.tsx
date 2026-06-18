@@ -349,10 +349,10 @@ function HomePageContent() {
           {activePanel !== 'analyze' && (
             <div className="lg:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
               <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                지도보기
+                지도
               </button>
               <button onClick={() => setShowMobileMap(false)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                {activePanel === 'analyze' ? '매물분석' : '목록보기'}
+                {activePanel === 'analyze' ? '매물분석' : '목록'}
               </button>
             </div>
           )}
@@ -490,7 +490,7 @@ function HomePageContent() {
                                   <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI평가</span>
                                   <span
                                     className="text-[11px] font-black px-1.5 py-0.5 rounded-md border border-white/30 shadow-sm"
-                                    style={{ backgroundColor: scoreColors.bg, color: scoreColors.text }}
+                                    style={{ backgroundColor: scoreColors.bg, color: '#000000' }}
                                   >
                                     {analysis.propertyGrade.riskScore}
                                   </span>
@@ -557,6 +557,7 @@ function HomePageContent() {
               <KakaoMap
                 properties={mapProperties}
                 selectedProperty={selectedMapProperty}
+                navigationZoomLevel={4}
                 initialCenter={mapCenter}
                 onPropertySelect={property => {
                   const analysis = analyses.find(a => a.id === property.id);

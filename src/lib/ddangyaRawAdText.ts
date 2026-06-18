@@ -11,6 +11,25 @@ const JIMOK_MAP: Record<string, string> = {
   학교: '학교용지',
 };
 
+/** 땅야 매물 상세 — 땅야↔매도자 Q&A (getMeamul q1~q3) */
+const DDANGYA_SELLER_QUESTIONS = [
+  '어떤 용도에 적합한 땅 인가요?',
+  '건축 가능한가요? 토지 경사도는 어떤가요?',
+  '주변 호재나, 주변(시설,환경)에 대해 알려주세요.',
+] as const;
+
+/** getMeamul q1~q3 → AI 특이사항용 텍스트 */
+export function buildDdangyaSellerQnaText(landData: Record<string, unknown>): string {
+  const blocks = DDANGYA_SELLER_QUESTIONS.map((question, index) => {
+    const raw = landData[`q${index + 1}`];
+    const answer = raw != null ? String(raw).trim() : '';
+    if (!answer) return null;
+    return `[땅야 Q${index + 1}] ${question}\n→ ${answer}`;
+  }).filter((block): block is string => block != null);
+
+  return blocks.join('\n\n');
+}
+
 export interface DdangyaFetchResult {
   uid: string;
   isMeamul: boolean;
@@ -375,6 +394,7 @@ ${landData.extrainfo ? String(landData.extrainfo).replace(/<[^>]*>/g, '').trim()
   }
 
   // meamul
+  const sellerQna = buildDdangyaSellerQnaText(landData);
   const rawAdContent = `
 === 매물 정보 ===
 매물 제목: ${landData.title || '토지 매물'}
@@ -396,6 +416,14 @@ PNU: ${landData.pnu}
 
 === 매물 설명 ===
 ${landData.contents || '상세 설명이 없습니다.'}
+${
+  sellerQna
+    ? `
+
+=== 땅야↔매도자 Q&A ===
+${sellerQna}`
+    : ''
+}
 
 === 중개업소 정보 ===
 ${

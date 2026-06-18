@@ -23,7 +23,9 @@ import {
 const SUPPORTED_URL_HINTS = [
   { label: '호갱노노', example: 'hogangnono.com/.../item-catalog/...' },
   { label: '땅야', example: 'ddangya.com/meamul/detail/...' },
-  { label: '밸류맵', example: 'valueupmap.com/...' },
+  { label: '밸류맵 매물', example: 'valueupmap.com/properties/items/70363' },
+  { label: '밸류맵 실거래', example: 'valueupmap.com/properties/trades/{pnu}' },
+  { label: '밸류맵 상가', example: 'valueupmap.com/properties/trades-partitions/{pnu}' },
 ];
 
 export default function AdminAnalyzePage() {
@@ -216,7 +218,7 @@ export default function AdminAnalyzePage() {
               <div>
                 <h1 className={PAGE_HEADER_TITLE}>관리자 샘플 분석</h1>
                 <p className="text-[10px] text-slate-400 font-semibold mt-1">
-                  URL로 입력창 자동 채우기 · 분석은 일반 흐름과 동일
+                  URL 자동 입력 · 공공데이터 수집 후 AI 분석까지 한 번에
                 </p>
               </div>
               <Link
@@ -274,10 +276,24 @@ export default function AdminAnalyzePage() {
                 <p className="mt-2 text-[10px] font-bold text-emerald-600 leading-relaxed">{urlExtractSuccess}</p>
               )}
 
+              {urlPrefill?.specialNotes && (
+                <details className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50">
+                    AI 특이사항 prefill (땅야 Q&A · 호갱노노 매물설명 · 밸류맵 업종현황 → 분석 후 AI 모달)
+                  </summary>
+                  <textarea
+                    readOnly
+                    value={urlPrefill.specialNotes}
+                    rows={8}
+                    className="w-full px-3 py-2 text-[10px] text-slate-700 bg-white border-t border-emerald-100 resize-y focus:outline-none leading-relaxed"
+                  />
+                </details>
+              )}
+
               {urlPrefill?.rawAdText && (
                 <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 overflow-hidden">
                   <summary className="cursor-pointer select-none px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-slate-100/80">
-                    땅야 상세 rawAdText (POI·경매 부가정보 등 — 지금은 입력창 prefill만)
+                    땅야 상세 rawAdText (POI·Q&A·경매 부가정보 등)
                   </summary>
                   <textarea
                     readOnly
@@ -301,6 +317,7 @@ export default function AdminAnalyzePage() {
             </section>
 
             <AnalyzePanel
+              adminSampleMode
               onLocationSelect={(lat, lng, address, polygon) => {
                 setMapCenter({ lat, lng });
                 setPrimaryPolygon(polygon || null);
