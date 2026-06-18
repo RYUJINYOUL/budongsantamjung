@@ -442,7 +442,8 @@ export default function KakaoMap({
 
     const validProperties = (properties || []).filter(hasValidCoords);
     // 줌 레벨 >= 8 이면 행정구역 마커 모드(시도, 구 단위) → 분석 마커는 생성만 하고 지도에 올리지 않음
-    const isRegionMode = !isAnalyzeMode && !isBenefitMode && zoomLevel >= 8;
+    // 모바일 사용성을 위해 임시로 행정구역 마커 비활성화 (항상 매물 노출)
+    const isRegionMode = false; // !isAnalyzeMode && !isBenefitMode && zoomLevel >= 8;
 
     const newMarkers = validProperties.map((property) => {
       const isSelected = selectedProperty?.id === property.id;
@@ -478,6 +479,9 @@ export default function KakaoMap({
   // 행정구역 클러스터 마커 (줌 레벨 변경 및 표시 조건 분기)
   useEffect(() => {
     if (!map || !regionsLoaded || isAnalyzeMode || isBenefitMode) return;
+    
+    // 모바일 시야 확보를 위해 시도, 시군구 마커 임시 주석 처리
+    /*
     if (zoomLevel >= 11) {
       // 시·도(sido) 레벨: 분석/매물 마커 숨기고 시·도 마커 그리기
       markersRef.current.forEach(m => m.setMap(null));
@@ -487,10 +491,13 @@ export default function KakaoMap({
       markersRef.current.forEach(m => m.setMap(null));
       drawRegionMarkers(map, zoomLevel);
     } else {
+    */
       // 동(emd) 이하 레벨: 매물 마커만 노출하고 행정구역 마커(구/동)는 보이지 않도록 제거
       markersRef.current.forEach(m => m.setMap(map));
       clearRegionMarkers();
+    /*
     }
+    */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, zoomLevel, regionsLoaded, isAnalyzeMode, isBenefitMode]);
 
