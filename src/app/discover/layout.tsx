@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     '상가 투자',
     '빌딩 투자',
     '부동산탐정',
+    // '부동산탐정',
   ],
   openGraph: {
     title: 'AI 투자처 발견 | 지역·예산·유형 맞춤 분석 - 부동산탐정',
