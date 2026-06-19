@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
         const authHeader = request.headers.get('Authorization');
         const response = await fetch(url, {
             cache: 'no-store',
-            headers: authHeader ? { 'Authorization': authHeader } : {}
+            headers: authHeader ? { 'Authorization': authHeader } : {},
+            signal: request.signal
         });
 
         if (!response.ok) {

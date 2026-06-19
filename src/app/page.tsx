@@ -58,6 +58,8 @@ function HomePageContent() {
   // 분석 패널에서 선택한 위치 → 지도 이동 + 마커 표시
   const [analyzeLocation, setAnalyzeLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
 
+  const fetchAbortControllerRef = useRef<AbortController | null>(null);
+
   // 분석 모드 전용 필지 폴리곤 상태들
   const [primaryPolygon, setPrimaryPolygon] = useState<{ lat: number; lng: number }[] | null>(null);
   const [additionalPolygons, setAdditionalPolygons] = useState<{ lat: number; lng: number }[][]>([]);
@@ -147,6 +149,12 @@ function HomePageContent() {
   }, [searchParams]);
 
   const fetchAnalyses = useCallback(async (lat: number, lng: number, radius: number, silent = false) => {
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    fetchAbortControllerRef.current = abortController;
+
     try {
       if (!silent && !hasTimelineLoadedRef.current) setLoading(true);
       setError(null);
@@ -160,7 +168,10 @@ function HomePageContent() {
         lng: String(lng),
         radius: String(radius),
       });
-      const response = await fetch(`/api/land/detective/timeline?${params}`, { headers });
+      const response = await fetch(`/api/land/detective/timeline?${params}`, { 
+        headers,
+        signal: abortController.signal
+      });
       if (!response.ok) throw new Error('데이터를 불러오는데 실패했습니다');
       const data = await response.json();
       const list = (data.analyses || []).map((item: any) => ({
@@ -170,9 +181,12 @@ function HomePageContent() {
       setAnalyses(list);
       hasTimelineLoadedRef.current = true;
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (fetchAbortControllerRef.current === abortController) {
+        setLoading(false);
+      }
     }
   }, []);
 
