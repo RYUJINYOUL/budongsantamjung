@@ -1313,6 +1313,109 @@ const OfficialMultiplierSection = ({
     estimateNarrative?: string;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
+    
+    // v21: 동적 공시지가 배율법 UI 렌더링
+    const opr = meta.officialPriceRatio;
+    if (opr && (opr.dynamicStatus === 'dynamic' || opr.dynamicStatus === 'fallback')) {
+        const isDynamic = opr.dynamicStatus === 'dynamic';
+        const accent = isDynamic ? PRICE_METHOD_ACCENTS.official : PRICE_METHOD_ACCENTS.regional;
+        const title = isDynamic ? "공시지가 동적 배율 정밀 산출" : "공시지가 보수적 하드코딩 배율";
+        const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
+        
+        return (
+            <PriceReasonMethodCard
+                icon={Percent}
+                title={title}
+                accent={accent}
+                chips={(
+                    <>
+                        {metaChip(isDynamic ? '정밀 산출' : '보수적 산출', accent)}
+                        {metaChip(`반경 ${opr.searchRadius || 1000}m`)}
+                        {metaChip(`실거래 ${opr.sampleCount || 0}건`)}
+                    </>
+                )}
+            >
+                <div
+                    className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                    style={{
+                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                        boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                    }}
+                >
+                    <div
+                        className="mx-4 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                        style={{
+                            background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                        }}
+                    >
+                        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
+                            {isDynamic ? "동적 배율 추정 시세" : "보수적 배율 추정 시세"}
+                        </span>
+                        <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
+                            {formatEokCompact(estimatedTotal)}
+                        </p>
+                        {opr.appliedMultiplier > 0 && (
+                            <p className="text-[10px] text-white/35 mt-1.5">
+                                평당 {formatPrice(opr.estimatedPerPyeong)} ({opr.appliedMultiplier}배 적용)
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
+                        <span>용도지역 {opr.zoningCat || '-'}</span>
+                        <span>적용 배율 {opr.appliedMultiplier}배</span>
+                        {opr.targetOfficialPerSqm > 0 && targetArea > 0 && (
+                            <span>
+                                {formatSqmManwon(opr.targetOfficialPerSqm)} × {targetArea.toLocaleString()}㎡
+                            </span>
+                        )}
+                    </div>
+                    
+                    <div className="mx-4 mb-3 pt-3 border-t border-white/5">
+                        <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
+                            {isDynamic 
+                                ? `반경 ${opr.searchRadius}m 내 유사 실거래 ${opr.sampleCount}건의 공시지가 대비 실제 거래가 배율(중간값 ${opr.appliedMultiplier}배)을 동적으로 추출하여 대상지에 대입한 정밀 산출 결과입니다.`
+                                : `반경 ${opr.searchRadius}m 내 유의미한 실거래 사례가 부족하여(${opr.sampleCount}건), 통계적으로 검증된 보수적 하드코딩 배율(${opr.appliedMultiplier}배)을 안전하게 적용했습니다.`}
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setExpanded(v => !v)}
+                        className="w-full flex items-center justify-between px-4 py-2 border-t border-white/5 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+                    >
+                        <span>산출식 · 배율 상세</span>
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expanded && (
+                        <div className="px-4 pb-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/10">
+                            {opr.targetOfficialPerSqm > 0 && (
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-white/35">개별공시지가</span>
+                                    <span className="text-white/70 font-mono">{formatSqmManwon(opr.targetOfficialPerSqm)}</span>
+                                </div>
+                            )}
+                            {targetArea > 0 && (
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-white/35">대상 토지면적</span>
+                                    <span className="text-white/70">{targetArea.toLocaleString()}㎡</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">적용 배율 × 공시지가</span>
+                                <span className="font-semibold font-mono" style={{ color: accent }}>{opr.appliedMultiplier}배 → {formatEokCompact(estimatedTotal)}</span>
+                            </div>
+                            <p className="text-[9px] text-white/30 leading-relaxed pt-1">
+                                ※ 건물 가치는 포함되지 않은 순수 토지가치(공시지가 기준) 산출액입니다.
+                            </p>
+                        </div>
+                    )}
+                </div>
+            </PriceReasonMethodCard>
+        );
+    }
+
     if (!attached) return null;
 
     const minTotal = Number(attached.minTotal) || 0;
