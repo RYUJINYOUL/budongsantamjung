@@ -3175,8 +3175,8 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                                 <MiniBar
                                     key={idx}
                                     label={label}
-                                    score={typeof item === 'object' ? (item.score || 0) : item}
-                                    reason={typeof item === 'object' ? item.reason : undefined}
+                                    score={item !== null && typeof item === 'object' ? (item.score || 0) : (typeof item === 'number' ? item : 0)}
+                                    reason={item !== null && typeof item === 'object' ? item.reason : undefined}
                                     max={10}
                                     customColor={customColor}
                                 />
