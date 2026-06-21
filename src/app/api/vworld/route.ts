@@ -22,7 +22,9 @@ export async function GET(request: Request) {
     );
     
     if (!response.ok) {
-        return NextResponse.json({ error: 'VWorld API request failed' }, { status: response.status });
+        const errText = await response.text();
+        console.error('VWorld API fail detail:', errText);
+        return NextResponse.json({ error: 'VWorld API request failed', details: errText }, { status: response.status });
     }
     
     const data = await response.json();
