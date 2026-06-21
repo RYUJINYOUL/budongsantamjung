@@ -560,6 +560,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           pnu: resolvedPnu,
           dealYmd,
           address,
+          ...(lat ? { lat: lat.toString() } : {}),
+          ...(lng ? { lng: lng.toString() } : {}),
         });
         const checkRes = await fetch(`${BACKEND_URL}/api/land/detective/check-availability?${params}`);
         if (checkRes.ok) {
