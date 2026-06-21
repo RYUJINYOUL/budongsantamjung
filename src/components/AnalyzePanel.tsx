@@ -527,24 +527,36 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const handleAnalyze = async () => {
     if (!selectedCategory || !address || !lat || !lng || !user) return;
 
+    // 아파트인 경우 결제 전 실거래 가용성 사전 체크
     if (selectedCategory === 'apartment') {
-      if (!primaryPnu) {
-        // PNU 미확보 — VWorld 응답 실패 또는 지연
+      // PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
+      let resolvedPnu = primaryPnu;
+      if (!resolvedPnu && lat && lng) {
+        setIsCheckingAvailability(true);
+        try {
+          const fetched = await getPnuFromCoords(lat, lng);
+          if (fetched) {
+            resolvedPnu = fetched;
+            setPrimaryPnu(fetched);
+          }
+        } catch { /* 무시 */ }
+      }
+
+      if (!resolvedPnu) {
+        // 재시도 후에도 PNU 없음 — 진짜 실패
         setNoTradeDataModal({
           aptName: null,
-          reason: '필지 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.',
+          reason: '필지 정보를 불러올 수 없습니다. 주소를 다시 선택해주세요.',
         });
+        setIsCheckingAvailability(false);
         return;
       }
-    }
 
-    // 아파트인 경우 결제 전 실거래 가용성 사전 체크
-    if (selectedCategory === 'apartment' && primaryPnu) {
       setIsCheckingAvailability(true);
       try {
         const dealYmd = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
         const params = new URLSearchParams({
-          pnu: primaryPnu,
+          pnu: resolvedPnu,
           dealYmd,
           address,
         });
