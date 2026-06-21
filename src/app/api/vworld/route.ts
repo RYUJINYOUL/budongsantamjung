@@ -12,9 +12,13 @@ export async function GET(request: Request) {
   try {
     const vworldKey = process.env.NEXT_PUBLIC_VWORLD_KEY;
     
+    // 요청을 보낸 호스트 도메인을 동적으로 추출 (포트 제거)
+    const hostHeader = request.headers.get('host') || 'localhost';
+    const domain = hostHeader.split(':')[0]; // 예: 'www.tamjung.me' 또는 'localhost'
+    
     // Vworld req/data 엔드포인트를 노드 서버 단에서 호출하여 브라우저 CORS 회피
     const response = await fetch(
-      `https://api.vworld.kr/req/data?service=data&request=GetFeature&data=LP_PA_CBND_BUBUN&key=${vworldKey}&domain=localhost&crs=EPSG:4326&geomFilter=POINT(${lng}%20${lat})`
+      `https://api.vworld.kr/req/data?service=data&request=GetFeature&data=LP_PA_CBND_BUBUN&key=${vworldKey}&domain=${domain}&crs=EPSG:4326&geomFilter=POINT(${lng}%20${lat})`
     );
     
     if (!response.ok) {
