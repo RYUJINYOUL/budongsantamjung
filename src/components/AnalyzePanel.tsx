@@ -527,10 +527,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const handleAnalyze = async () => {
     if (!selectedCategory || !address || !lat || !lng || !user) return;
 
+    let resolvedPnu = primaryPnu;
+
     // 아파트인 경우 결제 전 실거래 가용성 사전 체크
     if (selectedCategory === 'apartment') {
       // PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
-      let resolvedPnu = primaryPnu;
       if (!resolvedPnu && lat && lng) {
         setIsCheckingAvailability(true);
         try {
@@ -585,7 +586,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
 
     try {
       const idToken = await user.getIdToken();
-      const allParcels = [{ address, lat, lng, pnu: primaryPnu }];
+      const allParcels = [{ address, lat, lng, pnu: resolvedPnu }];
       if (isMultiParcel && (selectedCategory === 'land' || selectedCategory === 'building')) {
         additionalParcels.forEach(p => { if (p.pnu) allParcels.push(p); });
       }
@@ -610,7 +611,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         payload.specialNotes = specialNotes;
       }
       if (pnuList.length > 0) {
-        payload.primaryPnu = primaryPnu;
+        payload.primaryPnu = resolvedPnu;
         payload.pnuList = pnuList;
       }
       Object.entries(storeData).forEach(([key, value]) => {
