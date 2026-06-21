@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const vworldKey = process.env.NEXT_PUBLIC_VWORLD_KEY;
+    const vworldKey = process.env.NEXT_PUBLIC_VWORLD_KEY || '84FBD507-770F-3B0D-894C-7753297A9AE7';
     
     // Vworld req/data 엔드포인트를 노드 서버 단에서 호출하여 브라우저 CORS 회피
     const response = await fetch(
