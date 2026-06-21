@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// VWorld API(api.vworld.kr)는 해외 IP를 차단함 → 한국 리전(icn1 = 서울) 강제 지정
+export const preferredRegion = 'icn1';
+
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lat = searchParams.get('lat');
