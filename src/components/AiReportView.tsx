@@ -2496,7 +2496,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
     if (compRisk.scoreItems) {
         Object.entries(compRisk.scoreItems).forEach(([k, v]: [string, any]) => {
             if (!shouldHideItem(k, categoryStr)) {
-                radarMap[k] = typeof v === 'object' ? (v.score || 0) : (typeof v === 'number' ? v : 0);
+                radarMap[k] = (v !== null && typeof v === 'object') ? (v.score || 0) : (typeof v === 'number' ? v : 0);
             }
         });
     }
