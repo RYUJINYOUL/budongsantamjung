@@ -527,6 +527,17 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const handleAnalyze = async () => {
     if (!selectedCategory || !address || !lat || !lng || !user) return;
 
+    if (selectedCategory === 'apartment') {
+      if (!primaryPnu) {
+        // PNU 미확보 — VWorld 응답 실패 또는 지연
+        setNoTradeDataModal({
+          aptName: null,
+          reason: '필지 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.',
+        });
+        return;
+      }
+    }
+
     // 아파트인 경우 결제 전 실거래 가용성 사전 체크
     if (selectedCategory === 'apartment' && primaryPnu) {
       setIsCheckingAvailability(true);
