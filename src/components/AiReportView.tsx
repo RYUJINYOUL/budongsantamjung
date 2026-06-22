@@ -807,46 +807,46 @@ const LedgerSummaryCard = ({
 }) => {
     const accent = LEDGER_ACCENTS.summary;
     return (
-    <div
-        className="p-6 bg-[#0f172a]/55 rounded-[40px]"
-        style={{
-            border: `1px solid ${hexToRgba(accent, 0.2)}`,
-            boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
-        }}
-    >
-        <div className="flex justify-between items-center w-full">
-            <div className="flex items-center gap-3">
-                <div
-                    className="p-2 rounded-xl"
-                    style={{
-                        backgroundColor: hexToRgba(accent, 0.12),
-                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
-                    }}
-                >
-                    <List className="w-4 h-4" style={{ color: accent }} />
+        <div
+            className="p-6 bg-[#0f172a]/55 rounded-[40px]"
+            style={{
+                border: `1px solid ${hexToRgba(accent, 0.2)}`,
+                boxShadow: `0 0 25px ${hexToRgba(accent, 0.04)}`,
+            }}
+        >
+            <div className="flex justify-between items-center w-full">
+                <div className="flex items-center gap-3">
+                    <div
+                        className="p-2 rounded-xl"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.12),
+                            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                        }}
+                    >
+                        <List className="w-4 h-4" style={{ color: accent }} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-white text-base font-bold tracking-tight">{title}</span>
+                        <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
+                    </div>
                 </div>
-                <div className="flex flex-col">
-                    <span className="text-white text-base font-bold tracking-tight">{title}</span>
-                    <span className="text-white/38 text-[11px] font-medium">Valuation Ledger (Pro Premium)</span>
-                </div>
+                {showMapButton && (
+                    <button
+                        type="button"
+                        onClick={onMapOpen}
+                        className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.1),
+                            border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                            color: accent,
+                        }}
+                    >
+                        <Map className="w-3.5 h-3.5" />
+                        <span>지도 보기</span>
+                    </button>
+                )}
             </div>
-            {showMapButton && (
-                <button
-                    type="button"
-                    onClick={onMapOpen}
-                    className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all"
-                    style={{
-                        backgroundColor: hexToRgba(accent, 0.1),
-                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
-                        color: accent,
-                    }}
-                >
-                    <Map className="w-3.5 h-3.5" />
-                    <span>지도 보기</span>
-                </button>
-            )}
         </div>
-    </div>
     );
 };
 
@@ -877,8 +877,8 @@ const LedgerComparablesSection = ({
     const title = isBuilding
         ? '프리미엄 · 선별된 상업건물과 실거래 비교'
         : isHouse
-        ? '프리미엄 · 선별된 주택건물과 실거래 비교'
-        : '프리미엄 · 선별된 토지와 실거래 비교';
+            ? '프리미엄 · 선별된 주택건물과 실거래 비교'
+            : '프리미엄 · 선별된 토지와 실거래 비교';
     const accent = LEDGER_ACCENTS.comparables;
 
     return (
@@ -901,7 +901,7 @@ const LedgerComparablesSection = ({
                     ) : (
                         <>
                             <span className="text-white/70 text-[11px] font-bold">
-                            정밀 필터 (0.9~1.1배, 300m 이내) · {tier1.length}건
+                                정밀 필터 (0.9~1.1배, 300m 이내) · {tier1.length}건
                             </span>
                             <ComparableHorizontalScroll items={tier1} targetArea={targetArea} startIndex={0} accent={accent} />
                         </>
@@ -1313,7 +1313,7 @@ const OfficialMultiplierSection = ({
     estimateNarrative?: string;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
-    
+
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
     if (opr && (opr.dynamicStatus === 'dynamic' || opr.dynamicStatus === 'fallback')) {
@@ -1321,7 +1321,7 @@ const OfficialMultiplierSection = ({
         const accent = isDynamic ? PRICE_METHOD_ACCENTS.official : PRICE_METHOD_ACCENTS.regional;
         const title = isDynamic ? "공시지가 동적 배율 정밀 산출" : "공시지가 보수적 하드코딩 배율";
         const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
-        
+
         return (
             <PriceReasonMethodCard
                 icon={Percent}
@@ -1371,10 +1371,10 @@ const OfficialMultiplierSection = ({
                             </span>
                         )}
                     </div>
-                    
+
                     <div className="mx-4 mb-3 pt-3 border-t border-white/5">
                         <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
-                            {isDynamic 
+                            {isDynamic
                                 ? `반경 ${opr.searchRadius}m 내 유사 실거래 ${opr.sampleCount}건의 공시지가 대비 실제 거래가 배율(중간값 ${opr.appliedMultiplier}배)을 동적으로 추출하여 대상지에 대입한 정밀 산출 결과입니다.`
                                 : `반경 ${opr.searchRadius}m 내 유의미한 실거래 사례가 부족하여(${opr.sampleCount}건), 통계적으로 검증된 보수적 하드코딩 배율(${opr.appliedMultiplier}배)을 안전하게 적용했습니다.`}
                         </p>
@@ -1761,11 +1761,10 @@ const PriceSpectrumNarrativeSection = ({
                     <span className="text-[10px] text-white/40 font-semibold">제시가 vs 추정 범위</span>
                     <div className="flex justify-between items-center">
                         <span className="text-white/50 text-xs font-bold">제시 매매가</span>
-                        <span className={`font-black text-lg ${
-                            userVsCombined === 'above' ? 'text-amber-400'
-                                : userVsCombined === 'below' ? 'text-emerald-400'
-                                    : 'text-white'
-                        }`}>
+                        <span className={`font-black text-lg ${userVsCombined === 'above' ? 'text-amber-400'
+                            : userVsCombined === 'below' ? 'text-emerald-400'
+                                : 'text-white'
+                            }`}>
                             {formatEokCompact(userPrice)}원
                         </span>
                     </div>
@@ -2353,7 +2352,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         } else {
             targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
         }
-    } catch (_) {}
+    } catch (_) { }
 
     const renderPriceReasonMethods = (spectrum: any) => {
         if (!spectrum) return null;
@@ -2508,22 +2507,22 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         'rentProfitability': '임대 수익성'
     };
 
-    const scoreItemDescriptions: Record<string, string> = {
-        'nearbySales': '대상지 주변의 실제 실거래 사례들과의 단가 비교를 통해 호가의 적정성을 분석한 리스크 평가 지수입니다.',
-        'tradeVolume': '해당 필지 인근의 토지 거래 빈도와 최근 시장 유동성 수준을 분석한 거래 활성 지수입니다.',
-        'amenities': '대형 마트, 병원, 은행, 상권, 공원 등 주변 생활 밀착형 인프라에 대한 접근성 및 편리함을 나타냅니다.',
-        'regulatoryOutlook': '지자체 개발 계획, 도시계획조례 방향 및 미래 용도지구 지정 가능성에 대한 전망을 분석한 지수입니다.',
-        'population': '배후 가구수 변화, 전입/전출 유동 인구 현황 및 연령대 분포를 분석해 수요 안정성을 평가합니다.',
-        'landRegulation': '용도지역/지구 한도 내 건폐율, 용적률 제한 및 공법상 개발 행위 제한 리스크를 평가한 지수입니다.',
-        'landShape': '토지의 모양(장방형, 부정형 등), 고저, 지세 경사도 및 도로 접면 폭에 따른 개발 유용성 점수입니다.',
-        'buildingAgePhoto': '현장 실사 사진 상의 외벽 크랙, 설비 및 시설물 손상도 등을 분석해 실제 건물 노후 수준을 측정합니다.',
-        'buildingAgeRegister': '건축물대장 상 승인 연도 및 법적 경과 연수 기준 잔존 내구 연한을 가치 감가로 산출한 지수입니다.',
-        'rentProfitability': '인근 공실률 동향과 평균 월세 시세를 종합 분석하여 기대 임대 소득 안정성을 평가합니다.'
-    };
+    // const scoreItemDescriptions: Record<string, string> = {
+    //     'nearbySales': '대상지 주변의 실제 실거래 사례들과의 단가 비교를 통해 호가의 적정성을 분석한 리스크 평가 지수입니다.',
+    //     'tradeVolume': '해당 필지 인근의 토지 거래 빈도와 최근 시장 유동성 수준을 분석한 거래 활성 지수입니다.',
+    //     'amenities': '대형 마트, 병원, 은행, 상권, 공원 등 주변 생활 밀착형 인프라에 대한 접근성 및 편리함을 나타냅니다.',
+    //     'regulatoryOutlook': '지자체 개발 계획, 도시계획조례 방향 및 미래 용도지구 지정 가능성에 대한 전망을 분석한 지수입니다.',
+    //     'population': '배후 가구수 변화, 전입/전출 유동 인구 현황 및 연령대 분포를 분석해 수요 안정성을 평가합니다.',
+    //     'landRegulation': '용도지역/지구 한도 내 건폐율, 용적률 제한 및 공법상 개발 행위 제한 리스크를 평가한 지수입니다.',
+    //     'landShape': '토지의 모양(장방형, 부정형 등), 고저, 지세 경사도 및 도로 접면 폭에 따른 개발 유용성 점수입니다.',
+    //     'buildingAgePhoto': '현장 실사 사진 상의 외벽 크랙, 설비 및 시설물 손상도 등을 분석해 실제 건물 노후 수준을 측정합니다.',
+    //     'buildingAgeRegister': '건축물대장 상 승인 연도 및 법적 경과 연수 기준 잔존 내구 연한을 가치 감가로 산출한 지수입니다.',
+    //     'rentProfitability': '인근 공실률 동향과 평균 월세 시세를 종합 분석하여 기대 임대 소득 안정성을 평가합니다.'
+    // };
 
-    const radarData = Object.entries(radarMap).map(([key, value]) => {
-        return { subject: labelMap[key] || key, A: value, fullMark: 10 };
-    });
+    // const radarData = Object.entries(radarMap).map(([key, value]) => {
+    //     return { subject: labelMap[key] || key, A: value, fullMark: 10 };
+    // });
 
     const priceAnalysis = ai['3_priceAnalysisReport'] || {};
     const landShapesObj = ai['2_propertyAnalysis'] || ai['2_landShapeAnalysis'] || {};
@@ -2675,8 +2674,8 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         const ledgerTitle = isBuilding
             ? '빌딩 프리미엄 검증 및 분석'
             : isHouse
-            ? '주택 프리미엄 검증 및 분석'
-            : '토지 프리미엄 검증 및 분석';
+                ? '주택 프리미엄 검증 및 분석'
+                : '토지 프리미엄 검증 및 분석';
 
         let targetArea = 0;
         try {
@@ -2693,7 +2692,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
             } else {
                 targetArea = parseFloat(t.area_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.area_sqm || '0');
             }
-        } catch (_) {}
+        } catch (_) { }
 
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
@@ -3168,20 +3167,27 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                         />
                     </div>
                     <div className="flex flex-col gap-3">
-                        {Object.entries(compRisk.scoreItems || {}).filter(([key]) => !shouldHideItem(key, categoryStr)).map(([key, item]: [string, any], idx) => {
-                            const label = radarData.find(r => r.subject === (inDepthCategories[key]?.label || key))?.subject || key;
-                            const customColor = pastelColors[idx % pastelColors.length];
-                            return (
-                                <MiniBar
-                                    key={idx}
-                                    label={label}
-                                    score={item !== null && typeof item === 'object' ? (item.score || 0) : (typeof item === 'number' ? item : 0)}
-                                    reason={item !== null && typeof item === 'object' ? item.reason : undefined}
-                                    max={10}
-                                    customColor={customColor}
-                                />
-                            );
-                        })}
+                        {Object.entries(compRisk.scoreItems || {})
+                            .filter(([key, item]: [string, any]) => {
+                                if (shouldHideItem(key, categoryStr)) return false;
+                                if (item === null) return false;
+                                if (typeof item === 'object' && item.score === null) return false;
+                                return true;
+                            })
+                            .map(([key, item]: [string, any], idx) => {
+                                const label = labelMap[key] || key;
+                                const customColor = pastelColors[idx % pastelColors.length];
+                                return (
+                                    <MiniBar
+                                        key={idx}
+                                        label={label}
+                                        score={item !== null && typeof item === 'object' ? (item.score ?? 0) : (typeof item === 'number' ? item : 0)}
+                                        reason={item !== null && typeof item === 'object' ? item.reason : undefined}
+                                        max={10}
+                                        customColor={customColor}
+                                    />
+                                );
+                            })}
                     </div>
                 </div>
             )}
@@ -3210,7 +3216,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
                             <div className="flex flex-col gap-0.5">
                                 <span className="text-white text-base font-bold tracking-tight">종합 데이터로 현 매물의 가격을 분석합니다
                                 </span>
-                               
+
                             </div>
                         </div>
 

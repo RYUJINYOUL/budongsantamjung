@@ -133,7 +133,17 @@ function buildAiReportCopyText(
     const compRisk = parsedAi['1_comprehensiveRisk'] || {};
     const priceReas = parsedAi['5_priceReasonableness'] || {};
     const score = compRisk.totalScore ?? compRisk.score ?? 0;
-    const grade = priceReas.conclusion ?? compRisk.coreJudgement ?? '';
+    
+    // 점수 기반 등급명 도출
+    const getTierLabel = (s: number) => {
+        if (s >= 80) return '우수';
+        if (s >= 60) return '양호';
+        if (s >= 40) return '보통';
+        return '검토 필요';
+    };
+    const scoreTierLabel = getTierLabel(score);
+
+    const grade = priceReas.conclusion || scoreTierLabel;
     const summary = compRisk.coreJudgement ?? options.detectiveNote ?? '상세 분석 리포트가 파싱을 완료했습니다.';
 
     const lines: string[] = [
