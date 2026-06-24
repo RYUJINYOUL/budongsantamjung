@@ -74,13 +74,13 @@ export default function SeoTextBlock({ data }: { data: SeoData }) {
     // 주소
     const address = data.address || report?.address || parsed?.propertyTitle || '매물';
 
-    // 종합 점수
+    // 종합 점수 — parsed JSON에서 직접 추출 (data.score 필드가 없는 API 구조)
     const compRisk = parsed?.['1_comprehensiveRisk'] || {};
-    const score =
-        data.score ??
-        compRisk?.totalScore ??
-        report?.propertyGrade?.riskScore ??
-        null;
+    const rawScore = compRisk?.totalScore ?? compRisk?.score ?? null;
+    // score를 항상 숫자 또는 null로 정규화
+    const score: number | null = rawScore !== null && rawScore !== undefined
+        ? Number(rawScore)
+        : null;
 
     // 등급/결론
     const priceReas = parsed?.['5_priceReasonableness'] || {};
@@ -132,6 +132,11 @@ export default function SeoTextBlock({ data }: { data: SeoData }) {
     // 실거래가 분석
     const priceAnalysis = parsed?.['3_priceAnalysisReport'] || {};
 
+    // 점수 텍스트 — template literal로 단일 문자열 생성 (React 배열 렌더링 방지)
+    const scoreText = score !== null
+        ? `종합 리스크 점수: ${score}점${grade ? ` / 등급: ${grade}` : ''}`
+        : null;
+
     return (
         <div
             aria-hidden="true"
@@ -149,12 +154,7 @@ export default function SeoTextBlock({ data }: { data: SeoData }) {
         >
             <h1>{address} 부동산 AI 분석 결과 | 부동산탐정</h1>
 
-            {score !== null && (
-                <p>
-                    종합 리스크 점수: {score}점
-                    {grade ? ` / 등급: ${grade}` : ''}
-                </p>
-            )}
+            {scoreText && <p>{scoreText}</p>}
 
             {(data.price || data.adjustedPrice) && (
                 <p>
