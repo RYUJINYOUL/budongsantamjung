@@ -65,6 +65,11 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     return {
         title,
         description,
+        // ── canonical: 각 분석 페이지 고유 URL ──────────────────────────────
+        // 없으면 루트 layout의 canonical("https://tamjung.me")이 상속됨 → 중복 콘텐츠 판정
+        alternates: {
+            canonical: `https://tamjung.me/analyze/${params.id}`,
+        },
         openGraph: {
             title,
             description,
