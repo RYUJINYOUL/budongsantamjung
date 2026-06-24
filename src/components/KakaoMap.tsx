@@ -790,7 +790,7 @@ export default function KakaoMap({
 
       {/* 영역 매물 수 (모바일·PC) + 범례 (PC만) */}
       {!isAnalyzeMode && !isLoading && (
-        <div className="absolute bottom-20 lg:bottom-4 left-4 z-20 flex flex-col gap-2 max-w-[200px]">
+        <div className="absolute top-[70%] lg:top-auto lg:bottom-4 left-4 z-20 flex flex-col gap-2 max-w-[200px]">
           {markerCount > 0 && (
             <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-lg border border-slate-200/80 text-[11px] font-bold text-slate-700">
               반경 <span className="text-emerald-600">{markerCount}</span>건

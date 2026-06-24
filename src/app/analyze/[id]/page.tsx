@@ -6,12 +6,15 @@ const AnalysisDetailPage = dynamic(
     { ssr: false },
 );
 
+// ISR: 분석 결과는 생성 후 잘 안 바뀌므로 1시간 캐시
+export const revalidate = 3600;
+
 async function getReportData(id: string) {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40';
     const url = `${backendUrl}/api/land/detective/report/${id}`;
     try {
         const res = await fetch(url, { 
-            cache: 'no-store',
+            next: { revalidate: 3600 },
             // API의 응답 속도 향상을 위해 적절한 헤더 설정
             headers: {
                 'Content-Type': 'application/json',
@@ -69,10 +72,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
             url: `https://tamjung.me/analyze/${params.id}`,
             images: [
                 {
-                    url: 'https://tamjung.me/logo512.png',
-                    width: 512,
-                    height: 512,
-                    alt: '부동산탐정 로고',
+                    url: `https://tamjung.me/api/og/${params.id}`,
+                    width: 1200,
+                    height: 630,
+                    alt: `${propertyTitle} 부동산 AI 분석 | 부동산탐정`,
                 },
             ],
         },
@@ -80,7 +83,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
             card: 'summary_large_image',
             title,
             description,
-            images: ['https://tamjung.me/logo512.png'],
+            images: [`https://tamjung.me/api/og/${params.id}`],
         },
     };
 }
@@ -88,5 +91,6 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 export default async function Page({ params }: { params: { id: string } }) {
     const initialData = await getReportData(params.id);
     
+    // SeoTextBlock은 layout.tsx에서 렌더링 (스트리밍 Suspense 바깥 → 초기 HTML에 포함)
     return <AnalysisDetailPage initialData={initialData} />;
 }
