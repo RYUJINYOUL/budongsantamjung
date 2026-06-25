@@ -31,6 +31,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(data);
 
     } catch (error: any) {
+        if (
+            error.name === 'AbortError' ||
+            error.name === 'ResponseAborted' ||
+            error.message === 'The operation was aborted.' ||
+            error.message === 'fetch aborted' ||
+            request.signal.aborted
+        ) {
+            console.log('타임라인 Proxy 요청이 클라이언트에 의해 중단되었습니다.');
+            return new Response('Aborted', { status: 499 });
+        }
+
         console.error('타임라인 API 호출 오류:', error);
         return NextResponse.json(
             { error: '서버 연결에 실패했습니다.', message: error.message },

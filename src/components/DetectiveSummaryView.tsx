@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import {
     FileText, Building2, Calendar, Users, Ruler, Layers, ShieldCheck, Car,
     TrendingUp, MapPin, DollarSign, Map, Trees, Train, Activity, ShoppingBag,
@@ -291,14 +291,22 @@ function ExpandableMetricRow({
     );
 }
 
+export type DetectiveShortsSection = 'pyungTrades' | 'landSummary' | 'market';
+
 interface DetectiveSummaryViewProps {
     rawData: any;
     category?: string;
+    /** 쇼츠 캡처: 버튼·계산기 등 인터랙션 숨김 */
+    shortsMode?: boolean;
+    /** 지정 시 해당 섹션만 렌더 (쇼츠 프레임용) */
+    shortsSections?: DetectiveShortsSection[];
 }
 
 export default function DetectiveSummaryView({
     rawData = {},
-    category: categoryProp
+    category: categoryProp,
+    shortsMode = false,
+    shortsSections,
 }: DetectiveSummaryViewProps) {
     const [selectedTargetTab, setSelectedTargetTab] = useState<'매매' | '전세' | '월세'>('매매');
     const [expandedApartmentMetrics, setExpandedApartmentMetrics] = useState<Record<string, boolean>>({});
@@ -654,6 +662,30 @@ export default function DetectiveSummaryView({
     const calcPublicPrice = calcPrice * 0.69;
     const calcPropTax = calculatePropertyTax(calcPublicPrice);
     const calcComprehensiveTax = calcPublicPrice >= 1200000000 ? '12억 이상이므로 종부세 확인 필요' : '종부세 없음';
+
+    if (shortsSections && shortsSections.length > 0) {
+        const blocks: ReactNode[] = [];
+        if (shortsSections.includes('pyungTrades')) {
+            const pyung = renderPyungTradesSection();
+            if (pyung) blocks.push(pyung);
+        }
+        if (shortsSections.includes('landSummary')) {
+            blocks.push(renderLandSummarySection());
+        }
+        if (shortsSections.includes('market')) {
+            const market = renderMarketSummarySection();
+            if (market) blocks.push(market);
+        }
+        if (blocks.length === 0) {
+            return (
+                <div className="p-6 rounded-[32px] border border-white/[0.08] bg-[#13131a]/80 text-white/40 text-sm text-center">
+                    표시할 데이터가 없습니다.
+                </div>
+            );
+        }
+        return <div className="space-y-0">{blocks}</div>;
+    }
+
     return (
         <div className="space-y-8 pb-12">
             {/* 📊 입력한 상세 정보 Section */}
@@ -930,7 +962,7 @@ export default function DetectiveSummaryView({
                     <span className="px-2.5 py-1 bg-sky-500/10 text-sky-400 text-[10px] rounded-lg font-black tracking-wider uppercase">최근 실거래 기준</span>
                 </div>
                 <div className="space-y-4">
-                    {pyungSummary.map((item) => {
+                    {(shortsMode ? pyungSummary.slice(0, 3) : pyungSummary).map((item) => {
                         const maxFloor = item.maxTrade.floor ? `${item.maxTrade.floor}층` : '-층';
                         const minFloor = item.minTrade.floor ? `${item.minTrade.floor}층` : '-층';
                         const recentFloor = item.recentTrade.floor ? `${item.recentTrade.floor}층` : '-층';
@@ -941,13 +973,15 @@ export default function DetectiveSummaryView({
                             <div key={item.pyung} className="p-5 bg-white/[0.03] border border-white/[0.05] hover:border-white/[0.1] rounded-2xl space-y-4 transition-all duration-300 hover:bg-white/[0.05]">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sky-300 text-base font-black tracking-tight">{item.pyung}평형</span>
-                                    <button
-                                        onClick={() => openCalculator(item.pyung, item.recentPrice)}
-                                        className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-sky-500/10 hover:shadow-sky-500/20 active:scale-95"
-                                    >
-                                        <Calculator className="w-3.5 h-3.5 text-white" />
-                                        <span className="text-white">간편 계산</span>
-                                    </button>
+                                    {!shortsMode && (
+                                        <button
+                                            onClick={() => openCalculator(item.pyung, item.recentPrice)}
+                                            className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-lg shadow-sky-500/10 hover:shadow-sky-500/20 active:scale-95"
+                                        >
+                                            <Calculator className="w-3.5 h-3.5 text-white" />
+                                            <span className="text-white">간편 계산</span>
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2.5 text-xs">

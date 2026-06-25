@@ -2331,7 +2331,23 @@ const getVerdictBadgeStyle = (label: string) => {
 };
 
 
-export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isCheckingAccess }: any) {
+export type AiReportShortsSection = 'summary' | 'mustCheck';
+
+export default function AiReportView({
+    ai,
+    mergedData,
+    onTriggerAnalysis,
+    isCheckingAccess,
+    shortsMode = false,
+    shortsSections,
+}: {
+    ai: any;
+    mergedData?: any;
+    onTriggerAnalysis?: () => void;
+    isCheckingAccess?: boolean;
+    shortsMode?: boolean;
+    shortsSections?: AiReportShortsSection[];
+}) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
     const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
 
@@ -3105,48 +3121,94 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
         );
     };
 
+    const renderAiSummarySection = () => (
+        <div className="relative overflow-hidden rounded-[32px] border border-white/[0.08] bg-[#0f172a]/50 p-6 lg:p-8">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/[0.04] via-transparent to-transparent" />
+            <div className="absolute top-0 inset-x-10 h-px bg-gradient-to-r from-transparent via-sky-400/25 to-transparent" />
+            <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-10">
+                <div className="shrink-0 flex justify-center">
+                    <PremiumRiskGauge score={overallScore} />
+                </div>
+                <div className="flex-1 min-w-0 text-center lg:text-left">
+                    <div className="flex items-center gap-3 mb-5 flex-wrap justify-center lg:justify-start">
+                        <div className="flex items-center gap-2.5 shrink-0">
+                            <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500/25 via-cyan-500/10 to-transparent border border-sky-400/30 shadow-[0_0_16px_rgba(14,165,233,0.18)]">
+                                <div className="absolute inset-0 rounded-xl bg-sky-400/[0.06] pointer-events-none" />
+                                <Search className="relative w-[18px] h-[18px] text-sky-300" strokeWidth={2.25} />
+                            </div>
+                            <span className="text-sm lg:text-[15px] font-bold tracking-tight text-white/95">
+                                AI 탐정{' '}
+                                <span className="bg-gradient-to-r from-sky-200 via-cyan-200 to-sky-300 bg-clip-text text-transparent">
+                                    분석 결과
+                                </span>
+                            </span>
+                        </div>
+                        {summaryBadges.map(({ label, color, borderColor, backgroundColor }) => (
+                            <span
+                                key={label}
+                                className="text-[11px] font-black px-2.5 py-1 rounded-full border"
+                                style={{ color, borderColor, backgroundColor }}
+                            >
+                                {label}
+                            </span>
+                        ))}
+                    </div>
+                    <div className="text-white/90 text-[15px] lg:text-base leading-[1.75] font-medium min-h-[72px]">
+                        {shortsMode ? (
+                            <span>{summaryText}</span>
+                        ) : (
+                            <Typewriter text={summaryText} delay={30} />
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderMustCheckSection = (showWhenEmpty = false) => {
+        if (mustCheck.length === 0) {
+            if (!showWhenEmpty) return null;
+            return (
+                <div className="p-6 bg-[#0f172a]/55 border border-[#fde2e4]/20 rounded-[40px] text-white/40 text-sm text-center">
+                    중요 체크리스트 없음
+                </div>
+            );
+        }
+        return (
+            <div className="p-6 bg-[#0f172a]/55 border border-[#fde2e4]/20 rounded-[40px] shadow-[0_0_25px_rgba(253,226,228,0.04)]">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-[#fde2e4]/12 border border-[#fde2e4]/30 rounded-xl">
+                        <CheckSquare className="w-4 h-4 text-[#fde2e4]" />
+                    </div>
+                    <span className="text-white text-base font-bold tracking-tight">중요 체크리스트</span>
+                </div>
+                <div className="flex flex-col gap-3">
+                    {(shortsMode ? mustCheck.slice(0, 4) : mustCheck).map((q, i) => (
+                        <div key={i} className="p-4 bg-white/2 border border-white/5 rounded-2xl flex gap-3 items-start">
+                            <CheckSquare className="w-4 h-4 text-[#fde2e4] shrink-0 mt-0.5" />
+                            <span className="text-white/70 text-xs leading-relaxed">{String(q)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    if (shortsSections && shortsSections.length > 0) {
+        return (
+            <div className="shorts-ai-section space-y-0">
+                {shortsSections.includes('summary') && renderAiSummarySection()}
+                {shortsSections.includes('mustCheck') && renderMustCheckSection(true)}
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
 
 
             {/* 1. 종합 분석 요약 */}
-            <div className="relative overflow-hidden rounded-[32px] border border-white/[0.08] bg-[#0f172a]/50 p-6 lg:p-8">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/[0.04] via-transparent to-transparent" />
-                <div className="absolute top-0 inset-x-10 h-px bg-gradient-to-r from-transparent via-sky-400/25 to-transparent" />
-                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-10">
-                    <div className="shrink-0 flex justify-center">
-                        <PremiumRiskGauge score={overallScore} />
-                    </div>
-                    <div className="flex-1 min-w-0 text-center lg:text-left">
-                        <div className="flex items-center gap-3 mb-5 flex-wrap justify-center lg:justify-start">
-                            <div className="flex items-center gap-2.5 shrink-0">
-                                <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500/25 via-cyan-500/10 to-transparent border border-sky-400/30 shadow-[0_0_16px_rgba(14,165,233,0.18)]">
-                                    <div className="absolute inset-0 rounded-xl bg-sky-400/[0.06] pointer-events-none" />
-                                    <Search className="relative w-[18px] h-[18px] text-sky-300" strokeWidth={2.25} />
-                                </div>
-                                <span className="text-sm lg:text-[15px] font-bold tracking-tight text-white/95">
-                                    AI 탐정{' '}
-                                    <span className="bg-gradient-to-r from-sky-200 via-cyan-200 to-sky-300 bg-clip-text text-transparent">
-                                        분석 결과
-                                    </span>
-                                </span>
-                            </div>
-                            {summaryBadges.map(({ label, color, borderColor, backgroundColor }) => (
-                                <span
-                                    key={label}
-                                    className="text-[11px] font-black px-2.5 py-1 rounded-full border"
-                                    style={{ color, borderColor, backgroundColor }}
-                                >
-                                    {label}
-                                </span>
-                            ))}
-                        </div>
-                        <div className="text-white/90 text-[15px] lg:text-base leading-[1.75] font-medium min-h-[72px]">
-                            <Typewriter text={summaryText} delay={30} />
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {renderAiSummarySection()}
 
             {/* 2. 입력 상세 정보 */}
             {renderUserDetailedInfoSection()}
@@ -3359,24 +3421,7 @@ export default function AiReportView({ ai, mergedData, onTriggerAnalysis, isChec
             )}
 
             {/* 10. 중요 체크 리스트 */}
-            {mustCheck.length > 0 && (
-                <div className="p-6 bg-[#0f172a]/55 border border-[#fde2e4]/20 rounded-[40px] shadow-[0_0_25px_rgba(253,226,228,0.04)]">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="p-2 bg-[#fde2e4]/12 border border-[#fde2e4]/30 rounded-xl">
-                            <CheckSquare className="w-4 h-4 text-[#fde2e4]" />
-                        </div>
-                        <span className="text-white text-base font-bold tracking-tight">중요 체크 리스트</span>
-                    </div>
-                    <div className="flex flex-col gap-3">
-                        {mustCheck.map((q, i) => (
-                            <div key={i} className="p-4 bg-white/2 border border-white/5 rounded-2xl flex gap-3 items-start">
-                                <CheckSquare className="w-4 h-4 text-[#fde2e4] shrink-0 mt-0.5" />
-                                <span className="text-white/70 text-xs leading-relaxed">{String(q)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {renderMustCheckSection()}
 
             {/* 11. 대지 정보 규격 */}
             {Object.keys(areaInfo).length > 0 && (

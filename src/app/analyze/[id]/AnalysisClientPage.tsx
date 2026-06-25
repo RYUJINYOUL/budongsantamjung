@@ -34,10 +34,11 @@ import {
     ShieldCheck, Hexagon, Search, ArrowLeft, Plus, Heart, Star, ChevronDown,
     Clipboard, ExternalLink, ShieldAlert, Gavel, Check, Copy, Download, X,
     Users, Map, Lightbulb, ShoppingBag, School, GraduationCap,
-    Stethoscope, Trees, Train, Car, Tag, Clock
+    Stethoscope, Trees, Train, Car, Tag, Clock, Video
 } from 'lucide-react';
 
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
+import ShortsFrameView from '../../../components/ShortsFrameView';
 import AmenitiesView from '../../../components/AmenitiesView';
 import AiAnalysisBottomBar from '../../../components/AiAnalysisBottomBar';
 import AiReportView from '../../../components/AiReportView';
@@ -128,13 +129,192 @@ const IN_DEPTH_LABELS: Record<string, string> = {
 
 function buildAiReportCopyText(
     parsedAi: DetectiveReport | Record<string, any>,
-    options: { address: string; detectiveNote?: string },
+    options: {
+        address: string;
+        detectiveNote?: string;
+        category?: string;
+        mergedData?: any;
+        analysisMetadata?: any;
+    },
 ) {
+    const mergedData = options.mergedData || {};
+    const analysisMetadata = options.analysisMetadata || parsedAi.analysisMetadata || {};
     const compRisk = parsedAi['1_comprehensiveRisk'] || {};
     const priceReas = parsedAi['5_priceReasonableness'] || {};
+    const priceAnalysis = parsedAi['3_priceAnalysisReport'] || {};
     const score = compRisk.totalScore ?? compRisk.score ?? 0;
-    
-    // 점수 기반 등급명 도출
+
+    const shouldHideItem = (keyOrLabel: string, category: string): boolean => {
+        const lower = keyOrLabel.toLowerCase().replace(/\s+/g, '');
+        const cat = (category || 'land').toLowerCase().trim();
+        const isLand = cat === 'land' || cat === '토지';
+        const isApartment = cat === 'apartment' || cat === '아파트';
+
+        if (lower.includes('buildingagephoto') || lower.includes('건물노후도(사진)')) {
+            return true;
+        }
+
+        if (isLand) {
+            if (lower.includes('노후도') ||
+                lower.includes('임대') ||
+                lower.includes('수익성') ||
+                lower.includes('수익률') ||
+                lower.includes('건물노후') ||
+                lower.includes('하자') ||
+                lower.includes('rental') ||
+                lower.includes('yield') ||
+                lower.includes('defect')) {
+                return true;
+            }
+        }
+        if (isApartment) {
+            if (lower.includes('토지형상') ||
+                lower.includes('토지형태') ||
+                lower.includes('이용규제') ||
+                lower.includes('토지이용') ||
+                lower.includes('임대') ||
+                lower.includes('수익성') ||
+                lower.includes('수익률') ||
+                lower.includes('검증원장') ||
+                lower.includes('토지가치') ||
+                lower.includes('valuationledger') ||
+                lower.includes('rental') ||
+                lower.includes('yield') ||
+                lower.includes('shape') ||
+                lower.includes('regulatory') ||
+                lower.includes('zoning')) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const formatPriceKorean = (val: number | string | null | undefined): string => {
+        if (val === null || val === undefined || val === '') return '-';
+        if (typeof val === 'string' && (val.includes('억') || val.includes('만'))) return val.replace('★', '');
+        const num = typeof val === 'string' ? parseInt(val.replace(/[^0-9]/g, ''), 10) : Number(val);
+        if (isNaN(num) || num === 0) return '-';
+        
+        let manwon = num;
+        if (num >= 100000) {
+            manwon = Math.floor(num / 10000);
+        }
+        
+        if (manwon >= 10000) {
+            const eok = Math.floor(manwon / 10000);
+            const remainder = manwon % 10000;
+            return `${eok}억${remainder > 0 ? ` ${remainder.toLocaleString()}만` : ''} 원`;
+        }
+        return `${manwon.toLocaleString()}만 원`;
+    };
+
+    const extractRegion = (addr: string): string => {
+        if (!addr) return '해당 지역';
+        const parts = addr.split(' ');
+        const guPart = parts.find(p => p.endsWith('구'));
+        if (guPart) return guPart;
+        const siPart = parts.find(p => p.endsWith('시') && !['서울시', '특별시', '광역시'].some(x => p.includes(x)));
+        if (siPart) return siPart;
+        const gunPart = parts.find(p => p.endsWith('군'));
+        if (gunPart) return gunPart;
+        return parts[1] || '해당 지역';
+    };
+
+    const getCompletionInfo = (): { year: string; ageStr: string } => {
+        let useAprDay = mergedData?.useAprDay || 
+                        mergedData?.vitals?.building?.title?.[0]?.useAprDay || 
+                        mergedData?.building?.title?.[0]?.useAprDay || 
+                        '';
+        
+        let year = '';
+        if (useAprDay) {
+            const match = String(useAprDay).match(/^(\d{4})/);
+            if (match) year = match[1];
+        }
+        
+        if (!year && mergedData?.completionYear) {
+            year = String(mergedData.completionYear);
+        }
+        
+        if (!year) {
+            return { year: '', ageStr: '-' };
+        }
+        
+        const age = new Date().getFullYear() - parseInt(year, 10);
+        const ageStr = `${year}년 (${age > 0 ? `${age}년차` : '신축'})`;
+        return { year, ageStr };
+    };
+
+    const getNearbyStations = (): string => {
+        const amenities = mergedData?.nearbyData?.amenities || mergedData?.amenities || {};
+        const transport = amenities['교통'];
+        if (Array.isArray(transport) && transport.length > 0) {
+            const stations = transport.slice(0, 3).map((item: any) => {
+                const name = item.name || '';
+                const match = name.match(/^(.*?)\s*(\d+호선|경의중앙선|수인분당선|신분당선|우이신설선|신림선|공항철도|서해선|김포골드|인천\d+호선|의정부경전철|에버라인)/);
+                if (match) {
+                    return `${match[1]}(${match[2]})`;
+                }
+                return name;
+            });
+            return stations.join(' · ');
+        }
+        return '-';
+    };
+
+    const isApartment = options.category === 'apartment' || parsedAi.category === 'apartment' || String(mergedData?.category).toLowerCase().includes('apartment') || String(mergedData?.category).includes('아파트');
+    const categoryName = isApartment ? '아파트' : (options.category === 'land' || parsedAi.category === 'land' ? '토지' : '상가/건물');
+
+    let complexName = '';
+    if (isApartment) {
+        complexName = mergedData?.complexName || 
+                      mergedData?.buildingName || 
+                      mergedData?.bldNm || 
+                      mergedData?.title || 
+                      analysisMetadata?.apartmentTarget?.aptName || 
+                      parsedAi.propertyTitle || 
+                      '아파트';
+    } else {
+        complexName = mergedData?.buildingName || 
+                      mergedData?.bldNm || 
+                      mergedData?.title || 
+                      parsedAi.propertyTitle || 
+                      (options.address ? options.address.split(' ').slice(1, 3).join(' ') : '매물');
+    }
+    if (complexName === options.address && complexName.split(' ').length > 3) {
+        complexName = complexName.split(' ').slice(1, 3).join(' ');
+    }
+
+    const txType = mergedData?.transactionType || mergedData?.transaction_type || '매매';
+    const salePrice = mergedData?.salePrice ?? mergedData?.price ?? mergedData?.sale_price ?? 0;
+    const deposit = mergedData?.deposit ?? 0;
+    const monthlyRent = mergedData?.monthlyRent ?? mergedData?.monthly_rent ?? 0;
+
+    let priceStr = '';
+    if (txType === '매매') {
+        priceStr = formatPriceKorean(salePrice);
+    } else if (txType === '전세') {
+        priceStr = formatPriceKorean(deposit);
+    } else if (txType === '월세') {
+        const depStr = formatPriceKorean(deposit).replace(' 원', '');
+        const rentStr = formatPriceKorean(monthlyRent).replace(' 원', '');
+        priceStr = `${depStr}/${rentStr}`;
+    }
+    priceStr = priceStr.replace('★', '');
+
+    const now = new Date();
+    const currentDateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
+    const region = extractRegion(options.address);
+    const areaVal = mergedData?.area ?? mergedData?.exclusiveArea_sqm ?? mergedData?.area_sqm ?? mergedData?.land?.area_sqm ?? 0;
+    const areaStr = areaVal ? parseFloat(areaVal.toString()).toFixed(2) : '-';
+
+    const compInfo = getCompletionInfo();
+    const zoning = mergedData?.zoning || 
+                   mergedData?.vitals?.land?.characteristics?.zoning || 
+                   mergedData?.land?.characteristics?.zoning || 
+                   '-';
+    const nearbyStations = getNearbyStations();
+
     const getTierLabel = (s: number) => {
         if (s >= 80) return '우수';
         if (s >= 60) return '양호';
@@ -142,73 +322,495 @@ function buildAiReportCopyText(
         return '검토 필요';
     };
     const scoreTierLabel = getTierLabel(score);
-
     const grade = priceReas.conclusion || scoreTierLabel;
-    const summary = compRisk.coreJudgement ?? options.detectiveNote ?? '상세 분석 리포트가 파싱을 완료했습니다.';
+    const finalGrade = grade.includes('등급') ? grade : `${grade} 등급`;
+    const summary = compRisk.coreJudgement ?? options.detectiveNote ?? '상세 분석 리포트 작성이 완료되었습니다.';
 
-    const lines: string[] = [
-        '🔍 땅파고 부동산 탐정 AI 분석 결과',
-        `주소: ${options.address}`,
-        `종합 스코어: ${score}점 | 등급: ${grade}`,
-        '',
-        '[AI 요약 평가]',
-        summary,
-    ];
-
-    const scoreItems = compRisk.scoreItems;
-    if (scoreItems && typeof scoreItems === 'object' && Object.keys(scoreItems).length > 0) {
-        lines.push('', '[세부 리스크 평가]');
-        Object.entries(scoreItems).forEach(([k, v]) => {
-            const item = v as { score?: number; reason?: string } | number;
-            const s = typeof item === 'object' && item !== null ? (item.score ?? 0) : item;
-            const r = typeof item === 'object' && item !== null ? (item.reason ?? '') : '';
-            lines.push(`- ${k}: ${s}점${r ? ` (${r})` : ''}`);
-        });
-    }
-
-    if (priceReas && Object.keys(priceReas).length > 0) {
-        lines.push('', '[가격 타당성 검증]');
-        if (priceReas.conclusion) lines.push(`- 결론: ${priceReas.conclusion}`);
-        if ((priceReas as any).gap) lines.push(`- 오차율: ${(priceReas as any).gap}`);
-        if (priceReas.opinion) lines.push(`- 의견: ${priceReas.opinion}`);
-    }
-
-    const priceAnalysis = parsedAi['3_priceAnalysisReport'] || {};
-    if (priceAnalysis && Object.keys(priceAnalysis).length > 0) {
-        lines.push('', '[실거래가 및 시세 비교]');
-        const firesale = priceAnalysis.landFiresaleSummary ?? (priceAnalysis as any).comparableSummary;
-        if (firesale) lines.push(`- 급매 및 비교 요약: ${firesale}`);
-        if (priceAnalysis.comparableAnalysis) lines.push(`- 사례 분석: ${priceAnalysis.comparableAnalysis}`);
-        const tradeVolume = priceAnalysis.buildingTradeVolume ?? (priceAnalysis as any).tradeVolume;
-        if (tradeVolume) lines.push(`- 시장 분석: ${tradeVolume}`);
-    }
-
-    const inDepth = parsedAi['7_inDepthReport'];
-    if (inDepth && typeof inDepth === 'object' && Object.keys(inDepth).length > 0) {
-        lines.push('', '[심층 정성 분석]');
-        Object.entries(inDepth).forEach(([k, v]) => {
-            if (v != null && String(v).trim()) {
-                const label = IN_DEPTH_LABELS[k] ?? k;
-                lines.push(`■ ${label}\n${v}\n`);
+    // CJK character width helpers
+    const getKoreanWidth = (str: string): number => {
+        let w = 0;
+        for (let i = 0; i < str.length; i++) {
+            const c = str.charCodeAt(i);
+            if (c > 127) {
+                w += 2;
+            } else {
+                w += 1;
             }
-        });
+        }
+        return w;
+    };
+
+    const padKorean = (str: string, totalWidth: number): string => {
+        const w = getKoreanWidth(str);
+        const diff = totalWidth - w;
+        return str + ' '.repeat(diff > 0 ? diff : 0);
+    };
+
+    const getIndexTrendWithDate = (seriesData: any): string => {
+        const parsed = parseIndicatorSeries(seriesData);
+        if (!parsed) return '보합 추세';
+        
+        let dateRangeStr = '';
+        let data: any[] | null = null;
+        if (seriesData) {
+            if (Array.isArray(seriesData)) {
+                data = seriesData;
+            } else if (typeof seriesData === 'object') {
+                data = seriesData.data || null;
+            }
+        }
+        if (data && data.length >= 2) {
+            const sorted = sortedSeriesPoints(data);
+            if (sorted.length >= 2) {
+                const formatIdxDate = (dStr: string) => {
+                    const clean = dStr.replace(/[^0-9]/g, '');
+                    if (clean.length === 6) {
+                        return `${clean.substring(0, 4)}년 ${parseInt(clean.substring(4), 10)}월`;
+                    } else if (clean.length === 8) {
+                        return `${clean.substring(0, 4)}년 ${parseInt(clean.substring(4, 6), 10)}월`;
+                    }
+                    return dStr;
+                };
+                const firstDate = formatIdxDate(sorted[0].date);
+                const lastDate = formatIdxDate(sorted[sorted.length - 1].date);
+                if (firstDate && lastDate) {
+                    dateRangeStr = ` (${firstDate} → ${lastDate})`;
+                }
+            }
+        }
+        
+        const trendWord = parsed.trend === '상승' ? '상승 추세' : parsed.trend === '하락' ? '하락 추세' : '보합 추세';
+        return `${trendWord}${dateRangeStr}`;
+    };
+
+    const getSimulationRange = () => {
+        const comparables = Array.isArray(analysisMetadata.comparables) ? analysisMetadata.comparables : [];
+        
+        let targetArea = 0;
+        const t = analysisMetadata.target || {};
+        const directTargetArea = analysisMetadata.targetArea !== undefined && analysisMetadata.targetArea !== null
+            ? parseFloat(analysisMetadata.targetArea.toString())
+            : null;
+        if (directTargetArea !== null && directTargetArea > 0) {
+            targetArea = directTargetArea;
+        } else if (isApartment) {
+            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+        } else {
+            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+        }
+        
+        const totals = comparables.map(c => {
+            let dealWon = 0;
+            const dealAmount = c.dealAmount;
+            if (dealAmount) {
+                if (typeof dealAmount === 'string') {
+                    const clean = dealAmount.replace(/[^0-9]/g, '');
+                    dealWon = parseInt(clean, 10);
+                    if (dealAmount.includes('억') && dealWon < 10000) {
+                        dealWon = dealWon * 100000000;
+                    }
+                } else {
+                    dealWon = Number(dealAmount);
+                }
+            }
+            const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
+            const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
+            const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+            return targetArea > 0 ? adjSqm * targetArea : 0;
+        }).filter(v => v > 0);
+        
+        let simMin = 0;
+        let simMax = 0;
+        if (totals.length > 0) {
+            simMin = Math.min(...totals);
+            simMax = Math.max(...totals);
+        } else {
+            simMin = Number(priceReas.priceSpectrum?.min) || Number(analysisMetadata.estimatedTotalPrice) || 0;
+            simMax = Number(priceReas.priceSpectrum?.max) || Number(analysisMetadata.estimatedTotalPrice) || 0;
+        }
+        
+        const buildingWon = Number(analysisMetadata.buildingResidualValue) || 0;
+        if (buildingWon > 0) {
+            simMin += buildingWon;
+            simMax += buildingWon;
+        }
+        
+        return { min: simMin, max: simMax };
+    };
+
+    const simRange = getSimulationRange();
+    const userPriceWon = Number(analysisMetadata.userPriceWon || 
+                                (salePrice ? salePrice : (deposit ? deposit : 0)));
+    const diffWon = userPriceWon - simRange.max;
+    const isOver = diffWon > 0;
+
+    // 1. Title & Intro
+    const title = `📌 ${complexName} ${txType} 분석 | ${region} ${categoryName} 실거래가 비교 (${currentDateStr})`;
+    const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+    
+    const intro = `${region} ${categoryName} 매매를 고려 중이라면 꼭 읽어보세요.\n` +
+                  `${complexName} 전용 ${areaStr}㎡ 매물 ${priceStr.replace(' 원', ' 원')}, 과연 적정 가격일까요?\n` +
+                  `AI 부동산 분석 리포트를 바탕으로 실거래가·시장 흐름·투자 가치를 정리했습니다.`;
+
+    // 2. 🏢 매물 기본 정보
+    const infoRows: string[] = [];
+    infoRows.push(`${padKorean(isApartment ? '단지명' : '매물명', 11)}${complexName}`);
+    infoRows.push(`${padKorean('주소', 11)}${options.address}`);
+    infoRows.push(`${padKorean('거래유형', 11)}${txType}`);
+    infoRows.push(`${padKorean('제시가', 11)}${priceStr}`);
+    if (areaStr !== '-') {
+        const areaKey = isApartment ? '전용면적' : (options.category === 'land' || parsedAi.category === 'land' ? '토지면적' : '연면적');
+        infoRows.push(`${padKorean(areaKey, 11)}${areaStr}㎡`);
+    }
+    if (compInfo.year && compInfo.year !== '-') {
+        infoRows.push(`${padKorean('준공년도', 11)}${compInfo.ageStr}`);
+    }
+    if (zoning && zoning !== '-') {
+        infoRows.push(`${padKorean('용도지역', 11)}${zoning}`);
+    }
+    if (mergedData?.jimok) {
+        infoRows.push(`${padKorean('지목', 11)}${mergedData.jimok}`);
+    }
+    if (nearbyStations && nearbyStations !== '-') {
+        infoRows.push(`${padKorean('인접역', 11)}${nearbyStations}`);
+    }
+    const infoBlock = infoRows.join('\n');
+
+    // 3. 🔍 AI 종합 평가
+    const aiEvaluationTitle = `🔍 AI 종합 평가 : ${score}점 / ${finalGrade}`;
+    const aiEvaluationContent = summary;
+
+    // 4. 📊 세부 리스크 평가
+    const scoreItems = compRisk.scoreItems || {};
+    const labelMap: Record<string, string> = {
+        'nearbySales': '인근 실거래가', 
+        'tradeVolume': '거래량', 
+        'amenities': '생활 편의시설',
+        'regulatoryOutlook': '규제 전망', 
+        'population': '인구 현황', 
+        'landRegulation': '토지 이용 규제',
+        'landShape': '토지 형상', 
+        'buildingAgePhoto': '건물 노후도(사진)', 
+        'buildingAgeRegister': '건물 노후도(대장)',
+        'rentProfitability': '임대 수익성'
+    };
+
+    const riskList: string[] = [];
+    Object.entries(scoreItems).forEach(([k, v]) => {
+        if (shouldHideItem(k, options.category || parsedAi.category || '')) return;
+        const mappedLabel = labelMap[k] || k;
+        const item = v as { score?: number; reason?: string } | number;
+        const s = typeof item === 'object' && item !== null ? (item.score ?? 0) : Number(item);
+        const r = typeof item === 'object' && item !== null ? (item.reason ?? '') : '';
+        
+        const icon = s >= 7 ? '✅' : '⚠️';
+        const labelPart = `${icon} ${mappedLabel}`;
+        const headerLine = `${padKorean(labelPart, 20)}${s}점`;
+        riskList.push(`${headerLine}\n${r}`);
+    });
+    const riskBlock = riskList.join('\n\n');
+
+    // 5. 💵 가격 타당성 검증
+    let priceSuffix = '';
+    if (userPriceWon > simRange.max) priceSuffix = '  ← 스펙트럼 상단 초과';
+    else if (userPriceWon < simRange.min) priceSuffix = '  ← 스펙트럼 하단 미달';
+    else priceSuffix = '  ← 스펙트럼 범위 내';
+
+    const priceRows: string[] = [];
+    priceRows.push(`${padKorean('AI 시뮬레이션 산출 범위', 26)}${formatPriceKorean(simRange.min).replace(' 원', ' 원')} ~ ${formatPriceKorean(simRange.max).replace(' 원', ' 원')}`);
+    priceRows.push(`${padKorean(`제시 ${txType}가`, 26)}${priceStr}${priceSuffix}`);
+    const priceBlock = priceRows.join('\n');
+
+    const cleanPriceStr = priceStr.replace(' 원', '');
+    const getPriceOpinionFallback = () => {
+        if (userPriceWon === 0 || simRange.max === 0) return '';
+        if (isOver) {
+            return `동일 단지 동일 면적 최근 실거래 사례를 기준으로 면적·층·시점 보정을 거쳐 산출한 결과, 제시가 ${priceStr}은 비교사례 최고값(${formatPriceKorean(simRange.max)})보다 약 ${formatPriceKorean(diffWon)} 높은 수준입니다. 미상층이 고층일 경우 추가 프리미엄이 반영됐을 가능성도 있으나, 현재 시장 상황을 고려하면 다소 고평가된 가격으로 판단됩니다.`;
+        } else if (userPriceWon < simRange.min) {
+            return `동일 단지 동일 면적 최근 실거래 사례를 기준으로 면적·층·시점 보정을 거쳐 산출한 결과, 제시가 ${priceStr}은 비교사례 최저값(${formatPriceKorean(simRange.min)})보다 약 ${formatPriceKorean(simRange.min - userPriceWon)} 낮은 수준으로 가격 메리트가 매우 높은 상태입니다.`;
+        } else {
+            return `동일 단지 동일 면적 최근 실거래 사례를 기준으로 면적·층·시점 보정을 거쳐 산출한 결과, 제시가 ${priceStr}은 비교사례 범위 내에 위치하여 합리적인 수준의 가격으로 판단됩니다.`;
+        }
+    };
+    const finalPriceOpinion = (priceReas.opinion || getPriceOpinionFallback()).replace(/★/g, '');
+
+    // 6. 📈 실거래가 비교사례
+    const comparables = Array.isArray(analysisMetadata.comparables) ? analysisMetadata.comparables : [];
+    const sortedComps = [...comparables].sort((a, b) => {
+        const scoreA = Number(a.similarityScore || a.score || 0);
+        const scoreB = Number(b.similarityScore || b.score || 0);
+        return scoreB - scoreA;
+    });
+
+    const compHeader = `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| ${padKorean('거래가', 14)}| 보정 후 가치`;
+    const compListRows: string[] = [compHeader];
+
+    sortedComps.slice(0, 3).forEach((c, i) => {
+        const areaVal = c.area || c.plottageAr || c.excluUseAr || c.buildingAr || 0;
+        const areaStr = areaVal ? `${parseFloat(areaVal.toString()).toFixed(2)}㎡` : '-';
+        
+        let dealWon = 0;
+        const dealAmount = c.dealAmount;
+        if (dealAmount) {
+            if (typeof dealAmount === 'string') {
+                const clean = dealAmount.replace(/[^0-9]/g, '');
+                dealWon = parseInt(clean, 10);
+                if (dealAmount.includes('억') && dealWon < 10000) {
+                    dealWon = dealWon * 100000000;
+                }
+            } else {
+                dealWon = Number(dealAmount);
+            }
+        }
+        const dealStr = dealWon > 0 ? formatPriceKorean(dealWon).replace(' 원', '만') : '-';
+        
+        const dateStr = c.dealYear && c.dealMonth ? `${c.dealYear}.${String(c.dealMonth).padStart(2, '0')}` : '';
+        const simScore = Math.round(Number(c.similarityScore || c.score || 0));
+        const remark = [dateStr, `유사도 ${simScore}`].filter(Boolean).join(' / ');
+        
+        // 보정 후 가치 계산
+        let targetArea = 0;
+        const t = analysisMetadata.target || {};
+        const directTargetArea = analysisMetadata.targetArea !== undefined && analysisMetadata.targetArea !== null
+            ? parseFloat(analysisMetadata.targetArea.toString())
+            : null;
+        if (directTargetArea !== null && directTargetArea > 0) {
+            targetArea = directTargetArea;
+        } else if (isApartment) {
+            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+        } else {
+            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+        }
+        const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && areaVal > 0 ? dealWon / areaVal : 0);
+        const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+        const adjValue = targetArea > 0 ? adjSqm * targetArea : dealWon;
+        const adjValueStr = formatPriceKorean(adjValue).replace(' 원', '만');
+
+        const col1 = padKorean(`#${i+1}`, 5);
+        const col2 = padKorean(areaStr, 12);
+        const col3 = padKorean(dealStr, 14);
+        const col4 = `${adjValueStr}  (${remark})`;
+        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+    });
+
+    if (simRange.max > 0) {
+        const col1 = padKorean('최고', 5);
+        const col2 = padKorean('유사 면적', 12);
+        const col3 = padKorean(formatPriceKorean(simRange.max).replace(' 원', '만'), 14);
+        const col4 = `${formatPriceKorean(simRange.max).replace(' 원', '만')}  (고층 보정 포함)`;
+        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+    }
+    if (simRange.min > 0) {
+        const col1 = padKorean('최저', 5);
+        const col2 = padKorean('유사 면적', 12);
+        const col3 = padKorean(formatPriceKorean(simRange.min).replace(' 원', '만'), 14);
+        const col4 = `${formatPriceKorean(simRange.min).replace(' 원', '만')}  (면적 감점 포함)`;
+        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+    }
+    const compTableBlock = compListRows.join('\n');
+
+    // 7. 📉 성동구 아파트 시장 흐름
+    const ind = mergedData?.marketRone || {};
+    const mktPriceIndex = getIndexTrendWithDate(ind.saleIndex || ind.priceIndex);
+    const mktJeonseIndex = getIndexTrendWithDate(ind.jeonseIndex);
+    const mktWolseIndex = getIndexTrendWithDate(ind.wolseIndex);
+
+    const sd = ind.supplyDemand;
+    const saleSDVal = Number(sd?.sale?.summary?.latest || 100);
+    const sdText = `${saleSDVal.toFixed(1)} ${saleSDVal >= 100 ? '이상 → 수요 우세 시장' : '미만 → 공급 우세 시장'}`;
+
+    const dealVolumeStats = mergedData?.dealVolumeStats || mergedData?.nearbyData?.volumeStats || [];
+    const monthlyCounts: Record<string, number> = {};
+    dealVolumeStats.forEach((item: any) => {
+        const m = item.month || '';
+        if (!m) return;
+        monthlyCounts[m] = (monthlyCounts[m] || 0) + (Number(item.count) || 0);
+    });
+    const sortedVolume = Object.entries(monthlyCounts)
+        .map(([m, c]) => ({ month: m, count: c }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+    let volTrendStr = '-';
+    let isVolDeclining = false;
+    if (sortedVolume.length >= 2) {
+        const firstVol = sortedVolume[0];
+        const lastVol = sortedVolume[sortedVolume.length - 1];
+        const isVolGrowing = lastVol.count >= firstVol.count;
+        isVolDeclining = !isVolGrowing;
+        const trendWord = isVolGrowing ? '상승세' : '하락 추세';
+        const firstMonth = parseInt(firstVol.month.substring(4), 10);
+        const lastMonth = parseInt(lastVol.month.substring(4), 10);
+        volTrendStr = `${trendWord} (${firstMonth}월 ${firstVol.count.toLocaleString()}건 → ${lastMonth}월 ${lastVol.count.toLocaleString()}건)`;
+    } else {
+        volTrendStr = '하락 추세 (최근 거래량 감소 추세)';
+        isVolDeclining = true;
     }
 
-    const mustCheck = parsedAi['6_mustCheckList'];
+    const marketFlowRows: string[] = [];
+    marketFlowRows.push(`${padKorean('매매가격지수', 16)}${mktPriceIndex}`);
+    marketFlowRows.push(`${padKorean('전세가격지수', 16)}${mktJeonseIndex}`);
+    marketFlowRows.push(`${padKorean('월세가격지수', 16)}${mktWolseIndex}`);
+    marketFlowRows.push(`${padKorean('매매수급동향', 16)}${sdText}`);
+    marketFlowRows.push(`${padKorean(`${categoryName} 거래량`, 16)}${volTrendStr}${isVolDeclining ? ' ← 주의 필요' : ''}`);
+    const marketFlowBlock = marketFlowRows.join('\n');
+
+    // 8. 🔬 심층 분석
+    const inDepth = parsedAi['7_inDepthReport'] || {};
+    const inDepthLines: string[] = [];
+    const inDepthCategories: Record<string, any> = {
+        'economy': '경제성 · 수익성 분석',
+        'defects': '구조 · 하자 리스크',
+        'outlook': '미래 가치 · 전망',
+        'investmentValue': '투자 가치 분석',
+        'reconstruction': '재건축 · 리모델링 가능성',
+    };
+    Object.entries(inDepth).forEach(([k, v]) => {
+        if (v != null && String(v).trim()) {
+            const label = IN_DEPTH_LABELS[k] || inDepthCategories[k] || k;
+            const cleanVal = String(v).replace(/★/g, '');
+            inDepthLines.push(`■ ${label}\n\n${cleanVal}\n`);
+        }
+    });
+    const inDepthSection = inDepthLines.join('\n').trim();
+
+    // 9. ✅ 매수 전 현장 체크리스트
+    const mustCheck = parsedAi['6_mustCheckList'] || [];
+    const checklistLines: string[] = [];
     if (Array.isArray(mustCheck) && mustCheck.length > 0) {
-        lines.push('', '[중요 체크 리스트]');
-        mustCheck.forEach((q) => lines.push(`- ${q}`));
+        mustCheck.forEach((q) => checklistLines.push(`□ ${q}`));
+    } else {
+        checklistLines.push(
+            `□ 정확한 동·호수 확인 및 층에서의 조망권·일조량·소음 수준 현장 방문 확인`,
+            `□ 관리비 내역 (장기수선충당금 포함 여부) 상세 확인`,
+            `□ 주차장 이용 편의성 및 세대당 주차 가능 대수 확인`
+        );
     }
+    const checklistBlock = checklistLines.join('\n');
 
-    lines.push(
-        '',
-        '──────────────────────────────────────────',
-        '본 분석 결과는 국가 공공 데이터를 기반으로 AI가 자동 분석한 참고용 자료이며, 어떠한 법률적·재정적 보증도 제공하지 않습니다. 데이터의 수집 시점이나 실제 원본 서류(등기부등본 등)와 차이가 있을 수 있으며, 분석 이후의 권리관계 변동은 반영되지 않습니다.',
-        '',
-        '부동산탐정은 투자 결정을 대신해 드리지 않으므로, 최종 투자 및 계약 전에는 반드시 전문가(변호사, 법무사 등)의 상담과 현장 실사를 통해 사실관계를 재확인하시기 바랍니다. 본 서비스 이용으로 발생한 손해에 대해 부동산탐정은 책임을 지지 않습니다.'
-    );
+    // 10. ⏸️ 최종 판정
+    const getFinalVerdictInfo = () => {
+        const verdict = parsedAi['8_finalVerdict'];
+        let titleVal = grade;
+        let reasonVal = '';
+        
+        if (typeof verdict === 'object' && verdict !== null) {
+            titleVal = verdict.verdict || verdict.investmentGrade || titleVal;
+            reasonVal = verdict.reason || verdict.condition || '';
+        } else if (typeof verdict === 'string') {
+            if (verdict.length <= 15) {
+                titleVal = verdict;
+            } else {
+                reasonVal = verdict;
+            }
+        }
+        if (!reasonVal) {
+            reasonVal = priceReas.opinion || summary || '';
+        }
+        return { title: titleVal, reason: reasonVal };
+    };
+    const finalVerdictInfo = getFinalVerdictInfo();
+    const cleanVerdictTitle = finalVerdictInfo.title.replace(/★/g, '');
+    const cleanVerdictReason = finalVerdictInfo.reason.replace(/★/g, '');
 
-    return lines.join('\n').trim();
+    const getVerdictIcon = (titleStr: string) => {
+        const t = titleStr.toLowerCase();
+        if (t.includes('추천') || t.includes('우수') || t.includes('적정')) return '✅';
+        if (t.includes('신중') || t.includes('보류') || t.includes('보통') || t.includes('양호') || t.includes('검토')) return '⏸️';
+        return '⚠️';
+    };
+    const verdictIcon = getVerdictIcon(cleanVerdictTitle);
+
+    // 11. 해시태그 생성
+    const cleanRegion = region.replace(/[^가-힣a-zA-Z0-9]/g, '');
+    const cleanComplex = complexName.replace(/[^가-힣a-zA-Z0-9]/g, '');
+    const cleanCategory = categoryName.replace(/[^가-힣a-zA-Z0-9]/g, '');
+    const cleanYear = now.getFullYear().toString();
+
+    const dynamicHashtags = [
+        `#${cleanComplex}`,
+        `#${cleanRegion}${cleanCategory}`,
+        `#${cleanRegion}${cleanCategory}매매`,
+        `#서울${cleanCategory}실거래가`,
+        `#${cleanCategory}매매`,
+        `#${cleanCategory}투자`,
+        `#부동산AI분석`,
+        `#${cleanYear}${cleanCategory}시세`
+    ].join(' ');
+
+    const outputText = 
+`${title}
+
+${separator}
+
+${intro}
+
+${separator}
+🏢 매물 기본 정보
+${separator}
+
+${infoBlock}
+
+${separator}
+${aiEvaluationTitle}
+${separator}
+
+${aiEvaluationContent}
+
+${separator}
+📊 세부 리스크 평가 (10점 만점)
+${separator}
+
+${riskBlock}
+
+${separator}
+💵 가격 타당성 검증
+${separator}
+
+${priceBlock}
+
+${finalPriceOpinion}
+
+${separator}
+📈 실거래가 비교사례 (${complexName} 동일 단지)
+${separator}
+
+${compTableBlock}
+
+※ 비교사례 ${sortedComps.slice(0, 3).length + (simRange.max > 0 ? 1 : 0) + (simRange.min > 0 ? 1 : 0)}건 전량 ${complexName} 동일 단지 / 유사도 80점 이상
+※ ${currentDateStr} 기준 시점 보정 계수 적용
+
+${separator}
+📉 ${region} ${categoryName} 시장 흐름 (${now.getFullYear()}년 상반기)
+${separator}
+
+${marketFlowBlock}
+
+${separator}
+🔬 심층 분석
+${separator}
+
+${inDepthSection}
+
+${separator}
+✅ 매수 전 현장 체크리스트
+${separator}
+
+${checklistBlock}
+
+${separator}
+${verdictIcon} 최종 판정 : ${cleanVerdictTitle}
+${separator}
+
+${cleanVerdictReason}
+
+${separator}
+본 분석은 국가 공공데이터 기반 AI 자동 분석 참고 자료입니다.
+법률적·재정적 보증을 제공하지 않으며, 최종 계약 전 전문가 상담 및 현장 실사를 권장합니다.
+${separator}
+
+${dynamicHashtags}`;
+
+    return outputText.trim();
 }
 
 // ── Utility Components ──
@@ -1014,6 +1616,10 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const searchParams = useSearchParams();
     const adminSample = searchParams.get('adminSample') === '1';
     const returnQs = searchParams.get('return');
+    /** 비공개 쇼츠 프레임 캡처 (/analyze/{id}?shorts=1) */
+    const shortsCapture = searchParams.get('shorts') === '1';
+    const shortsTokenParam = searchParams.get('token') || '';
+    const shortsTokenExpected = process.env.NEXT_PUBLIC_SHORTS_CAPTURE_TOKEN || '';
 
     const goBack = useCallback(() => {
         if (returnQs) {
@@ -1596,6 +2202,9 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         return buildAiReportCopyText(reportData, {
             address: report?.address || mergedData?.address || reportData.propertyTitle || '매물 상세',
             detectiveNote: report?.detectiveNote || analysisData?.detectiveNote,
+            category: report?.category || mergedData?.category || '',
+            mergedData: mergedData,
+            analysisMetadata: analysisData?.analysisMetadata || reportData?.analysisMetadata,
         });
     }, [reportData, report, mergedData, analysisData]);
 
@@ -1668,6 +2277,38 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         );
     }
 
+    if (shortsCapture) {
+        if (shortsTokenExpected && shortsTokenParam !== shortsTokenExpected) {
+            return (
+                <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-6">
+                    <div className="max-w-md w-full text-center p-8 rounded-3xl border border-white/10 bg-[#13131a]">
+                        <AlertCircle className="w-10 h-10 text-rose-400 mx-auto mb-4" />
+                        <h2 className="text-lg font-bold text-white mb-2">쇼츠 캡처 접근 불가</h2>
+                        <p className="text-white/50 text-sm">유효한 캡처 토큰이 필요합니다.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        const shortsLat = report?.lat ?? mergedData?.lat ?? mergedData?.coordinates?.lat;
+        const shortsLng = report?.lng ?? mergedData?.lng ?? mergedData?.coordinates?.lng;
+        const shortsAddress = report?.address || mergedData?.address || mergedData?.location?.address;
+
+        return (
+            <div className="min-h-screen bg-[#0a0a0c]">
+                <ShortsFrameView
+                    ai={reportData || {}}
+                    mergedData={mergedData}
+                    category={report?.category || analysisData?.category}
+                    lat={shortsLat}
+                    lng={shortsLng}
+                    address={shortsAddress}
+                    analyzeId={Array.isArray(id) ? id[0] : id}
+                />
+            </div>
+        );
+    }
+
     const aiAnalysisStatus = report?.ai_analysis_status || analysisData?.ai_analysis_status || '';
     const showAiBottomBar =
         aiAnalysisStatus !== 'completed' &&
@@ -1704,6 +2345,15 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         >
                             <Heart className={`w-5 h-5 ${isFavorited ? 'fill-current' : ''}`} />
                         </button>
+                        {isDevAccount && (
+                            <Link
+                                href={`/analyze/${id}?shorts=1&preview=1`}
+                                className="bg-violet-500/15 hover:bg-violet-500/25 border border-violet-400/30 text-violet-200 px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
+                            >
+                                <Video className="w-4 h-4" />
+                               
+                            </Link>
+                        )}
                         <button
                             onClick={handleShare}
                             className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
