@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import dynamic from 'next/dynamic';
+import { parseAnalyzeSlug } from '../../../lib/slug';
 
 const AnalysisDetailPage = dynamic(
     () => import('./AnalysisClientPage').then((mod) => mod.default),
@@ -15,7 +16,6 @@ async function getReportData(id: string) {
     try {
         const res = await fetch(url, { 
             next: { revalidate: 3600 },
-            // API의 응답 속도 향상을 위해 적절한 헤더 설정
             headers: {
                 'Content-Type': 'application/json',
             }
@@ -31,8 +31,9 @@ async function getReportData(id: string) {
     }
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-    const data = await getReportData(params.id);
+export async function generateMetadata({ params }: { params: { slug: string[] } }): Promise<Metadata> {
+    const id = parseAnalyzeSlug(params.slug);
+    const data = await getReportData(id);
     if (!data) {
         return {
             title: '부동산 매물 AI 분석 | 부동산탐정',
@@ -59,25 +60,41 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     const riskScore = parsedData?.['1_comprehensiveRisk']?.totalScore || report?.propertyGrade?.riskScore || '분석 중';
     const detectiveNote = parsedData?.['1_comprehensiveRisk']?.coreJudgement || report?.detectiveNote || '부동산탐정 AI가 정밀 분석한 리스크 판독 보고서입니다.';
 
-    const title = `${propertyTitle} AI 리스크 판독서 | 부동산탐정`;
+    // 거래 유형 추론: AI parsedData 우선 → report 필드로 fallback
+    const transactionType: string = (() => {
+        if (parsedData?.transactionType) return parsedData.transactionType;
+        const price = report?.price;
+        const deposit = report?.deposit;
+        const monthlyRent = report?.monthly_rent;
+        if (monthlyRent) return '월세';
+        if (deposit && !price) return '전세';
+        if (price) return '매매';
+        return '';
+    })();
+
+    // title prefix: 건물명 있으면 "건물명 + 지역(시/군/읍)", 없으면 AI 생성 propertyTitle
+    // address는 마스킹되지만 앞 3토큰(시·군·읍면)만 사용하므로 *** 영향 없음
+    const bldNm = report?.bld_nm || null;
+    const location = (report?.address || '').split(' ').slice(0, 3).join(' ');
+    const titlePrefix = bldNm ? `${bldNm} ${location}` : propertyTitle;
+
+    const title = `${titlePrefix}${transactionType ? ' ' + transactionType : ''} 분석 | AI 위험도 ${riskScore}점 | 부동산탐정`;
     const description = `[AI 위험도 점수: ${riskScore}점] ${detectiveNote}`;
 
     return {
         title,
         description,
-        // ── canonical: 각 분석 페이지 고유 URL ──────────────────────────────
-        // 없으면 루트 layout의 canonical("https://tamjung.me")이 상속됨 → 중복 콘텐츠 판정
         alternates: {
-            canonical: `https://tamjung.me/analyze/${params.id}`,
+            canonical: `https://tamjung.me/analyze/${id}`,
         },
         openGraph: {
             title,
             description,
             type: 'website',
-            url: `https://tamjung.me/analyze/${params.id}`,
+            url: `https://tamjung.me/analyze/${id}`,
             images: [
                 {
-                    url: `https://tamjung.me/api/og/${params.id}`,
+                    url: `https://tamjung.me/api/og/${id}`,
                     width: 1200,
                     height: 630,
                     alt: `${propertyTitle} 부동산 AI 분석 | 부동산탐정`,
@@ -88,14 +105,14 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
             card: 'summary_large_image',
             title,
             description,
-            images: [`https://tamjung.me/api/og/${params.id}`],
+            images: [`https://tamjung.me/api/og/${id}`],
         },
     };
 }
 
-export default async function Page({ params }: { params: { id: string } }) {
-    const initialData = await getReportData(params.id);
+export default async function Page({ params }: { params: { slug: string[] } }) {
+    const id = parseAnalyzeSlug(params.slug);
+    const initialData = await getReportData(id);
     
-    // SeoTextBlock은 layout.tsx에서 렌더링 (스트리밍 Suspense 바깥 → 초기 HTML에 포함)
     return <AnalysisDetailPage initialData={initialData} />;
 }

@@ -7,12 +7,14 @@ import { auth } from '../../lib/firebase';
 import { onAuthStateChanged, updateProfile, User } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import SideNav from '../../components/SideNav';
+import { makeAnalyzeSlug } from '../../lib/slug';
 
 type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries';
 
 interface AnalysisCard {
     analysisId?: string;
     id?: string;
+    bldNm?: string;
     propertyTitle?: string;
     location?: { name?: string; address?: string };
     category?: string;
@@ -430,7 +432,7 @@ function ProfilePageContent() {
                                             <div
                                                 key={item.id}
                                                 className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
-                                                onClick={() => router.push(`/analyze/${item.id}`)}
+                                                onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`)}
                                             >
                                                 <div className="flex items-start gap-4">
                                                     <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-50 border border-slate-150 flex items-center justify-center p-2">
@@ -525,7 +527,7 @@ function ProfilePageContent() {
                                             <div
                                                 key={item.id}
                                                 className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
-                                                onClick={() => router.push(`/analyze/${item.id}`)}
+                                                onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`)}
                                             >
                                                 <div className="flex items-start gap-4">
                                                     <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-50 border border-slate-150 flex items-center justify-center p-2">

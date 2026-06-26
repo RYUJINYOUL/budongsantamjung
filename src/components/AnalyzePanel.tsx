@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '../lib/firebase';
+import { makeAnalyzeSlug } from '../lib/slug';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { GeolocationError, getCurrentPosition, reverseGeocodeKakao } from '../lib/geolocation';
 import AnalysisDetailInputSection from './AnalysisDetailInputSection';
@@ -629,7 +630,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       const result = await res.json();
       if (result.success && result.reportId) {
         const qs = adminSampleMode ? '?adminSample=1' : '';
-        router.push(`/analyze/${result.reportId}${qs}`);
+        const slug = makeAnalyzeSlug(result.reportId, result.bldNm);
+        router.push(`/analyze/${slug}${qs}`);
       } else throw new Error('결과 수신 실패');
     } catch (err: any) {
       setAnalysisError(err.message);

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { makeAnalyzeSlug } from '../lib/slug';
 
 // ────────────────────────────────────────────────
 // 타입 정의
@@ -9,6 +10,8 @@ import { useRouter } from 'next/navigation';
 
 export interface PropertyCardData {
   id: string;
+  /** 건물명 (아파트/빌딩 카테고리, SEO 슬러그용) */
+  bldNm?: string;
   /** 매물 제목 (없으면 '부동산탐정 판독'으로 표시) */
   propertyTitle?: string;
   /** 위치 정보 */
@@ -118,7 +121,7 @@ export default function PropertyCard({
   const isLiked = currentUid ? (data.likes?.includes(currentUid) ?? false) : false;
 
   const handleClick = () => {
-    const target = href ?? `/analyze/${data.id}`;
+    const target = href ?? `/analyze/${makeAnalyzeSlug(data.id, data.bldNm)}`;
     router.push(target);
   };
 
