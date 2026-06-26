@@ -67,7 +67,7 @@ export default function KakaoMap({
   benefitParcels,
   selectedBenefitParcel,
   onBenefitParcelSelect,
-  navigationZoomLevel = 4,
+  navigationZoomLevel = 2,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
