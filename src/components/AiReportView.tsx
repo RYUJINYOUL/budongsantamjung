@@ -1049,7 +1049,7 @@ const resolveBuildingVitals = (mergedData: any) => {
     const elapsedYears = buildYear ? new Date().getFullYear() - buildYear : null;
 
     return {
-        bldNm: title.bldNm || '',
+        bldNm: title.bldNm || mergedData?.bldNm || mergedData?.bld_nm || '',
         structure: title.strctCdNm || '',
         usage: title.mainPurpsCdNm || '',
         buildYear,
