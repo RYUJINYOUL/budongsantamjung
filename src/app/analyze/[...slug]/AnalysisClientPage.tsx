@@ -270,7 +270,6 @@ function buildAiReportCopyText(
         complexName = mergedData?.complexName || 
                       mergedData?.buildingName || 
                       mergedData?.bldNm || 
-                      mergedData?.bld_nm || 
                       mergedData?.title || 
                       analysisMetadata?.apartmentTarget?.aptName || 
                       parsedAi.propertyTitle || 
@@ -278,7 +277,6 @@ function buildAiReportCopyText(
     } else {
         complexName = mergedData?.buildingName || 
                       mergedData?.bldNm || 
-                      mergedData?.bld_nm || 
                       mergedData?.title || 
                       parsedAi.propertyTitle || 
                       (options.address ? options.address.split(' ').slice(1, 3).join(' ') : '매물');
