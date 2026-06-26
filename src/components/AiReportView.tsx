@@ -8,7 +8,7 @@ import {
     Zap, ShieldCheck, DollarSign, Layers, TrendingUp, ShieldAlert,
     CheckCircle2, Search, Gavel, MapPin, Hexagon, BarChart3,
     AlertCircle, Sparkles, LogOut, Wrench, Percent, Coins,
-    Compass, Lock, Award, Building, Activity, Info, ExternalLink,
+    Compass, Lock, Award, Building, Building2, Activity, Info, ExternalLink,
     CheckSquare, RefreshCw, Eye, Shield,
     List, ChevronRight, ChevronDown, Store, ArrowRightLeft, Calendar, FileText,
     Milestone, Play, Map, X, SlidersHorizontal, Calculator
@@ -2613,7 +2613,13 @@ export default function AiReportView({
             return '미입력';
         };
 
+        const buildingTitleArr = mergedData?.vitals?.building?.title ?? mergedData?.rawData?.vitals?.building?.title;
+        const bldNm = (Array.isArray(buildingTitleArr) && buildingTitleArr.length > 0)
+            ? (buildingTitleArr[0]?.bldNm || null)
+            : null;
+
         const detailsList = [];
+        if (bldNm) detailsList.push({ label: '건축물명', value: bldNm, icon: Building2 });
         detailsList.push({ label: '거래 유형', value: txType?.toString() || '미입력', icon: ArrowRightLeft });
         detailsList.push({ label: '가격 정보', value: getPriceText(), icon: DollarSign });
 

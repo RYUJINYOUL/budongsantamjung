@@ -871,9 +871,7 @@ export default function DetectiveSummaryView({
 
 
     function renderUserDetailedInfoSection() {
-        const buildingName = primaryTitle?.bldNm || rawData?.bld_nm || null;
         const details = [
-            ...(buildingName ? [{ label: '건축물명', value: buildingName, icon: Building2 }] : []),
             { label: '거래 유형', value: txType || '미입력', icon: ArrowLeftRight },
             { label: '가격 정보', value: getPriceText(), icon: DollarSign },
             { label: '층수 / 면적', value: `${floor ? floor + '층' : '-층'} | 전용 ${area ? parseFloat(area).toFixed(1) + '㎡' : '-㎡'}`, icon: Ruler }
