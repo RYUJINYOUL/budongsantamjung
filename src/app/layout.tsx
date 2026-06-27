@@ -2,6 +2,7 @@ import './globals.css'
 import { Noto_Sans_KR } from 'next/font/google'
 import type { Metadata } from 'next'
 import Script from 'next/script'
+import { Analytics } from '@vercel/analytics/react'
 
 const notoSansKr = Noto_Sans_KR({
   subsets: ['latin'],
@@ -130,6 +131,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased font-noto-sans-kr">
         {children}
+        <Analytics />
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}`}
           strategy="afterInteractive"
