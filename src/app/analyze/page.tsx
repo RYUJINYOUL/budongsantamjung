@@ -448,7 +448,7 @@ export default function UnifiedAnalyzePage() {
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Link href="/">
-                    <h1 className="text-lg font-black tracking-tighter text-slate-900 leading-none">부동산탐정</h1>
+                    <div className="text-lg font-black tracking-tighter text-slate-900 leading-none">부동산탐정</div>
                   </Link>
                   <div className="inline-flex items-center gap-1 bg-emerald-500 text-white rounded-full px-2.5 py-0.5 shadow-none">
                     <span className="text-[10px] font-extrabold tracking-wider">PRO</span>

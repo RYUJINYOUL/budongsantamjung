@@ -87,13 +87,13 @@ export default function TopBar({
       </div>
 
       {/* ── 가운데: 타이틀 ── */}
-      <h1
+      <div
         className={`flex-1 text-sm font-bold tracking-wide truncate ${
           centered ? 'text-center' : 'text-left'
         } ${isDark ? 'text-slate-200' : 'text-slate-800'}`}
       >
         {title}
-      </h1>
+      </div>
 
       {/* ── 오른쪽: 액션 영역 (없으면 균형 맞추기용 빈 div) ── */}
       <div className="shrink-0 w-10 flex justify-end">

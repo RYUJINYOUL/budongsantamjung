@@ -35,7 +35,7 @@ export default function BrandSidePanel({ showHomeLink = true, className = '' }: 
             <img src="/logo512.png" alt="부동산탐정" className="w-full h-full rounded-xl object-cover" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-xl lg:text-2xl font-black tracking-tight">부동산탐정</h1>
+            <div className="text-xl lg:text-2xl font-black tracking-tight">부동산탐정</div>
             <p className="text-emerald-100/90 text-sm font-semibold mt-0.5">AI 부동산 분석 플랫폼</p>
           </div>
         </div>

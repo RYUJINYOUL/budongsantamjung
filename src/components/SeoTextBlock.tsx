@@ -152,7 +152,7 @@ export default function SeoTextBlock({ data }: { data: SeoData }) {
                 margin: '-1px',
             }}
         >
-            <h1>{address} 부동산 AI 분석 결과 | 부동산탐정</h1>
+            <h2>{address} 부동산 AI 분석 결과 | 부동산탐정</h2>
 
             {scoreText && <p>{scoreText}</p>}
 
