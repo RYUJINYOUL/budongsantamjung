@@ -6,19 +6,19 @@ export default function robots(): MetadataRoute.Robots {
             {
                 userAgent: '*',
                 allow: '/',
-                disallow: ['/api/', '/temp/'],
+                disallow: ['/api/', '/temp/', '/_next/static/media/'],
             },
             {
                 userAgent: 'Googlebot',
                 allow: '/',
-                disallow: ['/api/', '/temp/'],
+                disallow: ['/api/', '/temp/', '/_next/static/media/'],
             },
             {
                 userAgent: 'Yeti', // Naver bot
                 allow: '/',
-                disallow: ['/api/', '/temp/'],
+                disallow: ['/api/', '/temp/', '/_next/static/media/'],
             },
         ],
-        sitemap: 'https://tamjung.me/sitemap.xml',
+        sitemap: 'https://www.tamjung.me/sitemap.xml',  // www 추가!
     }
 }

@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 import { makeAnalyzeSlug } from '../lib/slug'
 
-const SITE_URL = 'https://tamjung.me'
+const SITE_URL = 'https://www.tamjung.me'
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40'
 
 async function getDiscoveryIds(): Promise<string[]> {
@@ -26,7 +26,7 @@ interface TimelineItem {
 
 async function getAnalyzeSlugs(): Promise<string[]> {
     try {
-        const res = await fetch(`${BACKEND_URL}/api/land/detective/timeline?limit=500`, {
+        const res = await fetch(`${BACKEND_URL}/api/land/detective/timeline?limit=5000`, {
             cache: 'no-store',
         })
         if (!res.ok) return []
@@ -51,8 +51,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         { url: `${SITE_URL}/discover`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
         { url: `${SITE_URL}/analyze`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
         { url: `${SITE_URL}/reviews`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
-        { url: `${SITE_URL}/login`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.3 },
-        { url: `${SITE_URL}/signup`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.3 },
     ]
 
     const discoveryIds = await getDiscoveryIds()

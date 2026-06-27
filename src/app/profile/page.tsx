@@ -56,6 +56,31 @@ const catIconMap: Record<string, string> = {
   '빌딩': '/build.svg'
 };
 
+const Pagination = ({ page, totalPages, onPageChange }: { page: number, totalPages: number, onPageChange: (p: number) => void }) => {
+    if (totalPages <= 1) return null;
+    return (
+        <div className="flex justify-center items-center gap-4 mt-6 py-4">
+            <button 
+                onClick={() => onPageChange(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 transition-all focus:outline-none"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span className="text-xs font-bold text-slate-500">
+                <span className="text-emerald-600">{page}</span> / {totalPages}
+            </span>
+            <button 
+                onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 transition-all focus:outline-none"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+            </button>
+        </div>
+    );
+};
+
 function ProfilePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -79,9 +104,13 @@ function ProfilePageContent() {
 
     const [favorites, setFavorites] = useState<AnalysisCard[]>([]);
     const [favLoading, setFavLoading] = useState(false);
+    const [favPage, setFavPage] = useState(1);
+    const [favTotalPages, setFavTotalPages] = useState(1);
 
     const [myAnalyses, setMyAnalyses] = useState<AnalysisCard[]>([]);
     const [myLoading, setMyLoading] = useState(false);
+    const [myPage, setMyPage] = useState(1);
+    const [myTotalPages, setMyTotalPages] = useState(1);
 
     const [myDiscoveries, setMyDiscoveries] = useState<any[]>([]);
     const [discLoading, setDiscLoading] = useState(false);
@@ -121,18 +150,20 @@ function ProfilePageContent() {
         }
     }, [activeTab]);
 
-    const loadFavorites = async () => {
+    const loadFavorites = async (page = 1) => {
         if (!user) return;
         setFavLoading(true);
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch(`/api/land/detective/my-favorites`, {
+            const res = await fetch(`/api/land/detective/my-favorites?page=${page}&limit=20`, {
                 headers: {
                     'Authorization': `Bearer ${idToken}`
                 }
             });
             const data = await res.json();
             setFavorites(data.favorites || []);
+            setFavPage(data.page || 1);
+            setFavTotalPages(data.totalPages || 1);
         } catch {
             setFavorites([]);
         } finally {
@@ -140,18 +171,20 @@ function ProfilePageContent() {
         }
     };
 
-    const loadMyAnalyses = async () => {
+    const loadMyAnalyses = async (page = 1) => {
         if (!user) return;
         setMyLoading(true);
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch(`/api/land/detective/my-reports`, {
+            const res = await fetch(`/api/land/detective/my-reports?page=${page}&limit=20`, {
                 headers: {
                     'Authorization': `Bearer ${idToken}`
                 }
             });
             const data = await res.json();
             setMyAnalyses(data.analyses || []);
+            setMyPage(data.page || 1);
+            setMyTotalPages(data.totalPages || 1);
         } catch {
             setMyAnalyses([]);
         } finally {
@@ -498,6 +531,7 @@ function ProfilePageContent() {
                                                 </div>
                                             </div>
                                         ))}
+                                        <Pagination page={favPage} totalPages={favTotalPages} onPageChange={loadFavorites} />
                                     </div>
                                 )}
                             </div>
@@ -593,6 +627,7 @@ function ProfilePageContent() {
                                                 </div>
                                             </div>
                                         ))}
+                                        <Pagination page={myPage} totalPages={myTotalPages} onPageChange={loadMyAnalyses} />
                                     </div>
                                 )}
                             </div>

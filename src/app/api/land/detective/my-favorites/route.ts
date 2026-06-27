@@ -5,7 +5,8 @@ export async function GET(request: NextRequest) {
 
     try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-        const url = `${backendUrl}/api/land/detective/my-favorites`;
+        const searchParams = request.nextUrl.search;
+        const url = `${backendUrl}/api/land/detective/my-favorites${searchParams}`;
 
         const response = await fetch(url, {
             cache: 'no-store',
@@ -20,7 +21,12 @@ export async function GET(request: NextRequest) {
         }
 
         const data = await response.json();
-        return NextResponse.json({ favorites: data.analyses || [] });
+        return NextResponse.json({ 
+            favorites: data.analyses || [],
+            total: data.total,
+            page: data.page,
+            totalPages: data.totalPages
+        });
     } catch (error: any) {
         console.error('찜한 목록 API 호출 오류:', error);
         return NextResponse.json(

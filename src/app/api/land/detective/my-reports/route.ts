@@ -5,7 +5,8 @@ export async function GET(request: NextRequest) {
 
     try {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-        const url = `${backendUrl}/api/land/detective/my-reports`;
+        const searchParams = request.nextUrl.search;
+        const url = `${backendUrl}/api/land/detective/my-reports${searchParams}`;
 
         const response = await fetch(url, {
             cache: 'no-store',
