@@ -1877,15 +1877,23 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     }, [activeTab]);
 
     useEffect(() => {
-        if (!id || initialData) return;
-        fetchAnalysis();
-    }, [id, initialData]);
+        if (!id) return;
+        // initialData가 있어도 SSR 캐시(stale) 가능성이 있으므로 백그라운드에서 최신 데이터를 가져옵니다.
+        fetchAnalysis(true);
+    }, [id]);
 
-    /** 최초 데이터 로드 시 AI 완료 여부에 따라 기본 탭 설정 */
+    /** 데이터 로드 시 AI 완료 여부에 따라 기본 탭 설정 */
     useEffect(() => {
-        if (!analysisData || defaultTabApplied.current) return;
-        defaultTabApplied.current = true;
-        setActiveTab(getDefaultActiveTab(analysisData));
+        if (!analysisData) return;
+        
+        const shouldBeAi = isAiAnalysisCompleted(analysisData);
+        if (!defaultTabApplied.current) {
+            defaultTabApplied.current = true;
+            setActiveTab(getDefaultActiveTab(analysisData));
+        } else if (shouldBeAi && activeTab === 'report') {
+            // SSR 캐시된 초기 데이터는 미완료였으나, 새로 fetch한 데이터가 완료 상태인 경우 탭 자동 전환
+            setActiveTab('ai_report');
+        }
     }, [analysisData]);
 
     useEffect(() => {
