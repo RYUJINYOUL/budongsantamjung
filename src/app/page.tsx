@@ -5,6 +5,8 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import KakaoMap from '../components/KakaoMap';
 import SideNav from '../components/SideNav';
 import AnalyzePanel from '../components/AnalyzePanel';
+import RankingPanel from '../components/RankingPanel';
+import { makeAnalyzeSlug } from '../lib/slug';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -57,6 +59,11 @@ function HomePageContent() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   // 분석 패널에서 선택한 위치 → 지도 이동 + 마커 표시
   const [analyzeLocation, setAnalyzeLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
+
+  // 랭킹 패널 결과 → 지도 마커 표시
+  const [rankingProperties, setRankingProperties] = useState<any[]>([]);
+  const [rankingGosiPoints, setRankingGosiPoints] = useState<any[]>([]);
+  const [selectedRankingApt, setSelectedRankingApt] = useState<any | null>(null);
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -136,7 +143,7 @@ function HomePageContent() {
     const category = searchParams.get('category');
     const panel = searchParams.get('panel');
 
-    if (panel === 'analyze') {
+    if (panel === 'analyze' || panel === 'ranking') {
       setShowMobileMap(false);
     } else if (tab === 'list') {
       setShowMobileMap(false);
@@ -273,6 +280,35 @@ function HomePageContent() {
     );
   });
   const mapProperties = useMemo(() => {
+    if (activePanel === 'ranking') {
+      // 카테고리별 마커 색상: apartment=분홍, land=보라, building=초록
+      const rankCategoryForMarker = (searchParams.get('rankingType') || 'apartment') as string;
+      const rankMarkers = rankingProperties.filter(a => a.lat && a.lng).map(a => ({
+        id: a.reportId,
+        address: a.address || a.pnu || '주소 없음',
+        propertyTitle: `${a.rank}위: ${a.bldNm || a.address || ''}`,
+        category: rankCategoryForMarker,
+        riskScore: 0,
+        lat: a.lat,
+        lng: a.lng,
+      }));
+      const uniqueGosi = Array.from(
+        new Map(rankingGosiPoints.filter(g => g.lat && g.lng).map(g => [g.title || `${g.lat}-${g.lng}`, g])).values()
+      );
+      const gosiMarkers = uniqueGosi.map((g, i) => {
+        const truncatedTitle = (g.title || '').length > 8 ? (g.title || '').slice(0, 8) + '...' : g.title;
+        return {
+          id: `gosi-${i}`,
+          address: g.address || '개발호재 위치',
+          propertyTitle: truncatedTitle || '직접 수혜 범위',
+          category: 'gosi',
+          riskScore: 0,
+          lat: g.lat,
+          lng: g.lng,
+        };
+      });
+      return [...rankMarkers, ...gosiMarkers];
+    }
     return filteredAnalyses
       .filter(a => a.lat != null && a.lng != null)
       .map(a => ({
@@ -284,7 +320,7 @@ function HomePageContent() {
         lat: a.lat,
         lng: a.lng,
       }));
-  }, [filteredAnalyses]);
+  }, [filteredAnalyses, activePanel, rankingProperties, rankingGosiPoints, searchParams]);
 
   const selectedMapProperty = useMemo(() => {
     // 분석 패널에서 위치 선택 시 해당 위치로 지도 이동
@@ -344,10 +380,10 @@ function HomePageContent() {
               <div className="flex items-center gap-3">
                 <div className="w-9 lg:hidden" />
                 <h1 className={PAGE_HEADER_TITLE}>
-                  {activePanel === 'analyze' ? '매물분석' : '부동산탐정'}
+                  {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '아파트 랭킹' : '부동산탐정'}
                 </h1>
               </div>
-              {activePanel === 'analyze' ? (
+              {(activePanel === 'analyze' || activePanel === 'ranking') ? (
                 <a href="/" className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95">
                   지도
                 </a>
@@ -360,7 +396,7 @@ function HomePageContent() {
           </header>
 
           {/* 모바일 뷰 토글 */}
-          {activePanel !== 'analyze' && (
+          {(activePanel !== 'analyze' && activePanel !== 'ranking') && (
             <div className="lg:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
               <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                 지도
@@ -393,6 +429,26 @@ function HomePageContent() {
                 }}
                 externalClickParcel={externalClickParcel}
                 onMobileButtonClick={() => setShowMobileWarning(true)}
+              />
+            </div>
+          ) : activePanel === 'ranking' ? (
+            <div className={`relative flex-1 min-h-0 ${activePanel === 'ranking' ? 'flex flex-col' : (showMobileMap ? 'hidden lg:flex lg:flex-col' : 'flex flex-col')}`}>
+              <RankingPanel
+                onResultsChange={(results, gosiPoints) => {
+                  setRankingProperties(results);
+                  setRankingGosiPoints(gosiPoints || []);
+                  if (results.length > 0 && results[0].lat && results[0].lng) {
+                    setMapCenter({ lat: results[0].lat, lng: results[0].lng });
+                  }
+                }}
+                urlPrefill={{
+                  sigunguCd: searchParams.get('sigunguCd') || '',
+                  sigunguName: searchParams.get('sigunguName') || '',
+                  minPrice: Number(searchParams.get('minPrice')) || 0,
+                  maxPrice: Number(searchParams.get('maxPrice')) || 0,
+                  rankingType: searchParams.get('rankingType') || 'apartment',
+                }}
+
               />
             </div>
           ) : (
@@ -552,12 +608,12 @@ function HomePageContent() {
         </div>
 
         {/* ── 오른쪽: 지도 (7) ── */}
-        <div className={`w-full bg-gradient-to-br from-slate-50 to-slate-100 border-l border-slate-200/50 flex-1 lg:flex-none relative flex-col min-w-0 ${activePanel === 'analyze' ? 'hidden lg:flex' : (showMobileMap ? 'flex' : 'hidden lg:flex')}`}>
+        <div className={`w-full bg-gradient-to-br from-slate-50 to-slate-100 border-l border-slate-200/50 flex-1 lg:flex-none relative flex-col min-w-0 ${(activePanel === 'analyze' || activePanel === 'ranking') ? 'hidden lg:flex' : (showMobileMap ? 'flex' : 'hidden lg:flex')}`}>
           <div className="h-full flex flex-col w-full">
             <div className="flex-1 relative">
 
-              {/* 지도 내 카테고리 필터 (분석 탭 제외 — 좌측 AnalyzePanel에서 선택) */}
-              {activePanel !== 'analyze' && (
+              {/* 지도 내 카테고리 필터 (분석/랭킹 탭 제외 — 좌측 패널에서 선택) */}
+              {(activePanel !== 'analyze' && activePanel !== 'ranking') && (
                 <div className="absolute top-20 lg:top-1/2 lg:-translate-y-1/2 right-4 z-20 flex flex-col gap-1.5 bg-white/90 backdrop-blur-sm p-1.5 rounded-xl shadow-md border border-slate-200">
                   {CATEGORIES.map(cat => (
                     <button key={cat} onClick={() => setSelectedCategory(cat)}
@@ -574,6 +630,11 @@ function HomePageContent() {
                 navigationZoomLevel={2}
                 initialCenter={mapCenter}
                 onPropertySelect={property => {
+                  if (activePanel === 'ranking') {
+                    const apt = rankingProperties.find(a => a.reportId === property.id);
+                    if (apt) setSelectedRankingApt(apt);
+                    return;
+                  }
                   const analysis = analyses.find(a => a.id === property.id);
                   if (analysis) setSelectedProperty(analysis);
                 }}
@@ -586,8 +647,8 @@ function HomePageContent() {
                 onMapClick={handleMapClickInAnalyze}
               />
 
-              {/* 선택 매물 팝업 */}
-              {selectedProperty && (
+              {/* 선택 매물 팝업 — 일반 */}
+              {(selectedProperty && activePanel !== 'ranking') && (
                 <div className="absolute bottom-24 lg:bottom-6 left-4 right-4 lg:left-6 lg:right-6 z-30 bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-emerald-200 cursor-pointer hover:bg-emerald-50/30 transition-all hover:scale-[1.01]"
                   onClick={() => navigateToDetail(selectedProperty.id)}>
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -617,6 +678,79 @@ function HomePageContent() {
                   )}
                 </div>
               )}
+
+              {/* 선택 매물 팝업 — 랭킹 */}
+              {(selectedRankingApt && activePanel === 'ranking') && (() => {
+                const apt = selectedRankingApt;
+                const n = Number(apt.estimatedTotalPrice || 0);
+                const manwon = Math.floor(n / 10000);
+                const estimatedStr = manwon >= 10000
+                  ? (() => { const eok = Math.floor(manwon / 10000); const rest = manwon % 10000; return rest > 0 ? `${eok}억 ${rest.toLocaleString()}만` : `${eok}억`; })()
+                  : manwon > 0 ? `${manwon.toLocaleString()}만` : null;
+                const trend = apt.priceTrendPercent;
+                const rankColors = [null, '#f59e0b', '#94a3b8', '#b45309'];
+                const rankColor = rankColors[apt.rank] || '#64748b';
+                return (
+                  <div
+                    className="absolute bottom-6 left-6 right-6 z-30 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-pink-100 cursor-pointer hover:scale-[1.01] transition-all"
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set('panel', 'ranking');
+                      if (searchParams.get('sigunguCd')) params.set('sigunguCd', searchParams.get('sigunguCd')!);
+                      if (searchParams.get('sigunguName')) params.set('sigunguName', searchParams.get('sigunguName')!);
+                      if (searchParams.get('minPrice')) params.set('minPrice', searchParams.get('minPrice')!);
+                      if (searchParams.get('maxPrice')) params.set('maxPrice', searchParams.get('maxPrice')!);
+                      const slug = makeAnalyzeSlug(apt.reportId, apt.bldNm);
+                      router.push(`/analyze/${slug}?return=${encodeURIComponent('?' + params.toString())}`);
+                    }}
+                  >
+                    {/* 닫기 */}
+                    <button
+                      className="absolute top-2.5 right-3 text-slate-300 hover:text-slate-500 text-lg leading-none"
+                      onClick={e => { e.stopPropagation(); setSelectedRankingApt(null); }}
+                    >✕</button>
+
+                    <div className="p-3">
+                      <div className="flex items-start gap-3">
+                        {/* 순위 배지 */}
+                        <div className="shrink-0 flex flex-col items-center justify-center w-9 h-9 rounded-xl border-2"
+                          style={{ borderColor: rankColor, backgroundColor: `${rankColor}18` }}>
+                          <span className="text-[11px] font-black" style={{ color: rankColor }}>{apt.rank}위</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-emerald-600 text-[10px] font-black">● 선택된 매물</span>
+                          </div>
+                          <p className="text-[15px] font-black text-slate-900 truncate">{apt.bldNm}</p>
+                          {apt.targetArea > 0 && (
+                            <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{apt.targetArea}㎡</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        {estimatedStr && (
+                          <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-100">
+                            추정가 {estimatedStr}
+                          </span>
+                        )}
+                        {trend !== null && trend !== undefined && (
+                          <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${
+                            trend > 0 ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                            trend < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                            'bg-slate-50 text-slate-500 border-slate-100'
+                          }`}>
+                            6개월 {trend > 0 ? '+' : ''}{trend.toFixed(1)}% {trend > 0 ? '↑' : trend < 0 ? '↓' : '-'}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-400 font-semibold">매매 {apt.saleCount}건</span>
+                      </div>
+
+                      <p className="text-[10px] text-emerald-500 font-bold text-right mt-2">리포트 보기 →</p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

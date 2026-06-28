@@ -8,7 +8,8 @@ export interface MapMarkerProperty {
   propertyTitle?: string;
 }
 
-type CategoryKey = 'apartment' | 'land' | 'house' | 'store' | 'building' | 'other';
+type CategoryKey = 'apartment' | 'land' | 'house' | 'store' | 'building' | 'gosi' | 'other';
+
 
 const CATEGORY_STYLES: Record<CategoryKey, { color: string; icon: string; label: string }> = {
   apartment: { color: '#ff99c8', icon: '/apart.svg', label: '아파트' },
@@ -16,11 +17,13 @@ const CATEGORY_STYLES: Record<CategoryKey, { color: string; icon: string; label:
   house: { color: '#fcd34d', icon: '/jutack.svg', label: '주택' },
   store: { color: '#7dd3fc', icon: '/cshop.svg', label: '상가' },
   building: { color: '#86efac', icon: '/build.svg', label: '빌딩' },
+  gosi: { color: '#f59e0b', icon: '/3d/gicho.svg', label: '고시(호재)' }, // 임시 아이콘
   other: { color: '#94a3b8', icon: '/land.svg', label: '기타' },
 };
 
-export function resolveCategoryKey(category?: string): CategoryKey {
+export function resolveCategoryKey(category?: string): CategoryKey | 'gosi' {
   const c = (category || '').toLowerCase().trim();
+  if (['gosi', '고시'].some(v => c.includes(v))) return 'gosi';
   if (['apartment', '아파트'].some(v => c.includes(v))) return 'apartment';
   if (['land', '토지'].some(v => c.includes(v))) return 'land';
   if (['house', '주택', '단독', '빌라', 'villa'].some(v => c.includes(v))) return 'house';
@@ -106,7 +109,7 @@ export function createMarkerElement(
   const score = getScoreColors(property.riskScore);
   const scoreIcon = getScoreIcon(property.riskScore);
 
-  if (property.riskScore > 0) {
+  if (property.riskScore > 0 && catKey !== 'gosi') {
     const badge = document.createElement('div');
     badge.textContent = Math.round(property.riskScore).toString();
     badge.title = `AI 평가 ${Math.round(property.riskScore)}점 · ${score.label}`;
@@ -117,6 +120,39 @@ export function createMarkerElement(
       border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;
     `;
     root.appendChild(badge);
+  } else if (catKey === 'gosi') {
+    // 고시 마커 특별 스타일링 (직사각형 호재 제목 표시)
+    root.style.transform = 'none';
+    root.style.filter = 'none';
+    const badge = document.createElement('div');
+    badge.textContent = property.propertyTitle || '개발호재';
+    badge.style.cssText = `
+      background:rgba(255, 255, 255, 0.95);
+      border:1.5px solid #f59e0b;
+      color:#b45309;
+      font-size:11px;
+      font-weight:800;
+      padding:5px 8px;
+      border-radius:6px;
+      white-space:nowrap;
+      box-shadow:0 3px 6px rgba(0,0,0,0.15);
+      position:relative;
+      top:-10px;
+    `;
+    const tail = document.createElement('div');
+    tail.style.cssText = `
+      width:0;height:0;
+      border-left:6px solid transparent;
+      border-right:6px solid transparent;
+      border-top:7px solid #f59e0b;
+      position:absolute;
+      bottom:-7px;
+      left:50%;
+      transform:translateX(-50%);
+    `;
+    badge.appendChild(tail);
+    root.appendChild(badge);
+    return root;
   }
 
   const body = document.createElement('div');

@@ -21,6 +21,12 @@ const NAV_ITEMS = [
     icon: '/a2.png',
   },
   {
+    id: 'ranking',
+    label: '랭킹',
+    href: '/?panel=ranking',
+    icon: '/a7.png', // 트로피 같은 아이콘이 있다면 a7.png 등으로 사용할 수 있으나 임의로 지정 (발견과 구별)
+  },
+  {
     id: 'discover',
     label: '발견',
     href: '/discover',

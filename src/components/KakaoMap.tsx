@@ -583,6 +583,13 @@ export default function KakaoMap({
     }
   }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
+  // initialCenter가 외부에서 변경되었을 때 지도 중앙 이동
+  useEffect(() => {
+    if (!map || !initialCenter) return;
+    const position = new window.kakao.maps.LatLng(initialCenter.lat, initialCenter.lng);
+    map.setCenter(position);
+  }, [map, initialCenter]);
+
   // 선택된 수혜 필지 위치로 지도 이동
   useEffect(() => {
     if (!map || !isBenefitMode || !selectedBenefitParcel) return;

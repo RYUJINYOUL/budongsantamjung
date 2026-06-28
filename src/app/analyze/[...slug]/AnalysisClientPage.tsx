@@ -1623,7 +1623,9 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
 
     const goBack = useCallback(() => {
         if (returnQs) {
-            router.push(`/?${returnQs}`);
+            // returnQs가 '?'로 시작하는 경우 (/??panel=ranking... 이중 ? 방지)
+            const cleanQs = returnQs.startsWith('?') ? returnQs.slice(1) : returnQs;
+            router.push(`/?${cleanQs}`);
             return;
         }
         if (typeof window !== 'undefined' && window.history.length > 1) {
@@ -1633,7 +1635,8 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         router.push('/');
     }, [router, returnQs]);
 
-    const backLabel = returnQs ? '리포트 목록' : '홈으로';
+    const isFromRanking = returnQs ? new URLSearchParams(returnQs).get('panel') === 'ranking' : false;
+    const backLabel = isFromRanking ? '랭킹으로' : returnQs ? '리포트 목록' : '홈으로';
     const adminAutoTriggered = useRef(false);
     const [analysisData, setAnalysisData] = useState<any>(initialData || null);
     const [loading, setLoading] = useState(!initialData);
