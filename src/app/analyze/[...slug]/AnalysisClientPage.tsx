@@ -535,65 +535,88 @@ function buildAiReportCopyText(
     const finalPriceOpinion = (priceReas.opinion || getPriceOpinionFallback()).replace(/★/g, '');
 
     // 6. 📈 실거래가 비교사례
-    const comparables = Array.isArray(analysisMetadata.comparables) ? analysisMetadata.comparables : [];
-    const sortedComps = [...comparables].sort((a, b) => {
+    const txTypeStr = mergedData?.userSubmittedData?.transactionType || '매매';
+    const isRentMode = txTypeStr === '전세' || txTypeStr === '월세';
+    const rentComps = Array.isArray(analysisMetadata.rentComparables) ? analysisMetadata.rentComparables : [];
+    const useRentComps = isRentMode && rentComps.length > 0;
+    
+    const baseComps = useRentComps ? rentComps : (Array.isArray(analysisMetadata.comparables) ? analysisMetadata.comparables : []);
+    const sortedComps = [...baseComps].sort((a, b) => {
+        if (useRentComps) {
+            const dateA = (a.dealYear || 0) * 10000 + (a.dealMonth || 0) * 100 + (a.dealDay || 0);
+            const dateB = (b.dealYear || 0) * 10000 + (b.dealMonth || 0) * 100 + (b.dealDay || 0);
+            return dateB - dateA;
+        }
         const scoreA = Number(a.similarityScore || a.score || 0);
         const scoreB = Number(b.similarityScore || b.score || 0);
         return scoreB - scoreA;
     });
 
-    const compHeader = `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| ${padKorean('거래가', 14)}| 보정 후 가치`;
+    const compHeader = useRentComps
+        ? `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| 보증금/월세`
+        : `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| ${padKorean('거래가', 14)}| 보정 후 가치`;
     const compListRows: string[] = [compHeader];
 
     sortedComps.slice(0, 3).forEach((c, i) => {
         const areaVal = c.area || c.plottageAr || c.excluUseAr || c.buildingAr || 0;
         const areaStr = areaVal ? `${parseFloat(areaVal.toString()).toFixed(2)}㎡` : '-';
-        
-        let dealWon = 0;
-        const dealAmount = c.dealAmount;
-        if (dealAmount) {
-            if (typeof dealAmount === 'string') {
-                const clean = dealAmount.replace(/[^0-9]/g, '');
-                dealWon = parseInt(clean, 10);
-                if (dealAmount.includes('억') && dealWon < 10000) {
-                    dealWon = dealWon * 100000000;
-                }
-            } else {
-                dealWon = Number(dealAmount);
-            }
-        }
-        const dealStr = dealWon > 0 ? formatPriceKorean(dealWon).replace(' 원', '만') : '-';
-        
         const dateStr = c.dealYear && c.dealMonth ? `${c.dealYear}.${String(c.dealMonth).padStart(2, '0')}` : '';
-        const simScore = Math.round(Number(c.similarityScore || c.score || 0));
-        const remark = [dateStr, `유사도 ${simScore}`].filter(Boolean).join(' / ');
-        
-        // 보정 후 가치 계산
-        let targetArea = 0;
-        const t = analysisMetadata.target || {};
-        const directTargetArea = analysisMetadata.targetArea !== undefined && analysisMetadata.targetArea !== null
-            ? parseFloat(analysisMetadata.targetArea.toString())
-            : null;
-        if (directTargetArea !== null && directTargetArea > 0) {
-            targetArea = directTargetArea;
-        } else if (isApartment) {
-            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
-        } else {
-            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
-        }
-        const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && areaVal > 0 ? dealWon / areaVal : 0);
-        const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
-        const adjValue = targetArea > 0 ? adjSqm * targetArea : dealWon;
-        const adjValueStr = formatPriceKorean(adjValue).replace(' 원', '만');
 
-        const col1 = padKorean(`#${i+1}`, 5);
-        const col2 = padKorean(areaStr, 12);
-        const col3 = padKorean(dealStr, 14);
-        const col4 = `${adjValueStr}  (${remark})`;
-        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+        if (useRentComps) {
+            const depStr = c.deposit ? formatPriceKorean(c.deposit).replace(' 원', '만') : '0만';
+            const mthStr = c.monthlyRent ? ` / 월 ${formatPriceKorean(c.monthlyRent).replace(' 원', '만')}` : '';
+            const dealStr = `${depStr}${mthStr}`;
+            const remark = [dateStr, c.floor ? `${c.floor}층` : ''].filter(Boolean).join(' / ');
+            
+            const col1 = padKorean(`#${i+1}`, 5);
+            const col2 = padKorean(areaStr, 12);
+            compListRows.push(`${col1}| ${col2}| ${dealStr} (${remark})`);
+        } else {
+            let dealWon = 0;
+            const dealAmount = c.dealAmount;
+            if (dealAmount) {
+                if (typeof dealAmount === 'string') {
+                    const clean = dealAmount.replace(/[^0-9]/g, '');
+                    dealWon = parseInt(clean, 10);
+                    if (dealAmount.includes('억') && dealWon < 10000) {
+                        dealWon = dealWon * 100000000;
+                    }
+                } else {
+                    dealWon = Number(dealAmount);
+                }
+            }
+            const dealStr = dealWon > 0 ? formatPriceKorean(dealWon).replace(' 원', '만') : '-';
+            
+            const simScore = Math.round(Number(c.similarityScore || c.score || 0));
+            const remark = [dateStr, `유사도 ${simScore}`].filter(Boolean).join(' / ');
+            
+            // 보정 후 가치 계산
+            let targetArea = 0;
+            const t = analysisMetadata.target || {};
+            const directTargetArea = analysisMetadata.targetArea !== undefined && analysisMetadata.targetArea !== null
+                ? parseFloat(analysisMetadata.targetArea.toString())
+                : null;
+            if (directTargetArea !== null && directTargetArea > 0) {
+                targetArea = directTargetArea;
+            } else if (isApartment) {
+                targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+            } else {
+                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+            }
+            const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && areaVal > 0 ? dealWon / areaVal : 0);
+            const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+            const adjValue = targetArea > 0 ? adjSqm * targetArea : dealWon;
+            const adjValueStr = formatPriceKorean(adjValue).replace(' 원', '만');
+
+            const col1 = padKorean(`#${i+1}`, 5);
+            const col2 = padKorean(areaStr, 12);
+            const col3 = padKorean(dealStr, 14);
+            const col4 = `${adjValueStr}  (${remark})`;
+            compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+        }
     });
 
-    if (simRange.max > 0) {
+    if (simRange.max > 0 && !useRentComps) {
         const col1 = padKorean('최고', 5);
         const col2 = padKorean('유사 면적', 12);
         const col3 = padKorean(formatPriceKorean(simRange.max).replace(' 원', '만'), 14);
@@ -608,6 +631,11 @@ function buildAiReportCopyText(
         compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
     }
     const compTableBlock = compListRows.join('\n');
+    
+    let compNote = `※ 비교사례 ${sortedComps.slice(0, 3).length + (simRange.max > 0 && !useRentComps ? 1 : 0) + (simRange.min > 0 && !useRentComps ? 1 : 0)}건 전량 ${complexName} 동일 단지 / 유사도 80점 이상`;
+    if (useRentComps) {
+        compNote = `※ 최근 전/월세 실거래가 ${sortedComps.slice(0, 3).length}건 (${complexName} 동일 단지)`;
+    }
 
     // 7. 📉 성동구 아파트 시장 흐름
     const ind = mergedData?.marketRone || {};
@@ -776,7 +804,7 @@ ${separator}
 
 ${compTableBlock}
 
-※ 비교사례 ${sortedComps.slice(0, 3).length + (simRange.max > 0 ? 1 : 0) + (simRange.min > 0 ? 1 : 0)}건 전량 ${complexName} 동일 단지 / 유사도 80점 이상
+${compNote}
 ※ ${currentDateStr} 기준 시점 보정 계수 적용
 
 ${separator}
