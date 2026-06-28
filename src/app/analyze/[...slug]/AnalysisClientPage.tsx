@@ -1610,8 +1610,11 @@ function getDefaultActiveTab(data: any): string {
     return isAiAnalysisCompleted(data) ? 'ai_report' : 'report';
 }
 
+import { parseAnalyzeSlug } from '../../../lib/slug';
+
 export default function AnalysisDetailPage({ initialData }: { initialData?: any }) {
-    const { id } = useParams();
+    const params = useParams();
+    const id = params?.slug ? parseAnalyzeSlug(Array.isArray(params.slug) ? params.slug : [params.slug]) : undefined;
     const router = useRouter();
     const searchParams = useSearchParams();
     const adminSample = searchParams.get('adminSample') === '1';
