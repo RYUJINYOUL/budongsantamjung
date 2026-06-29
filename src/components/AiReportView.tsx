@@ -2877,6 +2877,7 @@ export default function AiReportView({
         const meta = ai.analysisMetadata;
         if (!meta || Object.keys(meta).length === 0) return null;
 
+        const transactionType = mergedData?.transactionType || mergedData?.transaction_type || ai.userSubmittedData?.transactionType || '매매';
         const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
         const aptTarget = meta.apartmentTarget || {};
         const marketSummary = Array.isArray(meta.marketSummary) ? meta.marketSummary : [];
