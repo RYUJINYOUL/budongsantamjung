@@ -7,9 +7,10 @@ interface ComparableMapProps {
     mapData: any; // ai.analysisMetadata
     category?: string;
     targetArea?: number;
+    customComparables?: any[];
 }
 
-export default function ComparableMap({ mapData, category, targetArea }: ComparableMapProps) {
+export default function ComparableMap({ mapData, category, targetArea, customComparables }: ComparableMapProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const [map, setMap] = useState<any>(null);
     const [selectedComp, setSelectedComp] = useState<any>(null);
@@ -17,7 +18,7 @@ export default function ComparableMap({ mapData, category, targetArea }: Compara
     const [loadError, setLoadError] = useState<string | null>(null);
 
     const target = mapData?.target || {};
-    const comparables = Array.isArray(mapData?.comparables) ? mapData.comparables : [];
+    const comparables = customComparables || (Array.isArray(mapData?.comparables) ? mapData.comparables : []);
 
     const directTargetArea = mapData?.targetArea !== undefined && mapData?.targetArea !== null
         ? parseFloat(mapData.targetArea.toString())

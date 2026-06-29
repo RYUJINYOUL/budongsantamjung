@@ -1304,6 +1304,7 @@ const OfficialMultiplierSection = ({
     targetArea,
     isListAppended,
     estimateNarrative,
+    onMapOpen,
 }: {
     attached: any;
     meta: any;
@@ -1311,6 +1312,7 @@ const OfficialMultiplierSection = ({
     targetArea: number;
     isListAppended?: boolean;
     estimateNarrative?: string;
+    onMapOpen?: (samples: any[]) => void;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
 
@@ -1332,6 +1334,25 @@ const OfficialMultiplierSection = ({
                         {metaChip(isDynamic ? '정밀 산출' : '보수적 산출', accent)}
                         {metaChip(`반경 ${opr.searchRadius || 1000}m`)}
                         {metaChip(`실거래 ${opr.sampleCount || 0}건`)}
+                        {opr.samples && opr.samples.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onMapOpen) {
+                                        onMapOpen(opr.samples);
+                                    }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ml-auto"
+                                style={{
+                                    backgroundColor: hexToRgba(accent, 0.1),
+                                    border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                                    color: accent,
+                                }}
+                            >
+                                <Map className="w-3.5 h-3.5" />
+                                지도 보기
+                            </button>
+                        )}
                     </>
                 )}
             >
@@ -1620,13 +1641,18 @@ const RegionalTradeRow = ({ t, isRent }: { t: any; isRent: boolean }) => {
 
 const REGIONAL_TRADES_VISIBLE = 3;
 
-const RegionalTradesReferenceSection = ({ groups }: { groups: any[] }) => {
+const RegionalTradesReferenceSection = ({ groups, onMapOpen }: { groups: any[]; onMapOpen?: () => void }) => {
     const [expandedGroups, setExpandedGroups] = React.useState<Record<number, boolean>>({});
 
     if (!groups || groups.length === 0) return null;
 
     const totalCount = groups.reduce((sum, g) => sum + (Array.isArray(g.data) ? g.data.length : 0), 0);
     const accent = PRICE_METHOD_ACCENTS.regional;
+
+    // 좌표 있는 거래만 지도 표시 가능 (building_trades DB 전환 후 lat/lng 존재)
+    const hasCoords = groups.some(g =>
+        Array.isArray(g.data) && g.data.some((t: any) => t.lat && t.lng)
+    );
 
     return (
         <PriceReasonMethodCard
@@ -1638,6 +1664,21 @@ const RegionalTradesReferenceSection = ({ groups }: { groups: any[] }) => {
                     {metaChip(`총 ${totalCount}건`, accent)}
                     {metaChip('참고용', accent)}
                     {metaChip('대입 미적용')}
+                    {hasCoords && onMapOpen && (
+                        <button
+                            type="button"
+                            onClick={onMapOpen}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                            style={{
+                                backgroundColor: hexToRgba(accent, 0.1),
+                                border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                                color: accent,
+                            }}
+                        >
+                            <Map className="w-3.5 h-3.5" />
+                            지도 보기
+                        </button>
+                    )}
                 </>
             )}
         >
@@ -2350,6 +2391,7 @@ export default function AiReportView({
 }) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
     const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
+    const [mapCustomComparables, setMapCustomComparables] = React.useState<any[] | null>(null);
 
     const categoryStr = String(mergedData?.category || 'land');
 
@@ -2403,6 +2445,10 @@ export default function AiReportView({
                     targetArea={targetArea}
                     isListAppended={meta.isListAppended}
                     estimateNarrative={officialMultiplierEstimate}
+                    onMapOpen={(samples) => {
+                        setMapCustomComparables(samples);
+                        setIsMapModalOpen(true);
+                    }}
                 />
                 <BuildingResidualSection
                     meta={meta}
@@ -2412,7 +2458,14 @@ export default function AiReportView({
                     estimatedTotalWon={estimatedTotalWon}
                     mergedData={mergedData}
                 />
-                <RegionalTradesReferenceSection groups={attachedTrades} />
+                <RegionalTradesReferenceSection
+                    groups={attachedTrades}
+                    onMapOpen={() => {
+                        const allRegionalData = attachedTrades.flatMap(g => Array.isArray(g.data) ? g.data : []);
+                        setMapCustomComparables(allRegionalData);
+                        setIsMapModalOpen(true);
+                    }}
+                />
                 <PriceSpectrumNarrativeSection
                     narrative={narrative}
                     spectrum={spectrum}
@@ -3644,7 +3697,7 @@ export default function AiReportView({
             {/* Comparable Map Modal */}
             {isMapModalOpen && (
                 <div className="fixed inset-0 z-[999] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setIsMapModalOpen(false)} />
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); }} />
                     <div className="relative w-full max-w-4xl h-[85vh] bg-white rounded-t-[32px] overflow-hidden flex flex-col z-10 animate-in slide-in-from-bottom duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.35)]">
                         {/* Bottom sheet drag handle indicator */}
                         <div className="w-full flex justify-center pt-3 pb-1.5 bg-gradient-to-r from-sky-50 via-white to-emerald-50 shrink-0">
@@ -3656,24 +3709,33 @@ export default function AiReportView({
                                     <Map className="w-5 h-5 text-sky-600" />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-slate-900 text-base font-black">비교사례 위치 지도</span>
+                                    <span className="text-slate-900 text-base font-black">
+                                        {mapCustomComparables ? '주변 실거래 지도' : '비교사례 위치 지도'}
+                                    </span>
                                     <span className="text-slate-500 text-[11px] font-medium">
                                         마커에 실거래가(억) 표시 · 클릭 시 상세 정보
-                                        {ai.analysisMetadata?.comparables?.length
-                                            ? ` · ${ai.analysisMetadata.comparables.length}건`
-                                            : ''}
+                                        {mapCustomComparables
+                                            ? ` · ${mapCustomComparables.length}건`
+                                            : ai.analysisMetadata?.comparables?.length
+                                                ? ` · ${ai.analysisMetadata.comparables.length}건`
+                                                : ''}
                                     </span>
                                 </div>
                             </div>
                             <button
-                                onClick={() => setIsMapModalOpen(false)}
+                                onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); }}
                                 className="p-2 rounded-xl hover:bg-slate-900/5 text-slate-400 hover:text-slate-700 transition-colors"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
                         <div className="flex-1 p-3 bg-slate-100">
-                            <ComparableMap mapData={ai.analysisMetadata} category={categoryStr} targetArea={targetArea} />
+                            <ComparableMap 
+                                mapData={ai.analysisMetadata} 
+                                category={categoryStr} 
+                                targetArea={targetArea} 
+                                customComparables={mapCustomComparables || undefined}
+                            />
                         </div>
                     </div>
                 </div>
