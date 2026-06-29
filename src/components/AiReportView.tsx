@@ -3022,7 +3022,14 @@ export default function AiReportView({
                                         <span style={{ color: accentColor }} className="text-[13px] font-black">{adjPriceStr}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-[10px] text-white/30 pt-1.5 border-t border-white/5">
-                                        <span>거래가 {dealAmountStr}</span>
+                                        <span>
+                                            {transactionType === '월세' || (c.monthlyRent && c.monthlyRent > 0)
+                                                ? `보증금 ${dealAmountStr} / 월 ${c.monthlyRent > 0 ? formatKoreanCurrency(c.monthlyRent).replace(' 원', '') : '0'}`
+                                                : transactionType === '전세'
+                                                    ? `보증금 ${dealAmountStr}`
+                                                    : `거래가 ${dealAmountStr}`
+                                            }
+                                        </span>
                                         <span>시점 x{timeFactor.toFixed(3)}</span>
                                     </div>
                                     {deductionText && (
@@ -3049,33 +3056,90 @@ export default function AiReportView({
                 {/* Step 3: 최종 추정가 */}
                 {stepHeader('3', '3단계: 최종 추정가 산출', accentOfficial)}
                 <div className="p-4 bg-white/5 border border-white/5 rounded-2xl flex flex-col gap-3">
-                    <span className="text-white/50 text-[11px]">대상 면적 {aptTarget.exclusiveArea ? parseFloat(aptTarget.exclusiveArea.toString()).toFixed(1) : '-'}㎡ × 추정 단가</span>
-                    <div className="flex items-end gap-2 mt-1">
-                        <span className="text-white/60 text-xs mb-0.5">추정가</span>
-                        <span style={{ color: accentColor }} className="text-2xl font-black leading-none select-all">
-                            {estimatedTotal > 0 ? formatKoreanCurrency(estimatedTotal) : '-'}
-                        </span>
-                    </div>
-                    {weightedTotal > 0 && Math.abs(weightedTotal - estimatedTotal) > 1000 && (
-                        <span className="text-white/35 text-[10px]">가중평균 기준: {formatKoreanCurrency(weightedTotal)}</span>
-                    )}
+                    {transactionType === '월세' ? (
+                        <>
+                            <span className="text-white/50 text-[11px]">대상 면적 {aptTarget.exclusiveArea ? parseFloat(aptTarget.exclusiveArea.toString()).toFixed(1) : '-'}㎡ 기준 전/월세 시장 평균가</span>
+                            <div className="flex flex-col gap-2.5 mt-1">
+                                <div className="flex justify-between items-center bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                                    <span className="text-white/60 text-xs">추정 보증금</span>
+                                    <span style={{ color: accentColor }} className="text-lg font-black select-all">
+                                        {meta.rentTarget?.estimatedWolseDeposit > 0 ? formatKoreanCurrency(meta.rentTarget.estimatedWolseDeposit) : '-'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
+                                    <span className="text-white/60 text-xs">추정 월세</span>
+                                    <span style={{ color: accentColor }} className="text-lg font-black select-all">
+                                        {meta.rentTarget?.estimatedWolseMonthly > 0 ? `${formatKoreanCurrency(meta.rentTarget.estimatedWolseMonthly)}/월` : '-'}
+                                    </span>
+                                </div>
+                            </div>
 
-                    {userPriceWon > 0 && estimatedTotal > 0 && (
-                        <div style={{
-                            borderColor: priceGap > 5 ? 'rgba(245,158,11,0.15)' : priceGap < -5 ? 'rgba(0,127,95,0.15)' : 'rgba(255,255,255,0.05)',
-                            backgroundColor: priceGap > 5 ? 'rgba(245,158,11,0.06)' : priceGap < -5 ? 'rgba(0,127,95,0.06)' : 'rgba(255,255,255,0.02)'
-                        }} className="mt-2 p-3 border rounded-xl flex justify-between items-center gap-2">
-                            <div className="flex flex-col gap-0.5 text-[11px] text-white/60">
-                                <span className="truncate">제시가 {formatKoreanCurrency(userPriceWon)}</span>
-                                <span className="truncate">비준가 {formatKoreanCurrency(estimatedTotal)}</span>
+                            {/* 월세 제시가 vs 추정가 비교 */}
+                            {(() => {
+                                const uDep = mergedData?.userSubmittedData?.deposit || mergedData?.deposit || 0;
+                                const uRent = mergedData?.userSubmittedData?.monthlyRent || mergedData?.monthlyRent || 0;
+                                const uDepWon = uDep > 10000000 ? uDep : uDep * 10000;
+                                const uRentWon = uRent > 1000000 ? uRent : uRent * 10000;
+                                const estDep = meta.rentTarget?.estimatedWolseDeposit || 0;
+                                const estRent = meta.rentTarget?.estimatedWolseMonthly || 0;
+
+                                if (uDepWon > 0 || uRentWon > 0) {
+                                    return (
+                                        <div className="mt-2 p-3 border border-white/5 bg-white/2 rounded-xl flex flex-col gap-2 text-xs">
+                                            <div className="flex justify-between text-white/50">
+                                                <span>제시 조건</span>
+                                                <span className="font-bold text-white">
+                                                    보증금 {formatKoreanCurrency(uDepWon)} / 월 {formatKoreanCurrency(uRentWon)}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-white/50">
+                                                <span>시장 평균</span>
+                                                <span className="font-bold text-sky-400">
+                                                    보증금 {estDep > 0 ? formatKoreanCurrency(estDep) : '-'} / 월 {estRent > 0 ? formatKoreanCurrency(estRent) : '-'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
+                        </>
+                    ) : (
+                        <>
+                            <span className="text-white/50 text-[11px]">
+                                {transactionType === '전세' 
+                                    ? `대상 면적 ${aptTarget.exclusiveArea ? parseFloat(aptTarget.exclusiveArea.toString()).toFixed(1) : '-'}㎡ 기준 적정 전세가`
+                                    : `대상 면적 ${aptTarget.exclusiveArea ? parseFloat(aptTarget.exclusiveArea.toString()).toFixed(1) : '-'}㎡ × 추정 단가`
+                                }
+                            </span>
+                            <div className="flex items-end gap-2 mt-1">
+                                <span className="text-white/60 text-xs mb-0.5">추정가</span>
+                                <span style={{ color: accentColor }} className="text-2xl font-black leading-none select-all">
+                                    {estimatedTotal > 0 ? formatKoreanCurrency(estimatedTotal) : '-'}
+                                </span>
                             </div>
-                            <div style={{
-                                color: priceGap > 5 ? '#f59e0b' : priceGap < -5 ? '#10b981' : 'rgba(255,255,255,0.7)',
-                                backgroundColor: priceGap > 5 ? 'rgba(245,158,11,0.1)' : priceGap < -5 ? 'rgba(0,127,95,0.1)' : 'rgba(255,255,255,0.05)'
-                            }} className="px-2.5 py-1 rounded-lg text-xs font-black shrink-0">
-                                {priceGap > 0 ? `+${priceGap.toFixed(1)}% 고평가` : priceGap < 0 ? `${priceGap.toFixed(1)}% 저평가` : '적정 수준'}
-                            </div>
-                        </div>
+                            {weightedTotal > 0 && Math.abs(weightedTotal - estimatedTotal) > 1000 && transactionType !== '전세' && (
+                                <span className="text-white/35 text-[10px]">가중평균 기준: {formatKoreanCurrency(weightedTotal)}</span>
+                            )}
+
+                            {userPriceWon > 0 && estimatedTotal > 0 && (
+                                <div style={{
+                                    borderColor: priceGap > 5 ? 'rgba(245,158,11,0.15)' : priceGap < -5 ? 'rgba(0,127,95,0.15)' : 'rgba(255,255,255,0.05)',
+                                    backgroundColor: priceGap > 5 ? 'rgba(245,158,11,0.06)' : priceGap < -5 ? 'rgba(0,127,95,0.06)' : 'rgba(255,255,255,0.02)'
+                                }} className="mt-2 p-3 border rounded-xl flex justify-between items-center gap-2">
+                                    <div className="flex flex-col gap-0.5 text-[11px] text-white/60">
+                                        <span className="truncate">제시가 {formatKoreanCurrency(userPriceWon)}</span>
+                                        <span className="truncate">비준가 {formatKoreanCurrency(estimatedTotal)}</span>
+                                    </div>
+                                    <div style={{
+                                        color: priceGap > 5 ? '#f59e0b' : priceGap < -5 ? '#10b981' : 'rgba(255,255,255,0.7)',
+                                        backgroundColor: priceGap > 5 ? 'rgba(245,158,11,0.1)' : priceGap < -5 ? 'rgba(0,127,95,0.1)' : 'rgba(255,255,255,0.05)'
+                                    }} className="px-2.5 py-1 rounded-lg text-xs font-black shrink-0">
+                                        {priceGap > 0 ? `+${priceGap.toFixed(1)}% 고평가` : priceGap < 0 ? `${priceGap.toFixed(1)}% 저평가` : '적정 수준'}
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
