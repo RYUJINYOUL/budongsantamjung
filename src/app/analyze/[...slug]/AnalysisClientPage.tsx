@@ -125,6 +125,8 @@ const IN_DEPTH_LABELS: Record<string, string> = {
     outlook: '미래 가치 · 전망',
     investmentValue: '투자 가치 분석',
     reconstruction: '재건축 · 리모델링 가능성',
+    investmentScenarios: '투자 시나리오 분석',
+    yieldOutlook: '예상 수익률 전망',
 };
 
 function buildAiReportCopyText(
@@ -445,39 +447,37 @@ function buildAiReportCopyText(
     const isOver = diffWon > 0;
 
     // 1. Title & Intro
-    const title = `📌 ${complexName} ${txType} 분석 | ${region} ${categoryName} 실거래가 비교 (${currentDateStr})`;
+    const title = `${region} ${complexName} ${areaStr}㎡ ${txType} ${priceStr.replace(' 원', '원')} - AI 분석`;
     const separator = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
     
-    const intro = `${region} ${categoryName} 매매를 고려 중이라면 꼭 읽어보세요.\n` +
-                  `${complexName} 전용 ${areaStr}㎡ 매물 ${priceStr.replace(' 원', ' 원')}, 과연 적정 가격일까요?\n` +
-                  `AI 부동산 분석 리포트를 바탕으로 실거래가·시장 흐름·투자 가치를 정리했습니다.`;
+    const intro = `AI 분석 리포트 실거래가·시장 흐름·투자 가치 검토 하세요.`;
 
     // 2. 🏢 매물 기본 정보
     const infoRows: string[] = [];
-    infoRows.push(`${padKorean(isApartment ? '단지명' : '매물명', 11)}${complexName}`);
-    infoRows.push(`${padKorean('주소', 11)}${options.address}`);
-    infoRows.push(`${padKorean('거래유형', 11)}${txType}`);
-    infoRows.push(`${padKorean('제시가', 11)}${priceStr}`);
+    infoRows.push(`□ ${isApartment ? '단지명' : '매물명'} : ${complexName}`);
+    infoRows.push(`□ 주소 : ${options.address}`);
+    infoRows.push(`□ 거래유형 : ${txType}`);
+    infoRows.push(`□ 제시가 : ${priceStr}`);
     if (areaStr !== '-') {
         const areaKey = isApartment ? '전용면적' : (options.category === 'land' || parsedAi.category === 'land' ? '토지면적' : '연면적');
-        infoRows.push(`${padKorean(areaKey, 11)}${areaStr}㎡`);
+        infoRows.push(`□ ${areaKey} : ${areaStr}㎡`);
     }
     if (compInfo.year && compInfo.year !== '-') {
-        infoRows.push(`${padKorean('준공년도', 11)}${compInfo.ageStr}`);
+        infoRows.push(`□ 준공년도 : ${compInfo.ageStr}`);
     }
     if (zoning && zoning !== '-') {
-        infoRows.push(`${padKorean('용도지역', 11)}${zoning}`);
+        infoRows.push(`□ 용도지역 : ${zoning}`);
     }
     if (mergedData?.jimok) {
-        infoRows.push(`${padKorean('지목', 11)}${mergedData.jimok}`);
+        infoRows.push(`□ 지목 : ${mergedData.jimok}`);
     }
     if (nearbyStations && nearbyStations !== '-') {
-        infoRows.push(`${padKorean('인접역', 11)}${nearbyStations}`);
+        infoRows.push(`□ 인접역 : ${nearbyStations}`);
     }
     const infoBlock = infoRows.join('\n');
 
     // 3. 🔍 AI 종합 평가
-    const aiEvaluationTitle = `🔍 AI 종합 평가 : ${score}점 / ${finalGrade}`;
+    const aiEvaluationTitle = `■ 종합 평가 : ${score}점 / ${finalGrade}`;
     const aiEvaluationContent = summary;
 
     // 4. 📊 세부 리스크 평가
@@ -503,22 +503,20 @@ function buildAiReportCopyText(
         const s = typeof item === 'object' && item !== null ? (item.score ?? 0) : Number(item);
         const r = typeof item === 'object' && item !== null ? (item.reason ?? '') : '';
         
-        const icon = s >= 7 ? '✅' : '⚠️';
-        const labelPart = `${icon} ${mappedLabel}`;
-        const headerLine = `${padKorean(labelPart, 20)}${s}점`;
+        const headerLine = `□ ${mappedLabel} : ${s}점`;
         riskList.push(`${headerLine}\n${r}`);
     });
     const riskBlock = riskList.join('\n\n');
 
     // 5. 💵 가격 타당성 검증
     let priceSuffix = '';
-    if (userPriceWon > simRange.max) priceSuffix = '  ← 스펙트럼 상단 초과';
-    else if (userPriceWon < simRange.min) priceSuffix = '  ← 스펙트럼 하단 미달';
-    else priceSuffix = '  ← 스펙트럼 범위 내';
+    if (userPriceWon > simRange.max) priceSuffix = ' (범위 상단 초과)';
+    else if (userPriceWon < simRange.min) priceSuffix = ' (범위 하단 미달)';
+    else priceSuffix = ' (범위 내)';
 
     const priceRows: string[] = [];
-    priceRows.push(`${padKorean('AI 시뮬레이션 산출 범위', 26)}${formatPriceKorean(simRange.min).replace(' 원', ' 원')} ~ ${formatPriceKorean(simRange.max).replace(' 원', ' 원')}`);
-    priceRows.push(`${padKorean(`제시 ${txType}가`, 26)}${priceStr}${priceSuffix}`);
+    priceRows.push(`□ 산출 범위 : ${formatPriceKorean(simRange.min).replace(' 원', '원')} ~ ${formatPriceKorean(simRange.max).replace(' 원', '원')}`);
+    priceRows.push(`□ 제시 ${txType}가 : ${priceStr.replace(' 원', '원')} ${priceSuffix}`);
     const priceBlock = priceRows.join('\n');
 
     const cleanPriceStr = priceStr.replace(' 원', '');
@@ -552,25 +550,25 @@ function buildAiReportCopyText(
         return scoreB - scoreA;
     });
 
-    const compHeader = useRentComps
-        ? `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| 보증금/월세`
-        : `${padKorean('사례', 5)}| ${padKorean('면적', 12)}| ${padKorean('거래가', 14)}| 보정 후 가치`;
-    const compListRows: string[] = [compHeader];
+    const compListRows: string[] = [];
 
     sortedComps.slice(0, 3).forEach((c, i) => {
         const areaVal = c.area || c.plottageAr || c.excluUseAr || c.buildingAr || 0;
         const areaStr = areaVal ? `${parseFloat(areaVal.toString()).toFixed(2)}㎡` : '-';
-        const dateStr = c.dealYear && c.dealMonth ? `${c.dealYear}.${String(c.dealMonth).padStart(2, '0')}` : '';
+        
+        let dateStr = '';
+        if (c.dealYear && c.dealMonth) {
+            const yy = String(c.dealYear).substring(2);
+            const mm = String(c.dealMonth).padStart(2, '0');
+            dateStr = `${yy}.${mm}`;
+        }
 
         if (useRentComps) {
-            const depStr = c.deposit ? formatPriceKorean(c.deposit).replace(' 원', '만') : '0만';
-            const mthStr = c.monthlyRent ? ` / 월 ${formatPriceKorean(c.monthlyRent).replace(' 원', '만')}` : '';
+            const depStr = c.deposit ? formatPriceKorean(c.deposit).replace(' 원', '원') : '0원';
+            const mthStr = c.monthlyRent ? ` / 월 ${formatPriceKorean(c.monthlyRent).replace(' 원', '원')}` : '';
             const dealStr = `${depStr}${mthStr}`;
             const remark = [dateStr, c.floor ? `${c.floor}층` : ''].filter(Boolean).join(' / ');
-            
-            const col1 = padKorean(`#${i+1}`, 5);
-            const col2 = padKorean(areaStr, 12);
-            compListRows.push(`${col1}| ${col2}| ${dealStr} (${remark})`);
+            compListRows.push(`□ 사례 ${i + 1} : ${areaStr} / ${dealStr} / ${remark}`);
         } else {
             let dealWon = 0;
             const dealAmount = c.dealAmount;
@@ -585,10 +583,8 @@ function buildAiReportCopyText(
                     dealWon = Number(dealAmount);
                 }
             }
-            const dealStr = dealWon > 0 ? formatPriceKorean(dealWon).replace(' 원', '만') : '-';
-            
+            const dealStr = dealWon > 0 ? formatPriceKorean(dealWon).replace(' 원', '원') : '-';
             const simScore = Math.round(Number(c.similarityScore || c.score || 0));
-            const remark = [dateStr, `유사도 ${simScore}`].filter(Boolean).join(' / ');
             
             // 보정 후 가치 계산
             let targetArea = 0;
@@ -606,29 +602,19 @@ function buildAiReportCopyText(
             const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && areaVal > 0 ? dealWon / areaVal : 0);
             const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
             const adjValue = targetArea > 0 ? adjSqm * targetArea : dealWon;
-            const adjValueStr = formatPriceKorean(adjValue).replace(' 원', '만');
+            const adjValueStr = formatPriceKorean(adjValue).replace(' 원', '원');
 
-            const col1 = padKorean(`#${i+1}`, 5);
-            const col2 = padKorean(areaStr, 12);
-            const col3 = padKorean(dealStr, 14);
-            const col4 = `${adjValueStr}  (${remark})`;
-            compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+            compListRows.push(`□ 사례 ${i + 1} : ${areaStr} / ${dealStr} / ${adjValueStr} / ${dateStr} / 유사도 ${simScore}`);
         }
     });
 
     if (simRange.max > 0 && !useRentComps) {
-        const col1 = padKorean('최고', 5);
-        const col2 = padKorean('유사 면적', 12);
-        const col3 = padKorean(formatPriceKorean(simRange.max).replace(' 원', '만'), 14);
-        const col4 = `${formatPriceKorean(simRange.max).replace(' 원', '만')}  (고층 보정 포함)`;
-        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+        const maxValStr = formatPriceKorean(simRange.max).replace(' 원', '원');
+        compListRows.push(`□ 최고 : 유사 면적 / ${maxValStr} - 고층 보정 포함`);
     }
     if (simRange.min > 0) {
-        const col1 = padKorean('최저', 5);
-        const col2 = padKorean('유사 면적', 12);
-        const col3 = padKorean(formatPriceKorean(simRange.min).replace(' 원', '만'), 14);
-        const col4 = `${formatPriceKorean(simRange.min).replace(' 원', '만')}  (면적 감점 포함)`;
-        compListRows.push(`${col1}| ${col2}| ${col3}| ${col4}`);
+        const minValStr = formatPriceKorean(simRange.min).replace(' 원', '원');
+        compListRows.push(`□ 최저 : 유사 면적 / ${minValStr} - 면적 감점 포함`);
     }
     const compTableBlock = compListRows.join('\n');
     
@@ -645,7 +631,7 @@ function buildAiReportCopyText(
 
     const sd = ind.supplyDemand;
     const saleSDVal = Number(sd?.sale?.summary?.latest || 100);
-    const sdText = `${saleSDVal.toFixed(1)} ${saleSDVal >= 100 ? '이상 → 수요 우세 시장' : '미만 → 공급 우세 시장'}`;
+    const sdText = `${saleSDVal.toFixed(1)} 이상 - 수요 우세 시장`;
 
     const dealVolumeStats = mergedData?.dealVolumeStats || mergedData?.nearbyData?.volumeStats || [];
     const monthlyCounts: Record<string, number> = {};
@@ -659,27 +645,23 @@ function buildAiReportCopyText(
         .sort((a, b) => a.month.localeCompare(b.month));
 
     let volTrendStr = '-';
-    let isVolDeclining = false;
     if (sortedVolume.length >= 2) {
         const firstVol = sortedVolume[0];
         const lastVol = sortedVolume[sortedVolume.length - 1];
         const isVolGrowing = lastVol.count >= firstVol.count;
-        isVolDeclining = !isVolGrowing;
         const trendWord = isVolGrowing ? '상승세' : '하락 추세';
-        const firstMonth = parseInt(firstVol.month.substring(4), 10);
-        const lastMonth = parseInt(lastVol.month.substring(4), 10);
-        volTrendStr = `${trendWord} (${firstMonth}월 ${firstVol.count.toLocaleString()}건 → ${lastMonth}월 ${lastVol.count.toLocaleString()}건)`;
+        volTrendStr = `${trendWord} - 최근 거래량 ${isVolGrowing ? '증가' : '감소'} 추세`;
+        if (!isVolGrowing) volTrendStr += ' (주의 필요)';
     } else {
-        volTrendStr = '하락 추세 (최근 거래량 감소 추세)';
-        isVolDeclining = true;
+        volTrendStr = '하락 추세 - 최근 거래량 감소 추세 (주의 필요)';
     }
 
     const marketFlowRows: string[] = [];
-    marketFlowRows.push(`${padKorean('매매가격지수', 16)}${mktPriceIndex}`);
-    marketFlowRows.push(`${padKorean('전세가격지수', 16)}${mktJeonseIndex}`);
-    marketFlowRows.push(`${padKorean('월세가격지수', 16)}${mktWolseIndex}`);
-    marketFlowRows.push(`${padKorean('매매수급동향', 16)}${sdText}`);
-    marketFlowRows.push(`${padKorean(`${categoryName} 거래량`, 16)}${volTrendStr}${isVolDeclining ? ' ← 주의 필요' : ''}`);
+    marketFlowRows.push(`□ 매매가격지수 : ${mktPriceIndex}`);
+    marketFlowRows.push(`□ 전세가격지수 : ${mktJeonseIndex}`);
+    marketFlowRows.push(`□ 월세가격지수 : ${mktWolseIndex}`);
+    marketFlowRows.push(`□ 매매수급동향 : ${sdText}`);
+    marketFlowRows.push(`□ 아파트 거래량 : ${volTrendStr}`);
     const marketFlowBlock = marketFlowRows.join('\n');
 
     // 8. 🔬 심층 분석
@@ -691,6 +673,8 @@ function buildAiReportCopyText(
         'outlook': '미래 가치 · 전망',
         'investmentValue': '투자 가치 분석',
         'reconstruction': '재건축 · 리모델링 가능성',
+        'investmentScenarios': '투자 시나리오 분석',
+        'yieldOutlook': '예상 수익률 전망',
     };
     Object.entries(inDepth).forEach(([k, v]) => {
         if (v != null && String(v).trim()) {
@@ -713,7 +697,7 @@ function buildAiReportCopyText(
             `□ 주차장 이용 편의성 및 세대당 주차 가능 대수 확인`
         );
     }
-    const checklistBlock = checklistLines.join('\n');
+    const checklistBlock = checklistLines.join('\n\n');
 
     // 10. ⏸️ 최종 판정
     const getFinalVerdictInfo = () => {
@@ -758,7 +742,7 @@ function buildAiReportCopyText(
         `#${cleanComplex}`,
         `#${cleanRegion}${cleanCategory}`,
         `#${cleanRegion}${cleanCategory}매매`,
-        `#서울${cleanCategory}실거래가`,
+        `#${cleanRegion}${cleanCategory}실거래가`,
         `#${cleanCategory}매매`,
         `#${cleanCategory}투자`,
         `#부동산AI분석`,
@@ -772,34 +756,34 @@ ${separator}
 
 ${intro}
 
-${separator}
-🏢 매물 기본 정보
+
+■ 매물 기본 정보
 ${separator}
 
 ${infoBlock}
 
-${separator}
+
 ${aiEvaluationTitle}
 ${separator}
 
 ${aiEvaluationContent}
 
-${separator}
-📊 세부 리스크 평가 (10점 만점)
+
+■ 세부 리스크 평가 (10점 만점)
 ${separator}
 
 ${riskBlock}
 
-${separator}
-💵 가격 타당성 검증
+
+■ 가격 타당성 검증
 ${separator}
 
 ${priceBlock}
 
 ${finalPriceOpinion}
 
-${separator}
-📈 실거래가 비교사례 (${complexName} 동일 단지)
+
+■ 실거래가 비교사례 (${complexName} 동일 단지)
 ${separator}
 
 ${compTableBlock}
@@ -807,38 +791,51 @@ ${compTableBlock}
 ${compNote}
 ※ ${currentDateStr} 기준 시점 보정 계수 적용
 
-${separator}
-📉 ${region} ${categoryName} 시장 흐름 (${now.getFullYear()}년 상반기)
+
+■ ${region} ${categoryName} 시장 흐름 (${now.getFullYear()}년 상반기)
 ${separator}
 
 ${marketFlowBlock}
 
-${separator}
-🔬 심층 분석
+
+■ 심층 분석
 ${separator}
 
 ${inDepthSection}
 
-${separator}
-✅ 매수 전 현장 체크리스트
+
+■ 매수 전 현장 체크리스트
 ${separator}
 
 ${checklistBlock}
 
-${separator}
-${verdictIcon} 최종 판정 : ${cleanVerdictTitle}
+
+■ 최종 판정 : ${cleanVerdictTitle}
 ${separator}
 
 ${cleanVerdictReason}
 
 ${separator}
-본 분석은 국가 공공데이터 기반 AI 자동 분석 참고 자료입니다.
+본 분석은 국가 공공데이터 기반 자동 분석 참고 자료입니다.
 법률적·재정적 보증을 제공하지 않으며, 최종 계약 전 전문가 상담 및 현장 실사를 권장합니다.
-${separator}
+${separator}`;
 
-${dynamicHashtags}`;
+    const cleanTextForUser = (text: string): string => {
+        if (!text) return '';
+        return text
+            // 1. 본문에 임의로 남아있을 수 있는 이모지 기호만 정확하게 제거
+            .replace(/[📌🏢🔍📊💵📈📉🔬✅⚠️⏸️❌🎨🤖💡🔥✨📢📣🔔📍🚩🏁🏆👑💎⭐🌟💫💥💦💨⚡🌀🌈✔]/g, '')
+            // 2. 행 시작의 마크다운 제목 기호(#) 제거
+            .replace(/^#+\s+/gm, '')
+            // 3. 밑줄 및 구분선 제거 (━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 등 가로선 제거)
+            .replace(/[-_+=━]{3,}/g, '')
+            // 4. 연속된 빈 줄을 최대 2개로 제한
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    };
 
-    return outputText.trim();
+    const cleanedBody = cleanTextForUser(outputText);
+    return `${cleanedBody}\n\n${dynamicHashtags}`.trim();
 }
 
 // ── Utility Components ──

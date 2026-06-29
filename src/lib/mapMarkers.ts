@@ -6,17 +6,18 @@ export interface MapMarkerProperty {
   lng?: number;
   category?: string;
   propertyTitle?: string;
+  rank?: number;
 }
 
 type CategoryKey = 'apartment' | 'land' | 'house' | 'store' | 'building' | 'gosi' | 'other';
 
 
 const CATEGORY_STYLES: Record<CategoryKey, { color: string; icon: string; label: string }> = {
-  apartment: { color: '#ff99c8', icon: '/apart.svg', label: '아파트' },
-  land: { color: '#c4b5fd', icon: '/land.svg', label: '토지' },
+  apartment: { color: '#ec4899', icon: '/apart.svg', label: '아파트' },
+  land: { color: '#8b5cf6', icon: '/land.svg', label: '토지' },
   house: { color: '#fcd34d', icon: '/jutack.svg', label: '주택' },
   store: { color: '#7dd3fc', icon: '/cshop.svg', label: '상가' },
-  building: { color: '#86efac', icon: '/build.svg', label: '빌딩' },
+  building: { color: '#10b981', icon: '/build.svg', label: '빌딩' },
   gosi: { color: '#f59e0b', icon: '/3d/gicho.svg', label: '고시(호재)' }, // 임시 아이콘
   other: { color: '#94a3b8', icon: '/land.svg', label: '기타' },
 };
@@ -88,6 +89,36 @@ export function createMarkerElement(
     'z-index:' + (options.selected ? '30' : '10'),
   ].join(';');
 
+  // 순위(Rank) 정보가 존재할 경우 숫자가 들어간 전용 원형 마커 렌더링 (대표 색상 녹색으로 통일)
+  if (property.rank != null && property.rank > 0) {
+    const body = document.createElement('div');
+    const rankColor = '#10b981'; // 웹사이트 대표 색상 녹색
+
+    body.style.cssText = `
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:${rankColor};border:3px solid ${options.selected ? '#ffffff' : '#ffffff'};
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.55), 0 4px 10px rgba(0,0,0,0.2)' : '0 2px 6px rgba(0,0,0,0.15)'};
+    `;
+    body.innerHTML = `<span style="color:#ffffff;font-size:${Math.round(size * 0.45)}px;font-weight:900;line-height:1;font-family:sans-serif;">${property.rank}</span>`;
+    root.appendChild(body);
+
+    const tail = document.createElement('div');
+    tail.style.cssText = `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid ${rankColor};margin-top:-2px;`;
+    root.appendChild(tail);
+
+    root.title = property.propertyTitle || `${property.rank}위 매물`;
+
+    root.addEventListener('mouseenter', () => {
+      if (!options.selected) root.style.transform = 'scale(1.12)';
+    });
+    root.addEventListener('mouseleave', () => {
+      root.style.transform = options.selected ? 'scale(1.18)' : 'scale(1)';
+    });
+
+    return root;
+  }
+
   if (isPin) {
     const body = document.createElement('div');
     body.style.cssText = `
@@ -121,15 +152,15 @@ export function createMarkerElement(
     `;
     root.appendChild(badge);
   } else if (catKey === 'gosi') {
-    // 고시 마커 특별 스타일링 (직사각형 호재 제목 표시)
+    // 고시 마커 특별 스타일링 (직사각형 호재 제목 표시 - 대표 색상 녹색으로 변경)
     root.style.transform = 'none';
     root.style.filter = 'none';
     const badge = document.createElement('div');
     badge.textContent = property.propertyTitle || '개발호재';
     badge.style.cssText = `
       background:rgba(255, 255, 255, 0.95);
-      border:1.5px solid #f59e0b;
-      color:#b45309;
+      border:1.5px solid #10b981;
+      color:#047857;
       font-size:11px;
       font-weight:800;
       padding:5px 8px;
@@ -144,7 +175,7 @@ export function createMarkerElement(
       width:0;height:0;
       border-left:6px solid transparent;
       border-right:6px solid transparent;
-      border-top:7px solid #f59e0b;
+      border-top:7px solid #10b981;
       position:absolute;
       bottom:-7px;
       left:50%;

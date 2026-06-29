@@ -64,6 +64,7 @@ function HomePageContent() {
   const [rankingProperties, setRankingProperties] = useState<any[]>([]);
   const [rankingGosiPoints, setRankingGosiPoints] = useState<any[]>([]);
   const [selectedRankingApt, setSelectedRankingApt] = useState<any | null>(null);
+  const [selectedGosiPoint, setSelectedGosiPoint] = useState<any | null>(null);
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -175,7 +176,7 @@ function HomePageContent() {
         lng: String(lng),
         radius: String(radius),
       });
-      const response = await fetch(`/api/land/detective/timeline?${params}`, { 
+      const response = await fetch(`/api/land/detective/timeline?${params}`, {
         headers,
         signal: abortController.signal
       });
@@ -250,8 +251,14 @@ function HomePageContent() {
   const navigateToDetail = (analysisId: string) => {
     const params = new URLSearchParams();
     params.set('tab', showMobileMap ? 'map' : 'list');
-    if (mapCenter) { params.set('lat', mapCenter.lat.toString()); params.set('lng', mapCenter.lng.toString()); }
-    else if (mapBounds) {
+    // 실시간 드래그가 반영된 지도의 중심 좌표(mapPosition)를 최우선으로 지정하여 위치를 유지함
+    if (mapPosition && mapPosition.lat && mapPosition.lng) {
+      params.set('lat', mapPosition.lat.toString());
+      params.set('lng', mapPosition.lng.toString());
+    } else if (mapCenter) {
+      params.set('lat', mapCenter.lat.toString());
+      params.set('lng', mapCenter.lng.toString());
+    } else if (mapBounds) {
       params.set('lat', ((mapBounds.neLat + mapBounds.swLat) / 2).toString());
       params.set('lng', ((mapBounds.neLng + mapBounds.swLng) / 2).toString());
     }
@@ -291,16 +298,25 @@ function HomePageContent() {
         riskScore: 0,
         lat: a.lat,
         lng: a.lng,
+        rank: a.rank,
       }));
       const uniqueGosi = Array.from(
         new Map(rankingGosiPoints.filter(g => g.lat && g.lng).map(g => [g.title || `${g.lat}-${g.lng}`, g])).values()
-      );
+      ).map(g => {
+        const cleanTitle = (g.title || '')
+          .replace(/^(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원도|충청북도|충청남도|전라북도|전라남도|경상북도|경상남도|제주특별자치도|서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)\s*[가-힣]*(시|군|구)?\s*/g, '')
+          .replace(/^[가-힣]+(?:특별자치시|특별자치도|광역시|북도|남도|도|시|군|구)\s*/g, '')
+          .replace(/^[가-힣]{2,4}\s+(?=도시관리계획|도시계획|도로구역|일반산업|공원조성|제\d+일반산업단지|도시계획시설)/g, '')
+          .trim();
+        return { ...g, displayTitle: cleanTitle };
+      });
+
       const gosiMarkers = uniqueGosi.map((g, i) => {
-        const truncatedTitle = (g.title || '').length > 8 ? (g.title || '').slice(0, 8) + '...' : g.title;
+        const truncatedTitle = g.displayTitle.length > 12 ? g.displayTitle.slice(0, 12) + '...' : g.displayTitle;
         return {
           id: `gosi-${i}`,
           address: g.address || '개발호재 위치',
-          propertyTitle: truncatedTitle || '직접 수혜 범위',
+          propertyTitle: truncatedTitle || '개발호재',
           category: 'gosi',
           riskScore: 0,
           lat: g.lat,
@@ -335,6 +351,19 @@ function HomePageContent() {
         lng: analyzeLocation.lng,
       };
     }
+    // 랭킹 조회 후 특정 아파트가 선택된 경우
+    if (activePanel === 'ranking' && selectedRankingApt) {
+      return {
+        id: selectedRankingApt.reportId,
+        address: selectedRankingApt.address || '주소 없음',
+        propertyTitle: selectedRankingApt.bldNm,
+        category: searchParams.get('rankingType') || 'apartment',
+        riskScore: 0,
+        lat: selectedRankingApt.lat,
+        lng: selectedRankingApt.lng,
+        rank: selectedRankingApt.rank,
+      };
+    }
     if (!selectedProperty) return null;
     return {
       id: selectedProperty.id,
@@ -345,7 +374,7 @@ function HomePageContent() {
       lat: selectedProperty.lat,
       lng: selectedProperty.lng,
     };
-  }, [selectedProperty, analyzeLocation, activePanel]);
+  }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
 
   const CATEGORIES = ['all', '토지', '주택', '아파트', '상가', '빌딩'];
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
@@ -380,7 +409,7 @@ function HomePageContent() {
               <div className="flex items-center gap-3">
                 <div className="w-9 lg:hidden" />
                 <h1 className={PAGE_HEADER_TITLE}>
-                  {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '아파트 랭킹' : '부동산탐정'}
+                  {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '부동산랭킹' : '부동산탐정'}
                 </h1>
               </div>
               {(activePanel === 'analyze' || activePanel === 'ranking') ? (
@@ -494,9 +523,6 @@ function HomePageContent() {
                       </button>
                     ))}
                   </div>
-                  <span className="hidden lg:inline-block text-[10px] text-slate-400 font-extrabold shrink-0 tabular-nums">
-                    {searchFilteredAnalyses.length}건
-                  </span>
                 </div>
               </div>
 
@@ -631,8 +657,23 @@ function HomePageContent() {
                 initialCenter={mapCenter}
                 onPropertySelect={property => {
                   if (activePanel === 'ranking') {
+                    if (property.id.startsWith('gosi-')) {
+                      const idx = parseInt(property.id.replace('gosi-', ''), 10);
+                      const uniqueGosi = Array.from(
+                        new Map(rankingGosiPoints.filter(g => g.lat && g.lng).map(g => [g.title || `${g.lat}-${g.lng}`, g])).values()
+                      );
+                      const gosi = uniqueGosi[idx];
+                      if (gosi) {
+                        setSelectedGosiPoint(gosi);
+                        setSelectedRankingApt(null);
+                      }
+                      return;
+                    }
                     const apt = rankingProperties.find(a => a.reportId === property.id);
-                    if (apt) setSelectedRankingApt(apt);
+                    if (apt) {
+                      setSelectedRankingApt(apt);
+                      setSelectedGosiPoint(null);
+                    }
                     return;
                   }
                   const analysis = analyses.find(a => a.id === property.id);
@@ -640,7 +681,7 @@ function HomePageContent() {
                 }}
                 onBoundsChanged={bounds => setMapBounds(bounds)}
                 onMapIdle={pos => setMapPosition(pos)}
-                onMapDrag={() => setSelectedProperty(null)}
+                onMapDrag={() => { setSelectedProperty(null); setSelectedRankingApt(null); setSelectedGosiPoint(null); }}
                 isAnalyzeMode={activePanel === 'analyze'}
                 primaryPolygon={primaryPolygon}
                 additionalPolygons={additionalPolygons}
@@ -735,11 +776,10 @@ function HomePageContent() {
                           </span>
                         )}
                         {trend !== null && trend !== undefined && (
-                          <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${
-                            trend > 0 ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                            trend < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' :
-                            'bg-slate-50 text-slate-500 border-slate-100'
-                          }`}>
+                          <span className={`text-[11px] font-bold px-2 py-1 rounded-lg border ${trend > 0 ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                              trend < 0 ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                'bg-slate-50 text-slate-500 border-slate-100'
+                            }`}>
                             6개월 {trend > 0 ? '+' : ''}{trend.toFixed(1)}% {trend > 0 ? '↑' : trend < 0 ? '↓' : '-'}
                           </span>
                         )}
@@ -751,6 +791,32 @@ function HomePageContent() {
                   </div>
                 );
               })()}
+
+              {selectedGosiPoint && activePanel === 'ranking' && (
+                <div className="absolute bottom-6 left-6 right-6 z-30 bg-white/95 backdrop-blur-md rounded-xl p-3.5 shadow-xl border border-emerald-100 max-w-md mx-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  {/* 닫기 */}
+                  <button
+                    className="absolute top-2.5 right-3 text-slate-400 hover:text-slate-600 text-lg leading-none"
+                    onClick={() => setSelectedGosiPoint(null)}
+                  >✕</button>
+
+                  <div className="flex items-start gap-3">
+                    {/* 호재 배지 */}
+                    <div className="shrink-0 flex flex-col items-center justify-center w-9 h-9 rounded-xl border-2 border-emerald-500/20 bg-emerald-500/5">
+                      <span className="text-[11px] font-black text-emerald-600">호재</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-emerald-600 text-[10px] font-black">● 개발계획 고시 정보</span>
+                      </div>
+                      <h4 className="text-sm font-black text-slate-900 leading-snug break-all">{selectedGosiPoint.displayTitle || selectedGosiPoint.title}</h4>
+                      <p className="text-[11px] text-slate-500 mt-1 font-semibold truncate">
+                        위치 : {selectedGosiPoint.address || '개발 계획 구역 내'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -73,7 +73,7 @@ export default function ShortsDownloadBar({ analyzeId, isApartment }: ShortsDown
             <div className="mx-auto max-w-[1080px] px-4 py-3 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
-                        <p className="text-sm font-bold text-white">쇼츠 프레임 검토</p>
+                        <p className="text-sm font-bold text-white">프레임 검토</p>
                         <p className="text-[11px] text-white/45 truncate">
                             #{analyzeId ?? '-'} · {SCENE_COUNT}컷 · {SHORTS_WIDTH}×{SHORTS_HEIGHT} (9:16)
                         </p>

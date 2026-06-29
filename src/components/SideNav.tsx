@@ -54,6 +54,7 @@ function SideNavInner() {
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/' && !searchParams.get('panel');
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
+    if (href === '/?panel=ranking') return pathname === '/' && searchParams.get('panel') === 'ranking';
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/profile') return pathname.startsWith('/profile');
     if (href === '/reviews') return pathname.startsWith('/reviews');
@@ -121,7 +122,9 @@ function SideNavInner() {
                         style={
                           active
                             ? { filter: 'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)' } // emerald-600 / emerald-700
-                            : { filter: 'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)' } // slate-500
+                            : (item.id === 'ranking'
+                              ? { filter: 'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)' } // 랭킹은 항상 녹색 고정
+                              : { filter: 'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)' }) // slate-500
                         }
                       />
                     </span>

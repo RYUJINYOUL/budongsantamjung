@@ -16,8 +16,8 @@ import {
 type RankingType = 'apartment' | 'land' | 'building';
 
 const TABS: { type: RankingType; label: string; icon: string; sortDesc: string; color: string }[] = [
-  { type: 'apartment', label: '아파트', icon: '/apart.svg', sortDesc: '매매 거래량 기준 · 호재 근접도 보조 정렬', color: '#ec4899' },
-  { type: 'land', label: '토지', icon: '/land.svg', sortDesc: '호재 직접수혜 기준 · 최근접 거리 보조 정렬', color: '#8b5cf6' },
+  { type: 'apartment', label: '아파트', icon: '/apart.svg', sortDesc: '매매 거래량 기준 · 호재 근접도 보조 정렬', color: '#10b981' },
+  { type: 'land', label: '토지', icon: '/land.svg', sortDesc: '호재 직접수혜 기준 · 최근접 거리 보조 정렬', color: '#10b981' },
   { type: 'building', label: '빌딩', icon: '/build.svg', sortDesc: '수익환원법 수익률 기준 · 매매 거래량 보조 정렬', color: '#10b981' },
 ];
 
@@ -55,16 +55,11 @@ function formatEok(n: number): string {
 
 // ── 순위 배지 색상 ─────────────────────────────────────────────────
 function rankColor(idx: number): string {
-  if (idx === 0) return 'text-amber-400';
-  if (idx === 1) return 'text-slate-400';
-  if (idx === 2) return 'text-amber-600';
-  return 'text-slate-300';
+  return 'text-emerald-500';
 }
 function rankBarColor(idx: number): string {
-  if (idx === 0) return 'bg-amber-400';
-  if (idx === 1) return 'bg-slate-300';
-  if (idx === 2) return 'bg-amber-600';
-  return 'bg-slate-100';
+  if (idx < 3) return 'bg-emerald-500';
+  return 'bg-emerald-200';
 }
 
 export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPanelProps) {
@@ -245,8 +240,8 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
   return (
     <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
       <div className={PAGE_SUBHEADER}>
-        <h2 className={PAGE_SUBHEADER_TITLE}>🏆 AI 랭킹</h2>
-        <p className={PANEL_SECTION_DESC}>DB 기반 즉시 순위 조회 · 외부 API 0건</p>
+        <h2 className={PAGE_SUBHEADER_TITLE}>AI 랭킹</h2>
+        <p className={PANEL_SECTION_DESC}>지역별 투자별 순위를 확인해보세요</p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-5 py-4 space-y-3 pb-24">
@@ -259,19 +254,22 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
               <button
                 key={tab.type}
                 onClick={() => handleTabChange(tab.type)}
-                className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl text-center transition-all ${isActive
-                    ? 'text-white shadow-md'
-                    : 'text-slate-500 hover:bg-slate-50'
+                className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl text-center transition-all border ${isActive
+                  ? 'shadow-sm font-black'
+                  : 'border-transparent text-slate-500 hover:bg-slate-50'
                   }`}
-                style={isActive ? { backgroundColor: tab.color } : undefined}
+                style={isActive ? { 
+                  backgroundColor: `${tab.color}15`, 
+                  borderColor: `${tab.color}30`, 
+                  color: tab.color 
+                } : undefined}
               >
                 <img
                   src={tab.icon}
                   alt={tab.label}
                   className="w-5 h-5 object-contain"
-                  style={isActive ? { filter: 'brightness(0) invert(1)' } : undefined}
                 />
-                <span className={`text-[11px] font-bold ${isActive ? 'text-white' : 'text-slate-600'}`}>{tab.label}</span>
+                <span className="text-[11px] font-bold">{tab.label}</span>
               </button>
             );
           })}
@@ -357,11 +355,15 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
             <button
               onClick={() => handleRankingSearch()}
               disabled={!aptSigunguCd || isSearchingRank}
-              className={`w-full py-3.5 rounded-xl text-sm font-bold text-white shadow-md transition-all ${(!aptSigunguCd || isSearchingRank)
-                  ? 'bg-slate-300 cursor-not-allowed shadow-none'
-                  : 'hover:opacity-90 active:scale-[0.98]'
+              className={`w-full py-3.5 rounded-xl text-sm font-black border transition-all ${(!aptSigunguCd || isSearchingRank)
+                ? 'bg-slate-100 border-transparent text-slate-400 cursor-not-allowed shadow-none'
+                : 'shadow-sm hover:opacity-90 active:scale-[0.98]'
                 }`}
-              style={(!aptSigunguCd || isSearchingRank) ? undefined : { backgroundColor: activeTab.color }}
+              style={(!aptSigunguCd || isSearchingRank) ? undefined : { 
+                backgroundColor: `${activeTab.color}15`, 
+                borderColor: `${activeTab.color}30`, 
+                color: activeTab.color 
+              }}
             >
               {isSearchingRank ? '검색 중...' : `${activeTab.label} 랭킹 조회`}
             </button>
@@ -471,7 +473,7 @@ function RankingCard({
               <span className="text-[10px] text-slate-400 font-semibold">{item.targetArea}㎡</span>
             )}
             {type === 'land' && item.jimok && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-600 rounded-md border border-purple-100 font-semibold">지목: {item.jimok}</span>
+              <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100/50 font-semibold">지목: {item.jimok}</span>
             )}
             {type === 'building' && item.yieldRate === null && (
               <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-md border border-slate-200 font-semibold">수익률 미산출</span>
@@ -481,7 +483,7 @@ function RankingCard({
           <div className="flex flex-col gap-1.5 mt-1">
             {/* 추정가 + 카테고리별 핵심 지표 */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${estimatedAmt ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-md border ${estimatedAmt ? 'bg-emerald-50 text-emerald-700 border-emerald-100/50' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
                 {estimatedAmt ? `추정가 ${estimatedAmt}` : '가격 미상'}
               </span>
 
@@ -489,7 +491,7 @@ function RankingCard({
               {type === 'apartment' && (
                 <>
                   {item.priceTrendPercent !== null && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${item.priceTrendPercent > 0 ? 'bg-rose-50 text-rose-600 border border-rose-100/50' : item.priceTrendPercent < 0 ? 'bg-blue-50 text-blue-600 border border-blue-100/50' : 'bg-slate-50 text-slate-500'}`}>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border bg-emerald-50 text-emerald-600 border-emerald-100/50">
                       6개월 {item.priceTrendPercent > 0 ? '+' : ''}{item.priceTrendPercent.toFixed(1)}% {item.priceTrendPercent > 0 ? '↑' : item.priceTrendPercent < 0 ? '↓' : '-'}
                     </span>
                   )}
@@ -505,7 +507,7 @@ function RankingCard({
               {/* 빌딩: 수익률 + NOI */}
               {type === 'building' && item.yieldRate !== null && (
                 <>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-100">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-100/50">
                     CAP {item.yieldRate.toFixed(1)}%
                   </span>
                   {item.noi && item.noi > 0 && (
@@ -516,13 +518,20 @@ function RankingCard({
             </div>
 
             {/* 호재 정보 */}
-            {item.gosiHitCount > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100/50 line-clamp-1 max-w-[240px]">
-                  ✨ 직접 수혜 {item.gosiHitCount}건 {item.nearestGosiTitle ? `| ${item.nearestGosiTitle} (${item.nearestGosiKm}km)` : ''}
-                </span>
-              </div>
-            )}
+            {item.gosiHitCount > 0 && (() => {
+              const cleanGosiTitle = (item.nearestGosiTitle || '')
+                .replace(/^(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원도|충청북도|충청남도|전라북도|전라남도|경상북도|경상남도|제주특별자치도|서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)\s*[가-힣]*(시|군|구)?\s*/g, '')
+                .replace(/^[가-힣]+(?:특별자치시|특별자치도|광역시|북도|남도|도|시|군|구)\s*/g, '')
+                .replace(/^[가-힣]{2,4}\s+(?=도시관리계획|도시계획|도로구역|일반산업|공원조성|제\d+일반산업단지|도시계획시설)/g, '')
+                .trim();
+              return (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100/50 line-clamp-1 max-w-[240px]">
+                    ✨ 직접 수혜 {item.gosiHitCount}건 {cleanGosiTitle ? `| ${cleanGosiTitle} (${item.nearestGosiKm}km)` : ''}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

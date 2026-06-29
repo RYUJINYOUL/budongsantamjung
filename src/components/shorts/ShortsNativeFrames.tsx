@@ -561,6 +561,16 @@ interface ShortsNativeFramesProps {
     data: ShortsSceneData;
 }
 
+export {
+    Scene1Map,
+    Scene2AiSummary,
+    Scene3Content,
+    Scene4Market,
+    Scene5HousingSupply,
+    Scene6Population,
+    Scene7MustCheck,
+};
+
 export default function ShortsNativeFrames({ data }: ShortsNativeFramesProps) {
     return (
         <>

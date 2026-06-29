@@ -42,7 +42,7 @@ function triggerDownload(dataUrl: string, filename: string) {
 
 /** 1080×1920 네이티브 캔버스 그대로 PNG (리사이즈·레터박스 없음) */
 export async function captureSceneElement(element: HTMLElement): Promise<string> {
-    const previewWrap = document.querySelector('[data-shorts-preview-wrap]') as HTMLElement | null;
+    const previewWrap = element.closest('[data-shorts-preview-wrap]') as HTMLElement | null;
     const prevTransform = previewWrap?.style.transform ?? '';
     if (previewWrap) previewWrap.style.transform = 'none';
 
