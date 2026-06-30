@@ -2392,6 +2392,7 @@ export default function AiReportView({
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
     const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
     const [mapCustomComparables, setMapCustomComparables] = React.useState<any[] | null>(null);
+    const [activeAptGroupKey, setActiveAptGroupKey] = React.useState<string | null>(null);
 
     const categoryStr = String(mergedData?.category || 'land');
 
@@ -2927,27 +2928,54 @@ export default function AiReportView({
     // 🏢 [아파트 가치 정밀 검증 원장 Section]
     // ──────────────────────────────────────────
     const renderApartmentValuationLedgerSection = () => {
-        const meta = ai.analysisMetadata;
+        let meta = ai.analysisMetadata;
         if (!meta || Object.keys(meta).length === 0) return null;
 
-        const transactionType = mergedData?.transactionType || mergedData?.transaction_type || ai.userSubmittedData?.transactionType || '매매';
-        const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-        const aptTarget = meta.apartmentTarget || {};
-        const marketSummary = Array.isArray(meta.marketSummary) ? meta.marketSummary : [];
+        const complexGroups = meta.complexGroups || [];
+        const hasComplexGroups = complexGroups.length > 0;
+        
+        let currentGroupKey = activeAptGroupKey;
+        if (!currentGroupKey && hasComplexGroups) {
+            // 초기 로드시 타겟 매물과 일치하는 탭 선택 시도
+            const txType = mergedData?.transactionType || mergedData?.transaction_type || ai.userSubmittedData?.transactionType || '매매';
+            const areaKey = Math.round(targetArea);
+            const targetKey = `${areaKey}_${txType}`;
+            const found = complexGroups.find((g: any) => g.groupKey === targetKey);
+            currentGroupKey = found ? targetKey : complexGroups[0].groupKey;
+        }
 
-        const estPerSqm = meta.estimatedPricePerSqm || 0;
-        const estPerPyeong = meta.estimatedPricePerPyeong || 0;
-        const weightedPerSqm = meta.weightedPricePerSqm || estPerSqm;
-        const weightedPerPyeong = meta.weightedPricePerPyeong || estPerPyeong;
+        let activeMeta = meta;
+        let activeTxType = '매매';
+        
+        if (hasComplexGroups && currentGroupKey) {
+            const activeGroup = complexGroups.find((g: any) => g.groupKey === currentGroupKey) || complexGroups[0];
+            if (activeGroup) {
+                activeMeta = activeGroup.metadata || meta;
+                activeTxType = activeGroup.transactionType;
+            }
+        } else {
+            activeTxType = mergedData?.transactionType || mergedData?.transaction_type || ai.userSubmittedData?.transactionType || '매매';
+        }
 
-        const estimatedTotal = meta.estimatedTotalPrice || 0;
-        const weightedTotal = meta.weightedTotalPrice || 0;
-        const priceGap = meta.priceGapPercent || 0;
-        const userPriceWon = meta.userPriceWon || 0;
+        const transactionType = activeTxType;
 
-        const confidenceGrade = meta.confidenceGrade || '-';
-        const confidenceScore = meta.confidenceScore || 0;
-        const sampleCount = meta.priceSampleCount || comparables.length;
+        const comparables = Array.isArray(activeMeta.comparables) ? activeMeta.comparables : [];
+        const aptTarget = activeMeta.apartmentTarget || {};
+        const marketSummary = Array.isArray(activeMeta.marketSummary) ? activeMeta.marketSummary : [];
+
+        const estPerSqm = activeMeta.estimatedPricePerSqm || 0;
+        const estPerPyeong = activeMeta.estimatedPricePerPyeong || 0;
+        const weightedPerSqm = activeMeta.weightedPricePerSqm || estPerSqm;
+        const weightedPerPyeong = activeMeta.weightedPricePerPyeong || estPerPyeong;
+
+        const estimatedTotal = activeMeta.estimatedTotalPrice || 0;
+        const weightedTotal = activeMeta.weightedTotalPrice || 0;
+        const priceGap = activeMeta.priceGapPercent || 0;
+        const userPriceWon = activeMeta.userPriceWon || 0;
+
+        const confidenceGrade = activeMeta.confidenceGrade || '-';
+        const confidenceScore = activeMeta.confidenceScore || 0;
+        const sampleCount = activeMeta.priceSampleCount || comparables.length;
 
         const accentColor = LEDGER_ACCENTS.comparables;
         const accentBuilding = LEDGER_ACCENTS.multipliers;
@@ -3028,6 +3056,51 @@ export default function AiReportView({
                         </div>
                     </div>
                 </div>
+
+                {/* 탭 UI */}
+                {hasComplexGroups && (
+                    <div className="flex flex-col gap-3 mb-6 bg-black/20 p-4 rounded-3xl border border-white/5">
+                        {/* 거래유형 탭 */}
+                        <div className="flex gap-2 pb-3 border-b border-white/5">
+                            {['매매', '전세', '월세'].map(txType => {
+                                const hasType = complexGroups.some((g: any) => g.transactionType === txType);
+                                if (!hasType) return null;
+                                const isActive = activeTxType === txType;
+                                return (
+                                    <button
+                                        key={txType}
+                                        onClick={() => {
+                                            const firstOfThisType = complexGroups.find((g: any) => g.transactionType === txType);
+                                            if (firstOfThisType) setActiveAptGroupKey(firstOfThisType.groupKey);
+                                        }}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-white/10 text-white border border-white/20' : 'text-white/40 border border-transparent hover:text-white/70'}`}
+                                    >
+                                        {txType}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {/* 면적 탭 */}
+                        <div className="flex gap-2 flex-wrap">
+                            {complexGroups
+                                .filter((g: any) => g.transactionType === activeTxType)
+                                .sort((a: any, b: any) => a.area - b.area)
+                                .map((g: any) => {
+                                    const isActive = currentGroupKey === g.groupKey;
+                                    return (
+                                        <button
+                                            key={g.groupKey}
+                                            onClick={() => setActiveAptGroupKey(g.groupKey)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive ? `bg-[${accentColor}]/20 text-[${accentColor}] border border-[${accentColor}]/40` : 'text-white/30 border border-white/5 hover:text-white/60 bg-white/5'}`}
+                                            style={isActive ? { color: accentColor, backgroundColor: hexToRgba(accentColor, 0.15), borderColor: hexToRgba(accentColor, 0.4) } : {}}
+                                        >
+                                            {g.area}㎡
+                                        </button>
+                                    );
+                                })}
+                        </div>
+                    </div>
+                )}
 
                 {/* Step 1: 비교사례 요약 */}
                 {stepHeader('1', `1단계: 비교사례 요약 (${sampleCount}건)`, accentColor)}
@@ -3117,13 +3190,13 @@ export default function AiReportView({
                                 <div className="flex justify-between items-center bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
                                     <span className="text-white/60 text-xs">추정 보증금</span>
                                     <span style={{ color: accentColor }} className="text-lg font-black select-all">
-                                        {meta.rentTarget?.estimatedWolseDeposit > 0 ? formatKoreanCurrency(meta.rentTarget.estimatedWolseDeposit) : '-'}
+                                        {activeMeta.rentTarget?.estimatedWolseDeposit > 0 ? formatKoreanCurrency(activeMeta.rentTarget.estimatedWolseDeposit) : '-'}
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center bg-white/[0.02] p-2.5 rounded-xl border border-white/5">
                                     <span className="text-white/60 text-xs">추정 월세</span>
                                     <span style={{ color: accentColor }} className="text-lg font-black select-all">
-                                        {meta.rentTarget?.estimatedWolseMonthly > 0 ? `${formatKoreanCurrency(meta.rentTarget.estimatedWolseMonthly)}/월` : '-'}
+                                        {activeMeta.rentTarget?.estimatedWolseMonthly > 0 ? `${formatKoreanCurrency(activeMeta.rentTarget.estimatedWolseMonthly)}/월` : '-'}
                                     </span>
                                 </div>
                             </div>
@@ -3134,8 +3207,8 @@ export default function AiReportView({
                                 const uRent = mergedData?.userSubmittedData?.monthlyRent || mergedData?.monthlyRent || 0;
                                 const uDepWon = uDep > 10000000 ? uDep : uDep * 10000;
                                 const uRentWon = uRent > 1000000 ? uRent : uRent * 10000;
-                                const estDep = meta.rentTarget?.estimatedWolseDeposit || 0;
-                                const estRent = meta.rentTarget?.estimatedWolseMonthly || 0;
+                                const estDep = activeMeta.rentTarget?.estimatedWolseDeposit || 0;
+                                const estRent = activeMeta.rentTarget?.estimatedWolseMonthly || 0;
 
                                 if (uDepWon > 0 || uRentWon > 0) {
                                     return (
@@ -3452,11 +3525,11 @@ export default function AiReportView({
                     )}
 
                     {/* priceSpectrum 없을 때 아파트 레거시 서브 카드 */}
-                    {isApartment && priceReas.estimatedTotalPriceNote && (
+                    {isApartment && priceReas.estimatedTotalPriceNote && !ai.analysisMetadata?.complexGroups && (
                         priceSubCard(Coins, '최종 추정가 산출', String(priceReas.estimatedTotalPriceNote), PRICE_METHOD_ACCENTS.comparables)
                     )}
 
-                    {isApartment && priceReas.marketSummaryComment && (
+                    {isApartment && priceReas.marketSummaryComment && !ai.analysisMetadata?.complexGroups && (
                         priceSubCard(BarChart3, '시장 분석 코멘트', stripEmojis(String(priceReas.marketSummaryComment)), PRICE_METHOD_ACCENTS.regional)
                     )}
                 </div>
