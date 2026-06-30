@@ -6,6 +6,7 @@ import ShortsDownloadBar from './ShortsDownloadBar';
 import ShortsNativeFrames, {
     Scene1Map,
     Scene2AiSummary,
+    Scene2_2Valuation,
     Scene3Content,
     Scene4Market,
     Scene5HousingSupply,
@@ -16,7 +17,7 @@ import { Toaster, toast } from 'react-hot-toast';
 import { ImageDown, Loader2, ZoomIn, X } from 'lucide-react';
 import { buildShortsSceneData, SHORTS_HEIGHT, SHORTS_WIDTH } from '../lib/shortsSceneData';
 import { downloadScenePng, getShortsSceneMeta } from '../lib/shortsFrameDownload';
-
+ 
 interface ShortsFrameViewProps {
     ai: any;
     mergedData: any;
@@ -26,7 +27,7 @@ interface ShortsFrameViewProps {
     address?: string | null;
     analyzeId?: string | number;
 }
-
+ 
 export default function ShortsFrameView({
     ai,
     mergedData,
@@ -44,21 +45,21 @@ export default function ShortsFrameView({
     const [activeZoomSceneId, setActiveZoomSceneId] = useState<number | null>(null);
     const [zoomScale, setZoomScale] = useState(0.4);
     const [windowHeight, setWindowHeight] = useState(800);
-
+ 
     const sceneData = useMemo(
         () => buildShortsSceneData(ai, mergedData, category, lat, lng, address),
         [ai, mergedData, category, lat, lng, address],
     );
-
+ 
     const scenes = useMemo(
         () => getShortsSceneMeta(sceneData.isApartment, analyzeId),
         [sceneData.isApartment, analyzeId],
     );
-
+ 
     useEffect(() => {
         document.documentElement.setAttribute('data-shorts-capture', '1');
         document.title = `Shorts Capture #${analyzeId ?? ''}`;
-
+ 
         let meta = document.querySelector('meta[name="robots"]');
         if (!meta) {
             meta = document.createElement('meta');
@@ -66,14 +67,14 @@ export default function ShortsFrameView({
             document.head.appendChild(meta);
         }
         meta.setAttribute('content', 'noindex,nofollow');
-
+ 
         const markReady = () => setFontsReady(true);
         if (document.fonts?.ready) {
             document.fonts.ready.then(markReady).catch(markReady);
         } else {
             setTimeout(markReady, 800);
         }
-
+ 
         const updateScale = () => {
             setWindowHeight(window.innerHeight);
             if (!showPreviewUi) {
@@ -86,13 +87,13 @@ export default function ShortsFrameView({
         };
         updateScale();
         window.addEventListener('resize', updateScale);
-
+ 
         return () => {
             document.documentElement.removeAttribute('data-shorts-capture');
             window.removeEventListener('resize', updateScale);
         };
     }, [analyzeId, showPreviewUi]);
-
+ 
     // 확대보기 줌 스케일 계산
     useEffect(() => {
         if (activeZoomSceneId === null) return;
@@ -105,7 +106,7 @@ export default function ShortsFrameView({
         window.addEventListener('resize', updateZoomScale);
         return () => window.removeEventListener('resize', updateZoomScale);
     }, [activeZoomSceneId]);
-
+ 
     useEffect(() => {
         if (!fontsReady) return;
         const timer = setTimeout(() => {
@@ -113,7 +114,7 @@ export default function ShortsFrameView({
         }, 1200);
         return () => clearTimeout(timer);
     }, [fontsReady]);
-
+ 
     const handleDownloadOne = async (sceneId: number, filename: string, label: string) => {
         if (downloadingSceneId !== null) return;
         setDownloadingSceneId(sceneId);
@@ -127,12 +128,13 @@ export default function ShortsFrameView({
             setDownloadingSceneId(null);
         }
     };
-
+ 
     // 각 씬의 메타정보와 컴포넌트를 매핑하는 유틸
     const renderSceneComponent = (sceneId: number) => {
         switch (sceneId) {
             case 1: return <Scene1Map data={sceneData} />;
             case 2: return <Scene2AiSummary data={sceneData} />;
+            case 8: return <Scene2_2Valuation data={sceneData} />;
             case 3: return <Scene3Content data={sceneData} />;
             case 4: return <Scene4Market data={sceneData} />;
             case 5: return <Scene5HousingSupply data={sceneData} />;

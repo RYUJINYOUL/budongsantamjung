@@ -10,6 +10,7 @@ import {
     type ShortsSceneData,
     type MarketInsightItem,
     formatTradeManwon,
+    formatKoreanCurrency,
 } from '../../lib/shortsSceneData';
 import { landBadgeColors } from '../../lib/landLocationSummary';
 
@@ -146,6 +147,113 @@ function Scene2AiSummary({ data }: { data: ShortsSceneData }) {
                     >
                         {aiSummary.summaryText}
                     </p>
+                </div>
+            </div>
+            <ShortsFooter />
+        </ShortsCanvas>
+    );
+}
+
+function Scene2_2Valuation({ data }: { data: ShortsSceneData }) {
+    const v = data.valuation;
+    if (!v) return null;
+
+    const tradeGroups = v.groups.filter((g) => g.transactionType === '매매');
+    const jeonseGroups = v.groups.filter((g) => g.transactionType === '전세');
+    const rentGroups = v.groups.filter((g) => g.transactionType === '월세');
+
+    const formatWon = (val: number) => {
+        if (!val) return '-';
+        return formatKoreanCurrency(val).replace(' 원', '').replace('원', '');
+    };
+
+    return (
+        <ShortsCanvas sceneId={8} label="valuation-ledger">
+            <ShortsBrandBar sceneLabel="아파트 가치 분석" />
+            <div className="flex-1 flex flex-col justify-center px-14 min-h-0">
+                <div className="flex flex-col items-start w-full max-w-[980px] gap-8">
+                    {/* 1. 산출 범위 및 제시가 */}
+                    <div className="w-full rounded-[32px] border border-emerald-500/25 bg-emerald-950/20 p-8 space-y-5">
+                        <h3 className="text-[34px] font-black text-emerald-300 text-left">검증 대상 및 추정 범위</h3>
+                        <div className="space-y-4 text-[28px]">
+                            {v.minRange > 0 && v.maxRange > 0 && (
+                                <div className="flex justify-between items-center gap-6">
+                                    <span className="text-white/50 font-semibold shrink-0">적정 산출 범위</span>
+                                    <span className="font-black text-right text-white">
+                                        {formatWon(v.minRange)} ~ {formatWon(v.maxRange)}
+                                    </span>
+                                </div>
+                            )}
+                            {v.userPrice > 0 && (
+                                <div className="flex justify-between items-center gap-6">
+                                    <span className="text-white/50 font-semibold shrink-0">제시 {v.txType}가</span>
+                                    <span className="font-black text-right text-emerald-400">
+                                        {formatWon(v.userPrice)} <span className="text-[22px] text-white/40 font-bold">{v.priceSuffix}</span>
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 2. 거래유형별 / 면적별 추정가 원장 */}
+                    <div className="w-full space-y-5">
+                        <h3 className="text-[38px] font-black text-left tracking-tight w-full">타입별 추정가 원장</h3>
+                        <div className="grid grid-cols-3 gap-5 w-full">
+                            {/* 매매 Column */}
+                            <div className="rounded-[28px] border border-sky-500/20 bg-sky-950/15 p-6 flex flex-col gap-4">
+                                <p className="text-[28px] font-black text-sky-300 text-center border-b border-sky-500/20 pb-2">매매</p>
+                                <div className="flex flex-col gap-4">
+                                    {tradeGroups.length === 0 ? (
+                                        <p className="text-white/30 text-[20px] text-center py-4">데이터 없음</p>
+                                    ) : (
+                                        tradeGroups.map((g, idx) => (
+                                            <div key={idx} className="flex flex-col items-center">
+                                                <span className="text-white/40 text-[18px] font-bold">{g.area.toFixed(1)}㎡</span>
+                                                <span className="text-white text-[23px] font-black mt-0.5">{formatWon(g.estimatedTotalPrice)}</span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 전세 Column */}
+                            <div className="rounded-[28px] border border-purple-500/20 bg-purple-950/15 p-6 flex flex-col gap-4">
+                                <p className="text-[28px] font-black text-purple-300 text-center border-b border-purple-500/20 pb-2">전세</p>
+                                <div className="flex flex-col gap-4">
+                                    {jeonseGroups.length === 0 ? (
+                                        <p className="text-white/30 text-[20px] text-center py-4">데이터 없음</p>
+                                    ) : (
+                                        jeonseGroups.map((g, idx) => (
+                                            <div key={idx} className="flex flex-col items-center">
+                                                <span className="text-white/40 text-[18px] font-bold">{g.area.toFixed(1)}㎡</span>
+                                                <span className="text-white text-[23px] font-black mt-0.5">{formatWon(g.estimatedTotalPrice)}</span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 월세 Column */}
+                            <div className="rounded-[28px] border border-amber-500/20 bg-amber-950/15 p-6 flex flex-col gap-4">
+                                <p className="text-[28px] font-black text-amber-300 text-center border-b border-amber-500/20 pb-2">월세</p>
+                                <div className="flex flex-col gap-4">
+                                    {rentGroups.length === 0 ? (
+                                        <p className="text-white/30 text-[20px] text-center py-4">데이터 없음</p>
+                                    ) : (
+                                        rentGroups.map((g, idx) => (
+                                            <div key={idx} className="flex flex-col items-center">
+                                                <span className="text-white/40 text-[18px] font-bold">{g.area.toFixed(1)}㎡</span>
+                                                <span className="text-white text-[21px] font-black mt-0.5 text-center leading-tight">
+                                                    {formatWon(g.estimatedWolseDeposit)}<br />
+                                                    <span className="text-amber-400 text-[18px]">/ {formatWon(g.estimatedWolseMonthly)}</span>
+                                                </span>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <ShortsFooter />
@@ -564,6 +672,7 @@ interface ShortsNativeFramesProps {
 export {
     Scene1Map,
     Scene2AiSummary,
+    Scene2_2Valuation,
     Scene3Content,
     Scene4Market,
     Scene5HousingSupply,
@@ -576,6 +685,7 @@ export default function ShortsNativeFrames({ data }: ShortsNativeFramesProps) {
         <>
             <Scene1Map data={data} />
             <Scene2AiSummary data={data} />
+            {data.isApartment && <Scene2_2Valuation data={data} />}
             <Scene3Content data={data} />
             <Scene4Market data={data} />
             <Scene5HousingSupply data={data} />

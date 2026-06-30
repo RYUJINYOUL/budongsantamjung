@@ -517,6 +517,40 @@ function buildAiReportCopyText(
     const priceRows: string[] = [];
     priceRows.push(`□ 산출 범위 : ${formatPriceKorean(simRange.min).replace(' 원', '원')} ~ ${formatPriceKorean(simRange.max).replace(' 원', '원')}`);
     priceRows.push(`□ 제시 ${txType}가 : ${priceStr.replace(' 원', '원')} ${priceSuffix}`);
+
+    if (isApartment) {
+        const complexGroups = analysisMetadata.complexGroups || [];
+        if (complexGroups.length > 0) {
+            const tradeGroups = complexGroups.filter((g: any) => g.transactionType === '매매');
+            const jeonseGroups = complexGroups.filter((g: any) => g.transactionType === '전세');
+            const rentGroups = complexGroups.filter((g: any) => g.transactionType === '월세');
+
+            if (tradeGroups.length > 0) {
+                priceRows.push('\n[매매 추정가 원장]');
+                tradeGroups.forEach((g: any) => {
+                    const est = g.metadata?.estimatedTotalPrice || 0;
+                    priceRows.push(`  - ${g.area.toFixed(1)}㎡ : ${formatPriceKorean(est).replace(' 원', '원')}`);
+                });
+            }
+            if (jeonseGroups.length > 0) {
+                priceRows.push('\n[전세 추정가 원장]');
+                jeonseGroups.forEach((g: any) => {
+                    const est = g.metadata?.estimatedTotalPrice || 0;
+                    priceRows.push(`  - ${g.area.toFixed(1)}㎡ : ${formatPriceKorean(est).replace(' 원', '원')}`);
+                });
+            }
+            if (rentGroups.length > 0) {
+                priceRows.push('\n[월세 추정가 원장]');
+                rentGroups.forEach((g: any) => {
+                    const rentTarget = g.metadata?.rentTarget || {};
+                    const estDep = rentTarget.estimatedWolseDeposit || 0;
+                    const estRent = rentTarget.estimatedWolseMonthly || 0;
+                    priceRows.push(`  - ${g.area.toFixed(1)}㎡ : 보증금 ${formatPriceKorean(estDep).replace(' 원', '원')} / 월세 ${formatPriceKorean(estRent).replace(' 원', '원')}`);
+                });
+            }
+        }
+    }
+
     const priceBlock = priceRows.join('\n');
 
     const cleanPriceStr = priceStr.replace(' 원', '');

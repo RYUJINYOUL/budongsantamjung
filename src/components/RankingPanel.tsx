@@ -464,14 +464,11 @@ function RankingCard({
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h4 className="font-bold text-sm text-slate-900 truncate group-hover:transition-colors" style={{ color: undefined }}>
               {type === 'apartment'
-                ? item.bldNm
+                ? (item.targetArea > 0 ? `${item.bldNm} (${item.targetArea}㎡)` : item.bldNm)
                 : type === 'land'
                   ? (item.address || item.pnu)
                   : (item.bldNm || item.address)}
             </h4>
-            {type === 'apartment' && item.targetArea > 0 && (
-              <span className="text-[10px] text-slate-400 font-semibold">{item.targetArea}㎡</span>
-            )}
             {type === 'land' && item.jimok && (
               <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100/50 font-semibold">지목: {item.jimok}</span>
             )}
@@ -495,7 +492,7 @@ function RankingCard({
                       6개월 {item.priceTrendPercent > 0 ? '+' : ''}{item.priceTrendPercent.toFixed(1)}% {item.priceTrendPercent > 0 ? '↑' : item.priceTrendPercent < 0 ? '↓' : '-'}
                     </span>
                   )}
-                  <span className="text-[10px] font-semibold text-slate-500">매매 {item.saleCount}건</span>
+                  <span className="text-[10px] font-semibold text-slate-500">해당 평형 매매 {item.saleCount}건</span>
                 </>
               )}
 

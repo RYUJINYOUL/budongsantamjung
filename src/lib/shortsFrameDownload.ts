@@ -18,9 +18,14 @@ export type ShortsSceneMeta = {
 
 export function getShortsSceneMeta(isApartment: boolean, analyzeId?: string | number): ShortsSceneMeta[] {
     const prefix = analyzeId ? `${analyzeId}_` : '';
-    return [
+    const list: ShortsSceneMeta[] = [
         { id: 1, label: '1. 지도', filename: `${prefix}shorts_01_map.png` },
         { id: 2, label: '2. AI 분석 결과', filename: `${prefix}shorts_02_ai_summary.png` },
+    ];
+    if (isApartment) {
+        list.push({ id: 8, label: '2-2. 아파트 가치 분석', filename: `${prefix}shorts_02_2_valuation.png` });
+    }
+    list.push(
         {
             id: 3,
             label: isApartment ? '3. 6개월 실거래' : '3. 토지 입지·형상',
@@ -30,7 +35,8 @@ export function getShortsSceneMeta(isApartment: boolean, analyzeId?: string | nu
         { id: 5, label: '5. 주택 공급', filename: `${prefix}shorts_05_housing_supply.png` },
         { id: 6, label: '6. 인구 변동', filename: `${prefix}shorts_06_population.png` },
         { id: 7, label: '7. 체크리스트', filename: `${prefix}shorts_07_must_check.png` },
-    ];
+    );
+    return list;
 }
 
 function triggerDownload(dataUrl: string, filename: string) {

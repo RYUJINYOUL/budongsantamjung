@@ -113,6 +113,20 @@ export type ShortsSceneData = {
     housingSupply: HousingSupplySummary;
     populationUmd: PopulationUmdSummary;
     mustCheck: string[];
+    valuation?: {
+        minRange: number;
+        maxRange: number;
+        userPrice: number;
+        priceSuffix: string;
+        txType: string;
+        groups: {
+            transactionType: string;
+            area: number;
+            estimatedTotalPrice: number;
+            estimatedWolseDeposit: number;
+            estimatedWolseMonthly: number;
+        }[];
+    };
 };
 
 export type PopulationUmdSummary = {
@@ -315,6 +329,98 @@ export function buildShortsSceneData(
         land: '토지', building: '빌딩', apartment: '아파트', house: '주택', store: '상가',
     };
 
+    // Valuation details for apartment
+    const getSimulationRange = (meta: any) => {
+        if (!meta) return { min: 0, max: 0 };
+        const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
+        const t = meta.target || {};
+        const targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || mergedData?.area || '0');
+        
+        const totals = comparables.map(c => {
+            let dealWon = 0;
+            const dealAmount = c.dealAmount;
+            if (dealAmount) {
+                if (typeof dealAmount === 'string') {
+                    const clean = dealAmount.replace(/[^0-9]/g, '');
+                    dealWon = parseInt(clean, 10);
+                    if (dealAmount.includes('억') && dealWon < 10000) {
+                        dealWon = dealWon * 100000000;
+                    }
+                } else {
+                    dealWon = Number(dealAmount);
+                }
+            }
+            const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
+            const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
+            const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
+            return targetArea > 0 ? adjSqm * targetArea : 0;
+        }).filter(v => v > 0);
+        
+        let simMin = 0;
+        let simMax = 0;
+        if (totals.length > 0) {
+            simMin = Math.min(...totals);
+            simMax = Math.max(...totals);
+        } else {
+            simMin = Number(meta.estimatedTotalPrice) || 0;
+            simMax = Number(meta.estimatedTotalPrice) || 0;
+        }
+        return { min: simMin, max: simMax };
+    };
+
+    const txType = mergedData?.transactionType || mergedData?.transaction_type || ai?.userSubmittedData?.transactionType || '매매';
+    const salePrice = mergedData?.salePrice ?? mergedData?.price ?? mergedData?.sale_price ?? 0;
+    const deposit = mergedData?.deposit ?? 0;
+    const monthlyRent = mergedData?.monthlyRent ?? mergedData?.monthly_rent ?? 0;
+    
+    // Normalize user price to won
+    let userPriceWon = Number(ai?.analysisMetadata?.userPriceWon || (salePrice ? salePrice : (deposit ? deposit : 0)));
+    if (userPriceWon > 0 && userPriceWon < 1000000) {
+        userPriceWon = userPriceWon * 10000; // 만원 -> 원
+    }
+
+    const simRange = getSimulationRange(ai?.analysisMetadata);
+    let priceSuffix = '';
+    if (userPriceWon > 0 && simRange.max > 0) {
+        if (userPriceWon > simRange.max) priceSuffix = ' (범위 상단 초과)';
+        else if (userPriceWon < simRange.min) priceSuffix = ' (범위 하단 미달)';
+        else priceSuffix = ' (범위 내)';
+    } else {
+        priceSuffix = ' (분석 진행)';
+    }
+
+    const complexGroups = ai?.analysisMetadata?.complexGroups || [];
+    const valuationGroups = complexGroups.length > 0 
+        ? complexGroups.map((g: any) => {
+            const metadata = g.metadata || {};
+            const rentTarget = metadata.rentTarget || {};
+            return {
+                transactionType: g.transactionType || '매매',
+                area: parseFloat(g.area || '0'),
+                estimatedTotalPrice: metadata.estimatedTotalPrice || 0,
+                estimatedWolseDeposit: rentTarget.estimatedWolseDeposit || 0,
+                estimatedWolseMonthly: rentTarget.estimatedWolseMonthly || 0,
+            };
+          })
+        : [
+            {
+                transactionType: txType,
+                area: parseFloat(ai?.analysisMetadata?.target?.area_sqm || mergedData?.area || '0'),
+                estimatedTotalPrice: ai?.analysisMetadata?.estimatedTotalPrice || 0,
+                estimatedWolseDeposit: ai?.analysisMetadata?.rentTarget?.estimatedWolseDeposit || 0,
+                estimatedWolseMonthly: ai?.analysisMetadata?.rentTarget?.estimatedWolseMonthly || 0,
+            }
+          ];
+
+    const valuation = isApartment ? {
+        minRange: simRange.min,
+        maxRange: simRange.max,
+        userPrice: userPriceWon,
+        priceSuffix,
+        txType,
+        groups: valuationGroups,
+    } : undefined;
+
     return {
         isApartment,
         categoryLabel: categoryMap[cat] || '매물',
@@ -341,7 +447,9 @@ export function buildShortsSceneData(
         housingSupply: buildHousingSupplySummary(mergedData),
         populationUmd: buildPopulationUmdSummary(mergedData),
         mustCheck,
+        valuation,
     };
 }
 
 export { SHORTS_WIDTH as W, SHORTS_HEIGHT as H };
+

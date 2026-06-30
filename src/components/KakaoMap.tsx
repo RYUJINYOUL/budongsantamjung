@@ -87,9 +87,9 @@ export default function KakaoMap({
   const [locationError, setLocationError] = useState<string | null>(null);
   const initialCenterRef = useRef(initialCenter);
 
-  // regions.json 전역 캐시 (컴포넌트 간 공유)
   const regionsDataRef = useRef<any[] | null>(null);
   const [regionsLoaded, setRegionsLoaded] = useState(false);
+  const regionCountsRef = useRef<Record<string, number>>({});
 
   const onBoundsChangedRef = useRef(onBoundsChanged);
   useEffect(() => {
@@ -120,15 +120,30 @@ export default function KakaoMap({
   useEffect(() => {
     if (regionsDataRef.current !== null) {
       setRegionsLoaded(true);
-      return;
+    } else {
+      fetch('/regions.json')
+        .then(r => r.json())
+        .then(data => {
+          regionsDataRef.current = data;
+          setRegionsLoaded(true);
+        })
+        .catch(e => console.warn('regions.json 로드 실패:', e));
     }
-    fetch('/regions.json')
+
+    // 매물 통계 로드
+    fetch('/api/land/region-counts')
       .then(r => r.json())
       .then(data => {
-        regionsDataRef.current = data;
-        setRegionsLoaded(true);
+        if (data.success && data.counts) {
+          regionCountsRef.current = data.counts;
+          // 지도가 준비되어 있으면 다시 마커를 그린다
+          if (mapRef.current && zoomLevel >= 8 && !isAnalyzeMode && !isBenefitMode) {
+             drawRegionMarkers(mapRef.current, zoomLevel);
+          }
+        }
       })
-      .catch(e => console.warn('regions.json 로드 실패:', e));
+      .catch(e => console.warn('region-counts API 에러:', e));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── 행정구역 클러스터 마커 헬퍼 ────────────────────────────────
@@ -155,17 +170,27 @@ export default function KakaoMap({
     });
 
     const newOverlays = filtered.map(r => {
+      const cnt = regionCountsRef.current[r.c];
+      
       const el = document.createElement('div');
       el.style.cssText = [
-        'display:flex;align-items:center;justify-content:center;',
-        'width:48px;height:48px;border-radius:50%;',
-        'background:rgba(16,185,129,0.85);border:2px solid rgba(255,255,255,0.5);',
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+        'width:52px;height:52px;border-radius:50%;',
+        'background:rgba(16,185,129,0.9);border:2px solid rgba(255,255,255,0.8);',
         'box-shadow:0 4px 12px rgba(0,0,0,0.35);cursor:pointer;',
-        'font-size:11px;font-weight:700;color:#fff;text-align:center;',
+        'font-size:12px;font-weight:800;color:#fff;text-align:center;',
         'line-height:1.2;padding:4px;word-break:keep-all;',
         'transition:transform 0.15s,box-shadow 0.15s;',
       ].join('');
-      el.textContent = r.n;
+      
+      // 이름과 건수를 분리해서 표시
+      if (cnt && cnt > 0) {
+        el.innerHTML = `<div>${r.n}</div><div style="font-size:10px;font-weight:600;opacity:0.95;margin-top:2px;">${cnt.toLocaleString()}건</div>`;
+      } else {
+        el.innerHTML = `<div>${r.n}</div>`;
+        el.style.opacity = '0.7'; // 데이터가 없는 지역은 약간 투명하게
+      }
+      
       el.title = r.n;
       el.addEventListener('mouseenter', () => {
         el.style.transform = 'scale(1.12)';
@@ -442,8 +467,7 @@ export default function KakaoMap({
 
     const validProperties = (properties || []).filter(hasValidCoords);
     // 줌 레벨 >= 8 이면 행정구역 마커 모드(시도, 구 단위) → 분석 마커는 생성만 하고 지도에 올리지 않음
-    // 모바일 사용성을 위해 임시로 행정구역 마커 비활성화 (항상 매물 노출)
-    const isRegionMode = false; // !isAnalyzeMode && !isBenefitMode && zoomLevel >= 8;
+    const isRegionMode = !isAnalyzeMode && !isBenefitMode && zoomLevel >= 8;
 
     const newMarkers = validProperties.map((property) => {
       const isSelected = selectedProperty?.id === property.id;
@@ -480,8 +504,6 @@ export default function KakaoMap({
   useEffect(() => {
     if (!map || !regionsLoaded || isAnalyzeMode || isBenefitMode) return;
     
-    // 모바일 시야 확보를 위해 시도, 시군구 마커 임시 주석 처리
-    /*
     if (zoomLevel >= 11) {
       // 시·도(sido) 레벨: 분석/매물 마커 숨기고 시·도 마커 그리기
       markersRef.current.forEach(m => m.setMap(null));
@@ -491,13 +513,10 @@ export default function KakaoMap({
       markersRef.current.forEach(m => m.setMap(null));
       drawRegionMarkers(map, zoomLevel);
     } else {
-    */
       // 동(emd) 이하 레벨: 매물 마커만 노출하고 행정구역 마커(구/동)는 보이지 않도록 제거
       markersRef.current.forEach(m => m.setMap(map));
       clearRegionMarkers();
-    /*
     }
-    */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, zoomLevel, regionsLoaded, isAnalyzeMode, isBenefitMode]);
 
