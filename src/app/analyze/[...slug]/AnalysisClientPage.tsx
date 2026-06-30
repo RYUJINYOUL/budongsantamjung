@@ -50,6 +50,7 @@ import AiAnalysisInputModal, {
     parseAiInputFromReportData,
     type AiAnalysisInputState,
 } from '../../../components/AiAnalysisInputModal';
+import SchoolDistrictTab from './SchoolDistrictTab';
 
 // 타입 정의
 interface ComprehensiveRisk {
@@ -2599,6 +2600,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             if (lower === 'apartment' || lower === 'store' || lower === '아파트' || lower === '상가' || lower === '상업용' || lower === '상업' || lower === 'shop' || lower === 'commercial') {
                                 baseTabs = [
                                     { id: 'report', label: '탐정 요약' },
+                                    { id: 'school', label: '학군' },
                                     { id: 'r_one', label: '부동산원' },
                                     { id: 'market', label: '실거래가' },
                                     { id: 'additional_info', label: '조례·동향·공급' },
@@ -2614,6 +2616,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             } else {
                                 baseTabs = [
                                     { id: 'report', label: '탐정 요약' },
+                                    { id: 'school', label: '학군' },
                                     { id: 'land', label: '토지 이음' },
                                     { id: 'building', label: '건축물대장' },
                                     { id: 'r_one', label: '부동산원' },
@@ -2681,6 +2684,17 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                 onTriggerAnalysis={handleAiAnalysisClick}
                                 isCheckingAccess={isCheckingAccess}
                             />
+                        </motion.div>
+                    )}
+                    {activeTab === 'school' && (
+                        <motion.div
+                            key="school"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="space-y-8"
+                        >
+                            <SchoolDistrictTab lat={report?.lat ?? mergedData?.lat ?? mergedData?.coordinates?.lat} lng={report?.lng ?? mergedData?.lng ?? mergedData?.coordinates?.lng} />
                         </motion.div>
                     )}
                     {activeTab === 'land' && (

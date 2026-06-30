@@ -657,8 +657,8 @@ function HomePageContent() {
                 initialCenter={mapCenter}
                 onPropertySelect={property => {
                   if (activePanel === 'ranking') {
-                    if (property.id.startsWith('gosi-')) {
-                      const idx = parseInt(property.id.replace('gosi-', ''), 10);
+                    if (String(property.id).startsWith('gosi-')) {
+                      const idx = parseInt(String(property.id).replace('gosi-', ''), 10);
                       const uniqueGosi = Array.from(
                         new Map(rankingGosiPoints.filter(g => g.lat && g.lng).map(g => [g.title || `${g.lat}-${g.lng}`, g])).values()
                       );
