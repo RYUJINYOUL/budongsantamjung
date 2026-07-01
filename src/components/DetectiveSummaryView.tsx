@@ -1642,14 +1642,12 @@ export default function DetectiveSummaryView({
 
     function renderRegulatorySummarySection() {
         const regData = rawData.regulatoryData || {};
-        const gosiList = regData.gosi || [];
-        const permitList = regData.permits || [];
-
-        const gosiCount = gosiList.length;
-        const permitCount = permitList.length;
-        const urbanRenewalCount = gosiList.filter((g: any) => /재개발|재건축|정비/.test(g.title || '')).length;
-        const districtPlanCount = gosiList.filter((g: any) => /지구단위/.test(g.title || '')).length;
-        const implementationPlanCount = gosiList.filter((g: any) => /실시계획|인가/.test(g.title || '')).length;
+        const gosiCount = typeof regData.gosi === 'number' ? regData.gosi : (regData.gosi?.length || 0);
+        const permitCount = regData.permits?.length || 0;
+        const gosiArray = Array.isArray(regData.gosi) ? regData.gosi : [];
+        const urbanRenewalCount = gosiArray.filter((g: any) => /재개발|재건축|정비/.test(g.title || '')).length + (regData.zoneChanges?.length || 0);
+        const districtPlanCount = gosiArray.filter((g: any) => /지구단위/.test(g.title || '')).length;
+        const implementationPlanCount = gosiArray.filter((g: any) => /실시계획|인가/.test(g.title || '')).length + (regData.executionPlans?.length || 0);
 
         return (
             <div className="p-6 bg-[#13131a]/80 border border-white/[0.08] rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-2xl space-y-6">
@@ -1701,11 +1699,10 @@ export default function DetectiveSummaryView({
         const stores = commercial.stores || {};
         const within500m = stores.within500m || {};
         const within2km = stores.within2km || {};
-        const household = commercial.household || {};
 
         const stores500mCount = within500m.totalStores || storeOverview.totalStores || 0;
         const stores1to2kmCount = within2km.totalStores || 0;
-        const householdCount = household.householdCount || 0;
+        const householdCount = rawData.population?.movement?.summary?.currentHouseholds || 0;
 
         return (
             <div className="p-6 bg-[#13131a]/80 border border-white/[0.08] rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-2xl space-y-6">
@@ -1768,7 +1765,7 @@ export default function DetectiveSummaryView({
                     </div>
                     <div className="p-4 bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.05] hover:border-white/[0.1] rounded-2xl flex flex-col items-center justify-center transition-all duration-300">
                         <span className="text-white/60 text-[10px] font-bold block mb-1">인구 변동</span>
-                        <span className={`text-xs font-black ${changeVal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{changeStr}</span>
+                        <span className={`text-xs font-black ${changeVal >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>{changeStr}</span>
                     </div>
                 </div>
             </div>

@@ -35,5 +35,13 @@ service firebase.storage {
     match /temp/{allPaths=**} {
       allow read, write: if true;
     }
+    
+    // profile-images 폴더 (사용자 프로필 이미지)
+    match /profile-images/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
   }
 }

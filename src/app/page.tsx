@@ -6,6 +6,7 @@ import KakaoMap from '../components/KakaoMap';
 import SideNav from '../components/SideNav';
 import AnalyzePanel from '../components/AnalyzePanel';
 import RankingPanel from '../components/RankingPanel';
+import ComparePanel from '../components/ComparePanel';
 import { makeAnalyzeSlug } from '../lib/slug';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -65,6 +66,9 @@ function HomePageContent() {
   const [rankingGosiPoints, setRankingGosiPoints] = useState<any[]>([]);
   const [selectedRankingApt, setSelectedRankingApt] = useState<any | null>(null);
   const [selectedGosiPoint, setSelectedGosiPoint] = useState<any | null>(null);
+
+  // 상급지 비교 결과 → 지도 영역에 표시
+  const [showCompareResult, setShowCompareResult] = useState(false);
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -155,6 +159,15 @@ function HomePageContent() {
     if (lat && lng) setMapCenter({ lat: parseFloat(lat), lng: parseFloat(lng) });
     if (category) setSelectedCategory(category);
   }, [searchParams]);
+
+  // 구형 URL 하위 호환 리다이렉트 (?panel=ranking -> /ranking)
+  useEffect(() => {
+    if (activePanel === 'ranking') {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('panel');
+      router.replace(`/ranking?${params.toString()}`);
+    }
+  }, [activePanel, searchParams, router]);
 
   const fetchAnalyses = useCallback(async (lat: number, lng: number, radius: number, silent = false) => {
     if (fetchAbortControllerRef.current) {
@@ -325,6 +338,10 @@ function HomePageContent() {
       });
       return [...rankMarkers, ...gosiMarkers];
     }
+    if (activePanel === 'analyze') {
+      // 🕵️ 분석 모드일 때는 타임라인 매물 마커들을 지도에 표시하지 않습니다.
+      return [];
+    }
     return filteredAnalyses
       .filter(a => a.lat != null && a.lng != null)
       .map(a => ({
@@ -409,10 +426,10 @@ function HomePageContent() {
               <div className="flex items-center gap-3">
                 <div className="w-9 lg:hidden" />
                 <h1 className={PAGE_HEADER_TITLE}>
-                  {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '부동산랭킹' : '부동산탐정'}
+                  {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '부동산랭킹' : activePanel === 'compare' ? '지역 브리핑' : '부동산탐정'}
                 </h1>
               </div>
-              {(activePanel === 'analyze' || activePanel === 'ranking') ? (
+              {(activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') ? (
                 <a href="/" className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95">
                   지도
                 </a>
@@ -425,7 +442,7 @@ function HomePageContent() {
           </header>
 
           {/* 모바일 뷰 토글 */}
-          {(activePanel !== 'analyze' && activePanel !== 'ranking') && (
+          {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare') && (
             <div className="lg:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
               <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                 지도
@@ -479,6 +496,10 @@ function HomePageContent() {
                 }}
 
               />
+            </div>
+          ) : activePanel === 'compare' ? (
+            <div className={`relative flex-1 min-h-0 ${activePanel === 'compare' ? 'flex flex-col' : (showMobileMap ? 'hidden lg:flex lg:flex-col' : 'flex flex-col')}`}>
+              <ComparePanel onShowResult={setShowCompareResult} />
             </div>
           ) : (
             <div className={`flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 pb-24 ${showMobileMap ? 'hidden lg:block' : 'block'}`}>
@@ -634,12 +655,17 @@ function HomePageContent() {
         </div>
 
         {/* ── 오른쪽: 지도 (7) ── */}
-        <div className={`w-full bg-gradient-to-br from-slate-50 to-slate-100 border-l border-slate-200/50 flex-1 lg:flex-none relative flex-col min-w-0 ${(activePanel === 'analyze' || activePanel === 'ranking') ? 'hidden lg:flex' : (showMobileMap ? 'flex' : 'hidden lg:flex')}`}>
+        <div className={`w-full bg-gradient-to-br from-slate-50 to-slate-100 border-l border-slate-200/50 flex-1 lg:flex-none relative flex-col min-w-0 ${(activePanel === 'compare' && showCompareResult) ? 'flex' : (activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') ? 'hidden lg:flex' : (showMobileMap ? 'flex' : 'hidden lg:flex')}`}>
           <div className="h-full flex flex-col w-full">
             <div className="flex-1 relative">
 
+              {/* 상급지 비교 결과 오버레이 — 지도 위에 전체를 덮음 (항상 마운트, hidden으로 가시성 제어) */}
+              {activePanel === 'compare' && (
+                <div className={`absolute inset-0 z-30 ${showCompareResult ? '' : 'hidden'}`} id="compare-result-portal" />
+              )}
+
               {/* 지도 내 카테고리 필터 (분석/랭킹 탭 제외 — 좌측 패널에서 선택) */}
-              {(activePanel !== 'analyze' && activePanel !== 'ranking') && (
+              {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare') && (
                 <div className="absolute top-20 lg:top-1/2 lg:-translate-y-1/2 right-4 z-20 flex flex-col gap-1.5 bg-white/90 backdrop-blur-sm p-1.5 rounded-xl shadow-md border border-slate-200">
                   {CATEGORIES.map(cat => (
                     <button key={cat} onClick={() => setSelectedCategory(cat)}

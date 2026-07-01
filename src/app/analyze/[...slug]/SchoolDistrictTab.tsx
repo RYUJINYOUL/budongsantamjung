@@ -42,11 +42,11 @@ function getSignal(y24: number, y25: number, y26: number) {
     if (y26 > y25 && y25 > y24 && y24 > 0) {
         return { type: 'strong_up', pct, label: '3년 연속 증가 — 인구 유입 활발', color: 'emerald' };
     } else if (y26 < y25 && y25 < y24 && y24 > 0) {
-        return { type: 'strong_down', pct, label: '3년 연속 감소 — 주의 관찰 필요', color: 'rose' };
+        return { type: 'strong_down', pct, label: '3년 연속 감소 — 관찰 필요', color: 'amber' };
     } else if (pct > 5) {
         return { type: 'up', pct, label: `${pct.toFixed(1)}% 증가 추세`, color: 'emerald' };
     } else if (pct < -5) {
-        return { type: 'down', pct, label: `${Math.abs(pct).toFixed(1)}% 감소 추세`, color: 'amber' };
+        return { type: 'down', pct, label: `${Math.abs(pct).toFixed(1)}% 감소 추세`, color: 'slate' };
     } else {
         return { type: 'flat', pct, label: '학생수 안정 유지', color: 'slate' };
     }
@@ -57,7 +57,7 @@ function TrendBar({ value, max }: { value: number; max: number }) {
     return (
         <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
             <motion.div
-                className="h-full bg-sky-500 rounded-full"
+                className="h-full bg-emerald-500 rounded-full"
                 initial={{ width: 0 }}
                 animate={{ width: `${pct}%` }}
                 transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -82,14 +82,14 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
 
     const estBadgeColor = school.establishment_type === '사립'
         ? 'bg-violet-500/10 text-violet-300 border-violet-500/20'
-        : 'bg-slate-800/80 text-slate-300 border-slate-700/60';
+        : 'bg-white/[0.05] text-slate-300 border-white/[0.08]';
 
     const signalColorMap: Record<string, { bg: string; text: string; bar: string }> = {
         strong_up: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', bar: 'bg-emerald-500' },
         up: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', bar: 'bg-emerald-500' },
-        strong_down: { bg: 'bg-rose-500/10', text: 'text-rose-400', bar: 'bg-rose-500' },
-        down: { bg: 'bg-amber-500/10', text: 'text-amber-400', bar: 'bg-amber-500' },
-        flat: { bg: 'bg-slate-800/60', text: 'text-slate-400', bar: 'bg-slate-600' },
+        strong_down: { bg: 'bg-amber-500/10', text: 'text-amber-400', bar: 'bg-amber-500' },
+        down: { bg: 'bg-white/[0.05]', text: 'text-slate-400', bar: 'bg-slate-500' },
+        flat: { bg: 'bg-white/[0.05]', text: 'text-slate-400', bar: 'bg-slate-600' },
     };
     const sigColors = signal ? signalColorMap[signal.type] : null;
 
@@ -98,7 +98,7 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.06, duration: 0.35 }}
-            className="bg-[#0d1526] border border-white/[0.07] rounded-2xl overflow-hidden hover:border-white/[0.12] transition-all duration-200"
+            className="bg-[#13131a]/85 border border-white/[0.08] rounded-2xl overflow-hidden hover:border-white/[0.15] transition-all duration-200"
         >
             {/* 학교 헤더 */}
             <div className="p-4 flex items-start justify-between gap-3">
@@ -111,7 +111,7 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
                             </span>
                         )}
                         {school.gender_type && (
-                            <span className="px-2 py-0.5 text-[11px] font-semibold rounded border bg-slate-800/80 text-slate-300 border-slate-700/60">
+                            <span className="px-2 py-0.5 text-[11px] font-semibold rounded border bg-white/[0.05] text-slate-300 border-white/[0.08]">
                                 {school.gender_type}
                             </span>
                         )}
@@ -120,7 +120,7 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
                 {/* 거리 뱃지 */}
                 {walkMin != null ? (
                     <div className="shrink-0 flex flex-col items-end">
-                        <div className="flex items-center gap-1 text-sky-400 font-bold text-sm">
+                        <div className="flex items-center gap-1 text-emerald-400 font-bold text-sm">
                             <Navigation className="w-3.5 h-3.5" />
                             도보 {walkMin}분
                         </div>
@@ -134,7 +134,7 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
             {/* 데이터 없음 */}
             {!hasAnyStudentData ? (
                 <div className="px-4 pb-4">
-                    <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-800/50 border border-slate-700/40 rounded-xl">
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] border border-white/[0.05] rounded-xl">
                         <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         <span className="text-xs text-slate-500">통계 미등록 학교 — NEIS 데이터 없음</span>
                     </div>
@@ -145,8 +145,8 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
                     <div className="space-y-2">
                         {[
                             { year: '2024', val: y24, color: 'bg-slate-600' },
-                            { year: '2025', val: y25, color: 'bg-sky-600' },
-                            { year: '2026', val: y26, color: 'bg-sky-400' },
+                            { year: '2025', val: y25, color: 'bg-emerald-600' },
+                            { year: '2026', val: y26, color: 'bg-emerald-400' },
                         ].map(({ year, val, color }) => (
                             <div key={year} className="flex items-center gap-3">
                                 <span className="text-[11px] text-slate-500 w-8 shrink-0">{year}</span>
@@ -190,7 +190,7 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
                                         : '—'
                                 },
                             ].map((item) => (
-                                <div key={item.label} className="bg-white/[0.03] rounded-xl p-2.5 text-center">
+                                <div key={item.label} className="bg-white/[0.03] rounded-xl p-2.5 text-center border border-white/[0.03]">
                                     <div className="text-[11px] text-slate-500 mb-0.5">{item.label}</div>
                                     <div className="text-xs font-bold text-white">{item.value}</div>
                                 </div>
@@ -231,9 +231,9 @@ export default function SchoolDistrictTab({ lat, lng }: SchoolDistrictTabProps) 
         return (
             <div className="py-24 flex flex-col items-center justify-center gap-4">
                 <div className="relative">
-                    <div className="w-12 h-12 border-4 border-sky-500/10 rounded-full border-t-sky-500 animate-spin" />
+                    <div className="w-12 h-12 border-4 border-emerald-500/10 rounded-full border-t-emerald-500 animate-spin" />
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <GraduationCap className="w-5 h-5 text-sky-500" />
+                        <GraduationCap className="w-5 h-5 text-emerald-500" />
                     </div>
                 </div>
                 <p className="text-slate-400 text-sm animate-pulse">학군 데이터 분석 중…</p>
@@ -244,8 +244,8 @@ export default function SchoolDistrictTab({ lat, lng }: SchoolDistrictTabProps) 
     if (error) {
         return (
             <div className="py-24 text-center space-y-2">
-                <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-                <p className="text-red-300 font-semibold text-sm">데이터 로드 실패</p>
+                <AlertCircle className="w-8 h-8 text-amber-500/60 mx-auto mb-3" />
+                <p className="text-amber-500 font-semibold text-sm">데이터 로드 실패</p>
                 <p className="text-xs text-slate-500">{error}</p>
             </div>
         );
@@ -279,17 +279,17 @@ export default function SchoolDistrictTab({ lat, lng }: SchoolDistrictTabProps) 
 
     return (
         <div className="space-y-6">
-            {/* 상단 헤더 배너 */}
-            <div className="relative overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-r from-sky-500/[0.08] to-transparent p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            {/* 상단 헤더 배너 (초록색 대표 테마 border-emerald-500/20 및 bg-gradient-to-r) */}
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] to-transparent p-5 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute right-0 top-0 w-48 h-full bg-gradient-to-l from-sky-500/[0.04] to-transparent" />
+                    <div className="absolute right-0 top-0 w-48 h-full bg-gradient-to-l from-emerald-500/[0.04] to-transparent" />
                 </div>
-                <div className="w-11 h-11 rounded-xl bg-sky-500/15 border border-sky-500/20 flex items-center justify-center shrink-0">
-                    <GraduationCap className="w-5 h-5 text-sky-400" />
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                    <GraduationCap className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                     <h3 className="text-base font-bold text-white mb-1">학군 & 인구 유입 시그널</h3>
-                    <p className="text-xs text-sky-200/60 leading-relaxed">
+                    <p className="text-xs text-emerald-200/60 leading-relaxed">
                         3개년(2024–2026) 학생 수 추이로 지역 인구 유입 강도를 파악합니다.
                         학생 수 증가는 젊은 세대 유입을 의미하는 집값 선행 지표입니다.
                     </p>
@@ -307,7 +307,7 @@ export default function SchoolDistrictTab({ lat, lng }: SchoolDistrictTabProps) 
                 </div>
             </div>
 
-            {/* 탭 필터 */}
+            {/* 탭 필터 (이모지 제외 및 Lucide 아이콘 적용) */}
             <div className="flex gap-1.5 overflow-x-auto pb-1">
                 {levels.map((lv) => {
                     const count = lv === '전체' ? schools.length : (grouped[lv]?.length ?? 0);
@@ -318,12 +318,15 @@ export default function SchoolDistrictTab({ lat, lng }: SchoolDistrictTabProps) 
                             key={lv}
                             onClick={() => setActiveLevel(lv)}
                             className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${isActive
-                                ? 'bg-sky-500/15 border-sky-400/30 text-sky-300'
+                                ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
                                 : 'bg-transparent border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]'}`}
                         >
-                            {lv === '초등학교' ? '🎒' : lv === '중학교' ? '📚' : lv === '고등학교' ? '🎓' : '📌'}
-                            {lv}
-                            <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-white/[0.05] text-slate-500'}`}>{count}</span>
+                            {lv === '초등학교' && <BookOpen className="w-4 h-4" />}
+                            {lv === '중학교' && <Users className="w-4 h-4" />}
+                            {lv === '고등학교' && <GraduationCap className="w-4 h-4" />}
+                            {lv === '전체' && <Activity className="w-4 h-4" />}
+                            <span>{lv}</span>
+                            <span className={`text-[11px] px-1.5 py-0.5 rounded-md ${isActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/[0.05] text-slate-500'}`}>{count}</span>
                         </button>
                     );
                 })}

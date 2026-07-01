@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { makeAnalyzeSlug } from '../lib/slug';
 import {
   PANEL_CARD,
@@ -39,6 +39,7 @@ interface RankingPanelProps {
     maxPrice: number;
     rankingType?: string;
   } | null;
+  hideHeader?: boolean;
 }
 
 // ── 금액 포맷터 ────────────────────────────────────────────────────
@@ -62,9 +63,10 @@ function rankBarColor(idx: number): string {
   return 'bg-emerald-200';
 }
 
-export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPanelProps) {
+export default function RankingPanel({ onResultsChange, urlPrefill, hideHeader = false }: RankingPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   // ── 탭 상태 ──────────────────────────────────────────────────────
   const [rankingType, setRankingType] = useState<RankingType>('apartment');
@@ -202,13 +204,17 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
 
         if (!skipUrlUpdate) {
           const params = new URLSearchParams(searchParams.toString());
-          params.set('panel', 'ranking');
+          if (pathname === '/') {
+            params.set('panel', 'ranking');
+          } else {
+            params.delete('panel');
+          }
           params.set('rankingType', type);
           params.set('sigunguCd', code);
           params.set('sigunguName', searchQ || code);
           if (finalMin) params.set('minPrice', finalMin.toString()); else params.delete('minPrice');
           if (finalMax !== 99999999) params.set('maxPrice', finalMax.toString()); else params.delete('maxPrice');
-          router.replace(`/?${params.toString()}`);
+          router.replace(`${pathname}?${params.toString()}`);
         }
       } else {
         setRankingMessage(data.error || '조회에 실패했습니다.');
@@ -223,7 +229,9 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
 
   const navigateToRankingDetail = (item: any) => {
     const params = new URLSearchParams();
-    params.set('panel', 'ranking');
+    if (pathname === '/') {
+      params.set('panel', 'ranking');
+    }
     params.set('rankingType', rankingType);
     if (aptSigunguCd) params.set('sigunguCd', aptSigunguCd);
     if (minBudget) params.set('minPrice', String(minBudget));
@@ -232,17 +240,35 @@ export default function RankingPanel({ onResultsChange, urlPrefill }: RankingPan
 
     const displayName = item.bldNm || item.address || String(item.reportId);
     const slug = makeAnalyzeSlug(item.reportId, displayName);
-    router.push(`/analyze/${slug}?return=${encodeURIComponent('?' + params.toString())}`);
+    const returnPath = pathname === '/ranking' ? '/ranking' : '/';
+    router.push(`/analyze/${slug}?return=${encodeURIComponent(returnPath + '?' + params.toString())}`);
   };
 
   const activeTab = TABS.find(t => t.type === rankingType) || TABS[0];
 
   return (
     <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
-      <div className={PAGE_SUBHEADER}>
-        <h2 className={PAGE_SUBHEADER_TITLE}>AI 랭킹</h2>
-        <p className={PANEL_SECTION_DESC}>지역별 투자별 순위를 확인해보세요</p>
-      </div>
+      {!hideHeader && (
+        <div className={PAGE_SUBHEADER}>
+          {/* 탭 추가 */}
+          <div className="flex w-full mb-4 bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200">
+            <button 
+              className="flex-1 py-2 text-sm font-extrabold text-indigo-700 bg-white rounded-lg shadow-sm"
+            >
+              AI 랭킹
+            </button>
+            <button 
+              className="flex-1 py-2 text-sm font-bold text-slate-500 rounded-lg hover:text-slate-800 transition-colors"
+              onClick={() => router.push('/?panel=compare')}
+            >
+              지역 브리핑
+            </button>
+          </div>
+
+          <h2 className={PAGE_SUBHEADER_TITLE}>AI 랭킹</h2>
+          <p className={PANEL_SECTION_DESC}>지역별 투자별 순위를 확인해보세요</p>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-5 py-4 space-y-3 pb-24">
 

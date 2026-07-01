@@ -4785,7 +4785,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                 </div>
 
                                 {/* ── 5년 장기 추이 (SGIS) ── */}
-                                <section className="bg-slate-900 border border-white/5 rounded-[40px] p-8 shadow-xl">
+                                <section className="bg-[#13131a]/85 border border-white/[0.08] rounded-[32px] p-8 shadow-xl">
                                     <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">
                                         최근 5년 지역 인구 증감 추이 (SGIS)
                                     </p>
@@ -4824,7 +4824,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                     {trend5Yr.length > 0 && (
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
                                             <PopStatCard
-                                                accent={isGrowing5Yr ? 'emerald' : 'rose'}
+                                                accent={isGrowing5Yr ? 'emerald' : 'amber'}
                                                 value={`${fiveYrChange > 0 ? '+' : ''}${fiveYrChange.toLocaleString()}명`}
                                                 label="최근 5년 총 인구 증감"
                                             />
@@ -4843,7 +4843,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                 </section>
 
                                 {/* ── 1년 단기 추이 (인구 + 세대수) ── */}
-                                <section className="bg-slate-900 border border-white/5 rounded-[40px] p-8 shadow-xl">
+                                <section className="bg-[#13131a]/85 border border-white/[0.08] rounded-[32px] p-8 shadow-xl">
                                     <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-8">
                                         최근 1년 인구 및 세대수 변화 추이
                                     </p>
@@ -4900,11 +4900,11 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                                         type="monotone"
                                                         dataKey="households"
                                                         name="세대수"
-                                                        stroke="#fb7185"
+                                                        stroke="#a78bfa"
                                                         strokeWidth={2}
                                                         strokeDasharray="5 5"
-                                                        dot={{ r: 3.5, fill: '#fb7185', strokeWidth: 1.5, stroke: '#0f172a' }}
-                                                        activeDot={{ r: 5, fill: '#fb7185', strokeWidth: 2, stroke: '#fff' }}
+                                                        dot={{ r: 3.5, fill: '#a78bfa', strokeWidth: 1.5, stroke: '#0f172a' }}
+                                                        activeDot={{ r: 5, fill: '#a78bfa', strokeWidth: 2, stroke: '#fff' }}
                                                     />
                                                 </ComposedChart>
                                             </ResponsiveContainer>
@@ -4918,7 +4918,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                     {trend1Yr.length > 0 && (
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
                                             <PopStatCard
-                                                accent={isGrowing ? 'emerald' : 'rose'}
+                                                accent={isGrowing ? 'emerald' : 'amber'}
                                                 value={`${populationChange > 0 ? '+' : ''}${populationChange.toLocaleString()}명`}
                                                 label="최근 1년 인구 증감"
                                             />
@@ -4938,7 +4938,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
 
                                 {/* ── 읍면동 인구 비교 ── */}
                                 {umdComp?.pastPop != null && (
-                                    <section className="bg-slate-900 border border-white/5 rounded-[40px] p-8 shadow-xl">
+                                    <section className="bg-[#13131a]/85 border border-white/[0.08] rounded-[32px] p-8 shadow-xl">
                                         <div className="flex items-center gap-3 mb-6">
                                             <div className="p-2 bg-sky-500/10 rounded-xl">
                                                 <Building2 className="w-5 h-5 text-sky-400" />
@@ -4970,9 +4970,9 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                             const isGrowingUmd = changeVal >= 0;
                                             const sign = isGrowingUmd ? '+' : '';
                                             return (
-                                                <div className={`flex items-center justify-between p-5 rounded-3xl border ${isGrowingUmd ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-rose-500/10 border-rose-500/20'}`}>
+                                                <div className={`flex items-center justify-between p-5 rounded-3xl border ${isGrowingUmd ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20'}`}>
                                                     <span className="text-xs font-bold text-slate-400">변동 내역</span>
-                                                    <span className={`text-base font-black tabular-nums ${isGrowingUmd ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                    <span className={`text-base font-black tabular-nums ${isGrowingUmd ? 'text-emerald-400' : 'text-amber-400'}`}>
                                                         {sign}{changeVal.toLocaleString()}명 ({sign}{changeRateVal.toFixed(2)}%)
                                                     </span>
                                                 </div>

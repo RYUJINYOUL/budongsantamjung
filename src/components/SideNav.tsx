@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   {
     id: 'ranking',
     label: '랭킹',
-    href: '/?panel=ranking',
+    href: '/ranking',
     icon: '/a7.png', // 트로피 같은 아이콘이 있다면 a7.png 등으로 사용할 수 있으나 임의로 지정 (발견과 구별)
   },
   {
@@ -54,7 +54,7 @@ function SideNavInner() {
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/' && !searchParams.get('panel');
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
-    if (href === '/?panel=ranking') return pathname === '/' && searchParams.get('panel') === 'ranking';
+    if (href === '/ranking') return pathname === '/ranking' || pathname.startsWith('/ranking/');
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/profile') return pathname.startsWith('/profile');
     if (href === '/reviews') return pathname.startsWith('/reviews');
