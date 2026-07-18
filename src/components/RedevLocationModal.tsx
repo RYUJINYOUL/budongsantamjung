@@ -154,6 +154,7 @@ interface LocationData {
   geocodeQuery?: string;
   geocodeQueries?: string[];
   matchScore?: number;
+  cleanupCafeUrl?: string | null;
 }
 
 function SourcePortalLink({ link }: { link: { label: string; url: string } }) {
@@ -350,6 +351,7 @@ export default function RedevLocationModal({
       zoneName: locationInfo?.zoneName,
       title,
       address: displayAddress,
+      cleanupCafeUrl: locationInfo?.cleanupCafeUrl,
     })
     : null;
 

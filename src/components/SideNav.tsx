@@ -21,6 +21,12 @@ const NAV_ITEMS = [
     icon: '/a5.png',
   },
   {
+    id: 'presale',
+    label: '분양',
+    href: '/presale',
+    icon: '/a15.png',
+  },
+  {
     id: 'ranking',
     label: '랭킹',
     href: '/ranking',
@@ -56,6 +62,7 @@ function SideNavInner() {
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
     if (href === '/ranking') return pathname === '/ranking' || pathname.startsWith('/ranking/');
     if (href === '/discover') return pathname.startsWith('/discover');
+    if (href === '/presale') return pathname.startsWith('/presale');
     if (href === '/profile') return pathname.startsWith('/profile');
     if (href === '/reviews') return pathname.startsWith('/reviews');
     if (href === '/admin/analyze') return pathname.startsWith('/admin/analyze');

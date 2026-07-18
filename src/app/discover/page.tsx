@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import SideNav from '../../components/SideNav';
 import {
   PANEL_CARD,
@@ -40,6 +40,8 @@ import {
 } from '../../lib/redevStageGuide';
 import { resolveGwanboPdfLink } from '../../lib/gwanboPdfUrl';
 import RedevLocationModal from '../../components/RedevLocationModal';
+import RedevInvestmentCalculator from '../../components/RedevInvestmentCalculator';
+import { buildRedevPortalLink } from '../../lib/redevSourceLinks';
 import { ArrowLeft } from 'lucide-react';
 
 function loadKakaoSdk(callback: () => void) {
@@ -151,6 +153,7 @@ interface InvestmentItem {
   avgLandShare?: number | null;
   totalAreaSqm?: number | null;
   location?: string | null;
+  cleanupCafeUrl?: string | null;
   salePrice?: {
     houseName?: string;
     priceMinLabel?: string;
@@ -173,6 +176,8 @@ interface InvestmentStats {
 
 function DiscoverPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const presaleDeepLinkApplied = useRef(false);
   const [user, setUser] = useState<User | null>(null);
   const [showMobileList, setShowMobileList] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -576,6 +581,19 @@ function DiscoverPageContent() {
   const showRedevStageUi = invFilter === 'all' || invFilter === '재개발' || invFilter === '재건축';
   const showRailStageUi = invFilter === 'all' || invFilter === '철도';
 
+  useEffect(() => {
+    if (presaleDeepLinkApplied.current) return;
+    const filter = searchParams.get('filter');
+    const stage = searchParams.get('stage');
+    const q = searchParams.get('q');
+    if (!filter && !stage && !q) return;
+    presaleDeepLinkApplied.current = true;
+    if (filter) setInvFilter(filter);
+    if (stage) setInvStageFilter(stage);
+    if (q) setInvQuery(q);
+    setMainTab('infra');
+  }, [searchParams]);
+
   const badgeClass = (badge: string) => {
     if (badge.includes('위험')) return 'bg-rose-100 text-rose-700 border-rose-200';
     if (badge.includes('정석')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
@@ -667,6 +685,13 @@ function DiscoverPageContent() {
     if (!meta) return null;
     const checks = stageOrder === 2 ? (item.stageChecks ?? []) : [];
     const officialNo = matchOfficialStepNo(item.currentStage || '');
+    const portalLink = buildRedevPortalLink({
+      source: item.source,
+      districtName: item.title,
+      title: item.title,
+      address: item.location,
+      cleanupCafeUrl: item.cleanupCafeUrl,
+    });
 
     return (
       <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/50 p-3">
@@ -729,6 +754,24 @@ function DiscoverPageContent() {
             ))}
           </div>
         </details>
+        {portalLink && (
+          <div className="mt-3 pt-3 border-t border-slate-200/80 flex flex-col items-start gap-1">
+            <a
+              href={portalLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-800 text-[10px] font-extrabold text-white hover:bg-slate-700"
+            >
+              {portalLink.label}
+            </a>
+            {portalLink.hint && (
+              <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">{portalLink.hint}</p>
+            )}
+          </div>
+        )}
+        {stageOrder === 4 && (
+          <RedevInvestmentCalculator projectId={item.id} title={item.title} />
+        )}
       </div>
     );
   };
@@ -857,12 +900,12 @@ function DiscoverPageContent() {
                           onClick={() => setRedevLocationModal({
                             projectId: item.id,
                             title: item.title,
-                            address: item.location || [item.city, item.source].filter(Boolean).join(' ') || null,
+                            address: item.location || item.title || Array.from(new Set([item.city, item.source])).filter(Boolean).join(' ') || null,
                             source: item.source || null,
                           })}
                           className="text-left line-clamp-2 font-semibold text-violet-700 hover:text-violet-900 underline decoration-violet-300 underline-offset-2 hover:decoration-violet-500 transition-colors"
                         >
-                          {item.location || [item.city, item.source].filter(Boolean).join(' · ') || '주소 정보 없음'}
+                          {item.location || item.title || Array.from(new Set([item.city, item.source])).filter(Boolean).join(' · ') || '주소 정보 없음'}
                         </button>
                       </p>
                     )}
@@ -877,7 +920,7 @@ function DiscoverPageContent() {
                     <p className="text-[10px] text-slate-500 mt-1 line-clamp-1">
                       {isRail
                         ? [item.institution, item.publishDate].filter(Boolean).join(' · ')
-                        : [item.city, item.source, item.currentStage].filter(Boolean).join(' · ')}
+                        : Array.from(new Set([item.city, item.source])).filter(Boolean).concat(item.currentStage ? [item.currentStage] : []).join(' · ')}
                     </p>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-1">

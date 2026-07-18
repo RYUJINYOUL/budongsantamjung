@@ -3,10 +3,9 @@ const UNKNOWN_DISTRICT = '미상 구역';
 const SEOUL_CLEANUP_SEARCH =
   'https://cleanup.seoul.go.kr/cleanup/bsnssttus/lscrMainIndx.do';
 const SEOUL_CLEANUP_HOME = 'https://cleanup.seoul.go.kr/';
+const SEOUL_CLEANUP_CAFE_BASE = 'https://cleanup.seoul.go.kr/cafe/mainIndx.do?cafeUrl=';
 
-/** 경기 소규모주택정비사업 (ingest 원천 TBGRISSMSCLBSNSM) */
-const GYEONGGI_GRIS_SMSCL =
-  'https://gris.gg.go.kr/ost/oneStopView.do?code=11';
+const GYEONGGI_ONNURI_HOME = 'https://www.gg.go.kr/onnuri/index.do';
 
 export interface RedevPortalLinkInput {
   source?: string | null;
@@ -14,13 +13,15 @@ export interface RedevPortalLinkInput {
   zoneName?: string | null;
   title?: string | null;
   address?: string | null;
+  /** 서울 정보몽땅 딥링크 (전체 URL 또는 slug) */
+  cleanupCafeUrl?: string | null;
 }
 
 export interface RedevPortalLink {
   label: string;
   url: string;
   searchTerm?: string | null;
-  /** URL에 검색어가 실려 바로 결과가 나오는지 */
+  /** URL에 검색어/딥링크가 실려 바로 결과·상세가 나오는지 */
   deepSearch: boolean;
   hint?: string | null;
 }
@@ -33,7 +34,14 @@ function normalizeSource(source?: string | null): '서울' | '경기' | null {
   return null;
 }
 
-/** 정보몽땅·경기부동산포털 검색에 쓸 구역명 후보 */
+function resolveSeoulCleanupCafeUrl(raw?: string | null): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (value.startsWith('http')) return value;
+  return `${SEOUL_CLEANUP_CAFE_BASE}${encodeURIComponent(value)}`;
+}
+
+/** 정보몽땅·온누리 검색에 쓸 구역명 후보 */
 export function pickRedevPortalSearchTerm(input: RedevPortalLinkInput): string | null {
   const candidates = [
     input.zoneName,
@@ -57,6 +65,16 @@ export function buildRedevPortalLink(input: RedevPortalLinkInput): RedevPortalLi
   const searchTerm = pickRedevPortalSearchTerm(input);
 
   if (region === '서울') {
+    const cafeUrl = resolveSeoulCleanupCafeUrl(input.cleanupCafeUrl);
+    if (cafeUrl) {
+      return {
+        label: '정보몽땅에서 확인하기 →',
+        url: cafeUrl,
+        searchTerm,
+        deepSearch: true,
+        hint: searchTerm ? `「${searchTerm}」 조합 정보·공개자료` : '정비사업 정보몽땅 조합 페이지',
+      };
+    }
     if (searchTerm) {
       return {
         label: '정보몽땅에서 검색 →',
@@ -75,15 +93,13 @@ export function buildRedevPortalLink(input: RedevPortalLinkInput): RedevPortalLi
     };
   }
 
-  // 경기: 사업명 검색 쿼리스트링 미지원(POST/AJAX 전용).
-  // 현재 ingest 원천이 소규모주택정비 API → 지역개발정보(code=11) 딥링크가 최선.
   return {
-    label: '경기 소규모정비 목록 →',
-    url: GYEONGGI_GRIS_SMSCL,
+    label: '경기 온누리에서 확인 →',
+    url: GYEONGGI_ONNURI_HOME,
     searchTerm,
     deepSearch: false,
     hint: searchTerm
-      ? `소규모주택정비 목록에서 「${searchTerm}」을 직접 찾아주세요`
-      : '지역개발정보 > 소규모주택정비사업 목록이 열립니다',
+      ? `온누리시스템에서 「${searchTerm}」을 직접 검색해 주세요`
+      : '경기도 정비사업 온누리시스템에서 사업명을 검색해 주세요',
   };
 }
