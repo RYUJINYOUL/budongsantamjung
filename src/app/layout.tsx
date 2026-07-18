@@ -2,8 +2,13 @@ import './globals.css'
 import { Noto_Sans_KR } from 'next/font/google'
 import type { Metadata } from 'next'
 import Script from 'next/script'
-import { Analytics } from '@vercel/analytics/react'
-import BackgroundAnalysisTracker from '@/components/BackgroundAnalysisTracker'
+import dynamic from 'next/dynamic'
+import { Analytics } from '@vercel/analytics/next'
+
+const BackgroundAnalysisTracker = dynamic(
+  () => import('@/components/BackgroundAnalysisTracker'),
+  { ssr: false },
+)
 
 const notoSansKr = Noto_Sans_KR({
   subsets: ['latin'],

@@ -30,7 +30,9 @@ interface SeoData {
     category?: string;
     // 실제 API 응답 구조 지원
     report?: {
+        id?: string | number;
         address?: string;
+        category?: string;
         detectiveNote?: string;
         propertyGrade?: { riskScore?: number | string };
         ai_analysis_status?: string;
