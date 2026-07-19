@@ -188,6 +188,7 @@ type NaverProfile = {
 export async function exchangeNaverCodeForAccessToken(
   code: string,
   state: string,
+  redirectUri?: string,
 ): Promise<string> {
   const clientId = process.env.NAVER_CLIENT_ID?.trim();
   const clientSecret = process.env.NAVER_CLIENT_SECRET?.trim();
@@ -195,14 +196,19 @@ export async function exchangeNaverCodeForAccessToken(
     throw new Error('NAVER_CLIENT_ID 또는 NAVER_CLIENT_SECRET이 설정되지 않았습니다.');
   }
 
+  const params: Record<string, string> = {
+    grant_type: 'authorization_code',
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    state,
+  };
+  if (redirectUri) {
+    params.redirect_uri = redirectUri;
+  }
+
   const tokenRes = await fetch(
-    `https://nid.naver.com/oauth2.0/token?${new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      state,
-    }).toString()}`,
+    `https://nid.naver.com/oauth2.0/token?${new URLSearchParams(params).toString()}`,
   );
 
   if (!tokenRes.ok) {

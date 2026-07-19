@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       | undefined;
     const code = body.code as string | undefined;
     const state = body.state as string | undefined;
+    const redirectUri = (body.redirect_uri || body.redirectUri) as string | undefined;
 
     let token = accessToken;
 
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
-      token = await exchangeNaverCodeForAccessToken(code, state);
+      token = await exchangeNaverCodeForAccessToken(code, state, redirectUri);
     }
 
     if (!token) {

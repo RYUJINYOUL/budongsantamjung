@@ -240,7 +240,7 @@ function PresalePageInner() {
         tab,
         region,
         page,
-        limit: 30,
+        limit: 20,
         areaFilter: tab === 'results' ? areaFilter : undefined,
         priceFilter: tab === 'results' ? priceFilter : undefined,
       });
@@ -388,7 +388,7 @@ function PresalePageInner() {
             </div>
           )}
 
-          {isResults && totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex justify-center gap-2 mt-6">
               <button
                 type="button"
