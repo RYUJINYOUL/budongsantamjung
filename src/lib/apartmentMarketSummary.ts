@@ -1,5 +1,4 @@
 /** 탐정요약 `renderApartmentMarketSummarySection`과 동일한 아파트 시장 동향 데이터 */
-/** 탐정요약 `renderApartmentMarketSummarySection`과 동일한 아파트 시장 동향 데이터 */
 
 type SeriesPoint = { date: string; value: number };
 
