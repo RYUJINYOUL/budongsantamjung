@@ -199,7 +199,6 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [industrySearch, setIndustrySearch] = useState('');
   const [industryResults, setIndustryResults] = useState<{large:string;medium:string;small:string;display:string}[]>([]);
   const [desiredBusiness, setDesiredBusiness] = useState('');
-
   const [detailInput, setDetailInput] = useState<AnalysisDetailInput>(defaultAnalysisDetailInput);
   const patchDetailInput = (patch: Partial<AnalysisDetailInput>) =>
     setDetailInput((prev) => ({ ...prev, ...patch }));
@@ -530,9 +529,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
 
     let resolvedPnu = primaryPnu;
 
-    // 아파트인 경우 결제 전 실거래 가용성 사전 체크
+    // 아파트인 경우 PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
     if (selectedCategory === 'apartment') {
-      // PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
       if (!resolvedPnu && lat && lng) {
         setIsCheckingAvailability(true);
         try {
@@ -542,6 +540,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             setPrimaryPnu(fetched);
           }
         } catch { /* 무시 */ }
+        setIsCheckingAvailability(false);
       }
 
       if (!resolvedPnu) {
@@ -550,36 +549,39 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           aptName: null,
           reason: '필지 정보를 불러올 수 없습니다. 주소를 다시 선택해주세요.',
         });
-        setIsCheckingAvailability(false);
         return;
       }
+    }
 
-      setIsCheckingAvailability(true);
+    // 아파트 — 기존 단지 report 있으면 허브로 (중복 pending report 방지)
+    if (selectedCategory === 'apartment' && resolvedPnu) {
       try {
-        const dealYmd = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
-        const params = new URLSearchParams({
+        const idToken = await user.getIdToken();
+        const resolveParams = new URLSearchParams({
           pnu: resolvedPnu,
-          dealYmd,
           address,
-          ...(lat ? { lat: lat.toString() } : {}),
-          ...(lng ? { lng: lng.toString() } : {}),
         });
-        const checkRes = await fetch(`${BACKEND_URL}/api/land/detective/check-availability?${params}`);
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          if (!checkData.available) {
-            setNoTradeDataModal({
-              aptName: checkData.aptName,
-              reason: checkData.reason || '최근 6개월간 해당 단지의 실거래가 데이터가 없습니다.',
-            });
-            setIsCheckingAvailability(false);
-            return; // 결제 및 분석 중단
+        const resolveRes = await fetch(
+          `/api/land/detective/apartment/resolve?${resolveParams.toString()}`,
+          { headers: { Authorization: `Bearer ${idToken}` } },
+        );
+        if (resolveRes.ok) {
+          const hub = await resolveRes.json();
+          if (Number(hub.reportCount) > 0 && hub.latestReportId) {
+            const reportId = hub.latestCompletedReportId || hub.latestReportId;
+            if (hub.aptSeq) {
+              router.push(`/apartment/${hub.aptSeq}?reportId=${reportId}`);
+              return;
+            }
+            if (resolvedPnu) {
+              router.push(`/apartment/pnu?pnu=${encodeURIComponent(resolvedPnu)}&reportId=${reportId}`);
+              return;
+            }
           }
         }
       } catch {
-        // 체크 실패 시 분석 그냥 진행 (보수적 처리)
+        // resolve 실패 시 신규 분석 진행
       }
-      setIsCheckingAvailability(false);
     }
 
     setIsAnalyzing(true);

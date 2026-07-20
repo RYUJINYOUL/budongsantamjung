@@ -29,6 +29,8 @@ interface ShortsFrameViewProps {
     address?: string | null;
     analyzeId?: string | number;
     showVideoStudio?: boolean;
+    onClose?: () => void;
+    getShortsTabHref?: (tab: 'cards' | 'studio') => string;
 }
 
 export default function ShortsFrameView({
@@ -40,6 +42,8 @@ export default function ShortsFrameView({
     address,
     analyzeId,
     showVideoStudio = false,
+    onClose,
+    getShortsTabHref,
 }: ShortsFrameViewProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -48,10 +52,14 @@ export default function ShortsFrameView({
     const activeTab = searchParams.get('tab') === 'studio' ? 'studio' : 'cards';
 
     const switchTab = useCallback((tab: 'cards' | 'studio') => {
+        if (getShortsTabHref) {
+            router.replace(getShortsTabHref(tab));
+            return;
+        }
         if (!analyzeId) return;
         const base = `/analyze/${analyzeId}?shorts=1&preview=1`;
         router.replace(tab === 'studio' ? `${base}&tab=studio` : base);
-    }, [analyzeId, router]);
+    }, [analyzeId, getShortsTabHref, router]);
     const [fontsReady, setFontsReady] = useState(false);
     const [downloadingSceneId, setDownloadingSceneId] = useState<number | null>(null);
     const [isZoomOpen, setIsZoomOpen] = useState(false);
@@ -294,10 +302,16 @@ export default function ShortsFrameView({
                             <button
                                 type="button"
                                 onClick={() => {
+                                    if (onClose) {
+                                        onClose();
+                                        return;
+                                    }
+                                    if (typeof window !== 'undefined' && window.history.length > 1) {
+                                        router.back();
+                                        return;
+                                    }
                                     if (typeof window !== 'undefined' && analyzeId) {
-                                        window.location.replace(`/analyze/${analyzeId}`);
-                                    } else {
-                                        window.history.back();
+                                        router.replace(`/analyze/${analyzeId}`);
                                     }
                                 }}
                                 className="shrink-0 group flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/80 hover:text-white transition-all text-xs font-bold shadow-lg"

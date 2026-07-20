@@ -2,9 +2,17 @@ import { Metadata } from 'next';
 import dynamic from 'next/dynamic';
 import { parseAnalyzeSlug } from '../../../lib/slug';
 
+function AnalyzePageLoading() {
+    return (
+        <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center">
+            <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+    );
+}
+
 const AnalysisDetailPage = dynamic(
     () => import('./AnalysisClientPage').then((mod) => mod.default),
-    { ssr: false },
+    { ssr: false, loading: AnalyzePageLoading },
 );
 
 // ISR: 분석 결과는 생성 후 잘 안 바뀌므로 1시간 캐시
@@ -114,5 +122,9 @@ export default async function Page({ params }: { params: { slug: string[] } }) {
     const id = parseAnalyzeSlug(params.slug);
     const initialData = await getReportData(id);
     
-    return <AnalysisDetailPage initialData={initialData} />;
+    return (
+        <div className="min-h-screen bg-[#0a0a0c]">
+            <AnalysisDetailPage initialData={initialData} />
+        </div>
+    );
 }

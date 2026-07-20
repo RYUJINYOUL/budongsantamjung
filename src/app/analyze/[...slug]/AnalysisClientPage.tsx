@@ -16,7 +16,7 @@ const globalStyles = `
 `;
 
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '../../../lib/firebase';
 import { isAdminUser } from '../../../lib/adminUids';
@@ -34,7 +34,7 @@ import {
     ShieldCheck, Hexagon, Search, ArrowLeft, Plus, Heart, Star, ChevronDown, ChevronUp,
     Clipboard, ExternalLink, ShieldAlert, Gavel, Check, Copy, Download, X,
     Users, Map, Lightbulb, ShoppingBag, School, GraduationCap,
-    Stethoscope, Trees, Train, Car, Tag, Clock, Video
+    Stethoscope, Trees, Train, Car, Tag, Clock, Video, Sparkles
 } from 'lucide-react';
 
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
@@ -53,7 +53,16 @@ import AiAnalysisInputModal, {
 import SchoolDistrictTab from './SchoolDistrictTab';
 import ApartmentTenYearTimeline from '../../../components/ApartmentTenYearTimeline';
 import ApartmentTenYearNarrative from '../../../components/ApartmentTenYearNarrative';
+import {
+    buildApartmentPageUrl,
+    shouldRedirectToApartmentPage,
+} from '../../../lib/apartmentNavigation';
 import { areasMatch, resolveDefaultQuarterlyArea } from '../../../lib/apartmentTenYearStory';
+import { parseAnalyzeSlug } from '../../../lib/slug';
+import {
+    buildTenYearHistoryCopyText,
+    buildTenYearOutlookKeywordsCopyText,
+} from '../../../lib/shortsSceneData';
 
 // 타입 정의
 interface ComprehensiveRisk {
@@ -1735,16 +1744,92 @@ function getDefaultActiveTab(data: any): string {
     return isAiAnalysisCompleted(data) ? 'ai_report' : 'report';
 }
 
-import { parseAnalyzeSlug } from '../../../lib/slug';
-import {
-    buildTenYearHistoryCopyText,
-    buildTenYearOutlookKeywordsCopyText,
-} from '../../../lib/shortsSceneData';
+export interface EmbeddedApartmentReport {
+    id: string;
+    bldNm?: string | null;
+    area?: string | number | null;
+    price?: string | number | null;
+    deposit?: string | number | null;
+    monthlyRent?: string | number | null;
+    aiAnalysisStatus?: string;
+    createdAt?: string | null;
+    address?: string | null;
+    lat?: string | number | null;
+    lng?: string | number | null;
+    pnu?: string | null;
+    aiSummary?: any;
+}
 
-export default function AnalysisDetailPage({ initialData }: { initialData?: any }) {
+function formatEmbeddedReportDate(dateString?: string | null) {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    });
+}
+
+function formatEmbeddedReportPrice(r: EmbeddedApartmentReport) {
+    if (r.price != null && Number(r.price) > 0) {
+        const n = Number(r.price);
+        if (n >= 100000000) return `${(n / 100000000).toFixed(n % 100000000 === 0 ? 0 : 1)}억`;
+        if (n >= 10000) return `${Math.round(n / 10000).toLocaleString()}만`;
+        return `${n.toLocaleString()}원`;
+    }
+    if (r.deposit != null && Number(r.deposit) > 0) {
+        const dep = Number(r.deposit);
+        const depStr = dep >= 100000000
+            ? `${(dep / 100000000).toFixed(dep % 100000000 === 0 ? 0 : 1)}억`
+            : `${Math.round(dep / 10000).toLocaleString()}만`;
+        if (r.monthlyRent != null && Number(r.monthlyRent) > 0) {
+            return `보 ${depStr} / 월 ${Number(r.monthlyRent).toLocaleString()}만`;
+        }
+        return `전세 ${depStr}`;
+    }
+    return '가격 미입력';
+}
+
+const getVerdictBadgeStyle = (label: string) => {
+    if (!label) {
+        return { color: '#94a3b8', borderColor: '#94a3b844', backgroundColor: '#94a3b814' };
+    }
+    if (label.includes('저평가') || label === '미반영' || label.includes('매수') || label === '양호' || label === '매수 추천') {
+        return { color: '#10b981', borderColor: '#10b98144', backgroundColor: '#10b98114' };
+    }
+    if (label.includes('고평가') || label === '선반영' || label === '주의' || label === '조심') {
+        return { color: '#f59e0b', borderColor: '#f59e0b44', backgroundColor: '#f59e0b14' };
+    }
+    if (label.includes('적정') || label === '보통' || label === '양명' || label === '양호함') {
+        return { color: '#94a3b8', borderColor: '#94a3b844', backgroundColor: '#94a3b814' };
+    }
+    if (label === '위험' || label === '매도' || label === '조심함' || label === '매도 추천') {
+        return { color: '#f87171', borderColor: '#f8717144', backgroundColor: '#f8717114' };
+    }
+    return { color: '#10b981', borderColor: '#10b98144', backgroundColor: '#10b98114' };
+};
+
+export default function AnalysisDetailPage({
+    initialData,
+    overrideReportId,
+    embeddedInApartment = false,
+    embeddedApartmentReports = [],
+    embeddedSelectedReportId,
+    onEmbeddedReportSelect,
+    embeddedAptName = '아파트 단지',
+}: {
+    initialData?: any;
+    overrideReportId?: string;
+    embeddedInApartment?: boolean;
+    embeddedApartmentReports?: EmbeddedApartmentReport[];
+    embeddedSelectedReportId?: string;
+    onEmbeddedReportSelect?: (reportId: string) => void;
+    embeddedAptName?: string;
+}) {
     const params = useParams();
-    const id = params?.slug ? parseAnalyzeSlug(Array.isArray(params.slug) ? params.slug : [params.slug]) : undefined;
+    const id = overrideReportId
+        ?? (params?.slug ? parseAnalyzeSlug(Array.isArray(params.slug) ? params.slug : [params.slug]) : undefined);
     const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const adminSample = searchParams.get('adminSample') === '1';
     const returnQs = searchParams.get('return');
@@ -1769,6 +1854,39 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         router.push('/');
     }, [router, returnQs]);
 
+    const buildShortsHref = useCallback((tab: 'cards' | 'studio' = 'cards') => {
+        const reportKey = Array.isArray(id) ? id[0] : id;
+        if (embeddedInApartment && pathname) {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set('shorts', '1');
+            params.set('preview', '1');
+            if (reportKey) params.set('reportId', String(reportKey));
+            if (tab === 'studio') params.set('tab', 'studio');
+            else params.delete('tab');
+            return `${pathname}?${params.toString()}`;
+        }
+        const base = `/analyze/${reportKey}?shorts=1&preview=1`;
+        return tab === 'studio' ? `${base}&tab=studio` : base;
+    }, [embeddedInApartment, pathname, searchParams, id]);
+
+    const handleShortsClose = useCallback(() => {
+        if (embeddedInApartment && pathname) {
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('shorts');
+            params.delete('preview');
+            params.delete('tab');
+            const qs = params.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+            return;
+        }
+        const reportKey = Array.isArray(id) ? id[0] : id;
+        if (reportKey) {
+            router.replace(`/analyze/${reportKey}`, { scroll: false });
+            return;
+        }
+        router.back();
+    }, [embeddedInApartment, pathname, searchParams, router, id]);
+
     const isFromRanking = returnQs ? new URLSearchParams(returnQs).get('panel') === 'ranking' : false;
     const backLabel = isFromRanking ? '랭킹으로' : returnQs ? '리포트 목록' : '홈으로';
     const adminAutoTriggered = useRef(false);
@@ -1784,6 +1902,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const tabScrollTargetYRef = useRef(0);
     const [showScrollTop, setShowScrollTop] = useState(false);
     const defaultTabApplied = useRef(!!initialData);
+    const apartmentRedirectDone = useRef(false);
     const [isFavorited, setIsFavorited] = useState(false);
     const [selectedChartFilter, setSelectedChartFilter] = useState('전체');
     const [selectedRoneChart, setSelectedRoneChart] = useState<string>('price');
@@ -1797,6 +1916,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
     const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
     const [aiStep, setAiStep] = useState(0);
     const [aiElapsed, setAiElapsed] = useState(0);
+    const [historyModalReport, setHistoryModalReport] = useState<EmbeddedApartmentReport | null>(null);
 
     // AI 분석 제보용 입력 상태 (카테고리별 필드 — DetectiveSummaryView / Flutter ai_analysis_modal 기준)
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
@@ -1928,6 +2048,18 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         }
         return base;
     }, [analysisData]);
+
+    const address = report?.address || mergedData?.address || '';
+    const rawBldNm = report?.bldNm || mergedData?.bldNm || '';
+
+    const handleNewApartmentAnalysis = useCallback(() => {
+        if (!user) {
+            alert('로그인이 필요한 서비스입니다.');
+            return;
+        }
+        setAiInput(parseAiInputFromReportData(mergedData));
+        setIsInputModalOpen(true);
+    }, [mergedData, user]);
 
     /** AnalyzePanel에서 입력한 상세 정보 → AI 모달 prefill */
     useEffect(() => {
@@ -2240,6 +2372,24 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         };
     }, [id]);
 
+    /** 아파트: 공공데이터 수집 완료 시 단지 페이지로 자동 이동 */
+    useEffect(() => {
+        if (searchParams.get('stayOnAnalyze') === '1') return;
+        if (searchParams.get('shorts') === '1') return; // 카드로 보기(쇼츠) 시 리다이렉트 금지!
+        if (!shouldRedirectToApartmentPage(
+            analysisData?.report,
+            !!analysisData?.rawData,
+            embeddedInApartment,
+        )) return;
+        if (apartmentRedirectDone.current) return;
+
+        const url = buildApartmentPageUrl(analysisData.report, id);
+        if (url) {
+            apartmentRedirectDone.current = true;
+            router.replace(url);
+        }
+    }, [analysisData, embeddedInApartment, id, router, searchParams]);
+
     /** 데이터 로드 시 AI 완료 여부에 따라 기본 탭 설정 */
     useEffect(() => {
         if (!analysisData) return;
@@ -2491,14 +2641,33 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                 body: formData
             });
 
-            if (!response.ok) throw new Error('AI 분석 요청 실패');
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.message || 'AI 분석 요청 실패');
+            }
 
-            await fetchAnalysis();
+            const result = await response.json();
+            const newReportId = result.reportId;
+
+            if (newReportId && String(newReportId) !== String(id)) {
+                if (embeddedInApartment) {
+                    const aptSeqParam = searchParams.get('aptSeq') || analysisData?.report?.apt_seq || 'pnu';
+                    const pnuVal = searchParams.get('pnu') || analysisData?.report?.pnu;
+                    const pnuParam = pnuVal ? `?pnu=${encodeURIComponent(pnuVal)}&reportId=${newReportId}` : `?reportId=${newReportId}`;
+                    // URL을 변경하면 ApartmentClientPage가 알아서 새로운 reportId로 이력을 다시 로드하여 세팅합니다.
+                    router.replace(`/apartment/${aptSeqParam}${pnuParam}`);
+                } else {
+                    router.replace(`/analyze/apartment/${newReportId}`);
+                }
+            } else {
+                await fetchAnalysis();
+            }
             await fetchPaymentAndUsageStatus();
             setActiveTab('ai_report');
             setShareToast('AI 탐정의 판독이 완료되었습니다! 🕵️');
         } catch (err: any) {
             console.error(err);
+            alert(err.message);
             setError(err.message);
         } finally {
             clearInterval(timer);
@@ -2558,6 +2727,58 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
             return null;
         }
     }, [analysisData]);
+
+    // 1. Sigungu Code & Name extraction
+    const pnu = report?.pnu || mergedData?.pnu || '';
+    const sigunguCd = pnu && typeof pnu === 'string' ? pnu.substring(0, 5) : '';
+
+    const sigunguName = useMemo(() => {
+        if (!address) return '';
+        const m = address.match(
+            /(?:[가-힣]+(?:특별시|광역시|특별자치시|도)\s+)?([가-힣]+(?:시\s+[가-힣]+구|[가-힣]+(?:시|군|구)))/,
+        );
+        return m ? m[1].trim() : '';
+    }, [address]);
+
+    // 2. Naver keyword extraction
+    const naverKeyword = useMemo(() => {
+        let aptName = '';
+        if (embeddedAptName && embeddedAptName !== '아파트 단지') {
+            aptName = embeddedAptName;
+        } else {
+            aptName = report?.bldNm || mergedData?.bldNm || reportData?.propertyTitle || '';
+        }
+        if (!aptName && !address) return '';
+
+        const cleanBldNmOnly = aptName.replace(/\(.*?\)/g, '').trim();
+
+        // 주소를 공백으로 분리하여 시/도, 시/군/구, 읍/면/동 정보 추출
+        const parts = address.replace(/,/g, ' ').split(/\s+/).filter((p: string) => p.trim() !== '');
+        const siName = parts.find((p: string) => p.endsWith('시') || p.endsWith('도')) || '';
+        const guName = parts.find((p: string) => p.endsWith('구') || p.endsWith('군')) || '';
+        const dongMatch = address.match(/([가-힣]+동)/);
+        const dongName = dongMatch ? dongMatch[1] : '';
+
+        // 구/군 또는 동 정보가 있으면 시/도 정보와 함께 조합
+        let regionPrefix = '';
+        if (guName) {
+            regionPrefix = `${siName} ${guName}`;
+        } else if (dongName) {
+            regionPrefix = `${siName} ${dongName}`;
+        } else {
+            regionPrefix = parts.slice(0, 2).join(' '); // 앞 두 단어 (예: "인천광역시 계양구")
+        }
+
+        // 아파트명이 이미 지역명을 포함하고 있다면 그대로 쓰고, 없으면 지역명을 앞에 붙여줍니다.
+        if (cleanBldNmOnly.includes(guName) || (dongName && cleanBldNmOnly.includes(dongName))) {
+            return cleanBldNmOnly;
+        }
+
+        return `${regionPrefix} ${cleanBldNmOnly}`.trim();
+    }, [address, embeddedAptName, report?.bldNm, mergedData?.bldNm, reportData?.propertyTitle]);
+
+    const cat = (report?.category || mergedData?.category || '').toLowerCase();
+    const isApartment = cat === 'apartment' || cat === '아파트' || embeddedInApartment;
 
     const dashboardSummary = useMemo(() => {
         const compRisk = reportData?.['1_comprehensiveRisk'];
@@ -2874,7 +3095,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
         return (
             <div className="min-h-screen bg-[#0a0a0c]">
                 <ShortsFrameView
-                    ai={reportData || {}}
+                    ai={reportData || analysisData || {}}
                     mergedData={mergedData}
                     category={report?.category || analysisData?.category}
                     lat={shortsLat}
@@ -2882,6 +3103,8 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                     address={shortsAddress}
                     analyzeId={Array.isArray(id) ? id[0] : id}
                     showVideoStudio={isAdmin}
+                    onClose={handleShortsClose}
+                    getShortsTabHref={buildShortsHref}
                 />
             </div>
         );
@@ -2928,7 +3151,8 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
 
             {/* 상단 네비게이션 */}
             <nav className="sticky top-0 z-50 bg-[#0a0a0c]/80 backdrop-blur-xl border-b border-white/5">
-                <div className="max-w-5xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between">
+                <div className="max-w-5xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between">
+                    {!embeddedInApartment ? (
                     <button
                         onClick={goBack}
                         className="group flex items-center gap-3 text-slate-400 hover:text-white transition-all"
@@ -2938,30 +3162,45 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         </div>
                         <span className="hidden md:inline font-bold">{backLabel}</span>
                     </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={goBack}
+                            className="group flex items-center gap-2 text-slate-400 hover:text-white transition-all min-w-0"
+                        >
+                            <div className="w-10 h-10 shrink-0 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center group-hover:bg-white/10">
+                                <ArrowLeft className="w-5 h-5" />
+                            </div>
+                            <span className="hidden sm:block text-sm font-bold truncate max-w-[140px] md:max-w-[240px]">
+                                {embeddedAptName}
+                            </span>
+                        </button>
+                    )}
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                         <button
                             onClick={toggleFavorite}
-                            className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all ${isFavorited ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
+                            className={`w-9 h-9 rounded-lg border flex items-center justify-center transition-all shrink-0 ${isFavorited ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'}`}
                         >
-                            <Heart className={`w-5 h-5 ${isFavorited ? 'fill-current' : ''}`} />
+                            <Heart className={`w-4 h-4 ${isFavorited ? 'fill-current' : ''}`} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleShare}
+                            title="공유"
+                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0"
+                        >
+                            <Share2 className="w-4 h-4 shrink-0" />
                         </button>
                         <Link
                             replace
-                            href={`/analyze/${id}?shorts=1&preview=1`}
-                            className="relative flex items-center gap-2 px-3 sm:px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 border border-violet-400/50 text-white shadow-lg shadow-violet-500/35 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98]"
+                            href={buildShortsHref()}
+                            className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 transition-all bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 border border-violet-400/50 text-white shadow-md shadow-violet-500/25 hover:shadow-violet-500/40 active:scale-[0.98]"
                             title="카드로 보기"
                         >
-                            <Video className="w-4 h-4 shrink-0" />
-                            <span className="hidden sm:inline">카드로 보기</span>
+                            <Video className="w-3.5 h-3.5 shrink-0" />
+                            <span className="hidden sm:inline">카드</span>
                         </Link>
-                        <button
-                            onClick={handleShare}
-                            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2"
-                        >
-                            <Share2 className="w-4 h-4" />
-                            <span className="hidden sm:inline">공유</span>
-                        </button>
                         {(() => {
                             const navPnu = report?.pnu || rawData?.pnu || mergedData?.pnu || '';
                             const navAddress = report?.address || '';
@@ -2973,12 +3212,12 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             return (
                                 <div className="relative">
                                     <button
+                                        type="button"
                                         onClick={() => setIsMapDropdownOpen(!isMapDropdownOpen)}
-                                        className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 sm:px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 cursor-pointer"
+                                        title="이음"
+                                        className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 cursor-pointer"
                                     >
-                                        <Map className="w-4 h-4 text-sky-400" />
-                                        <span className="hidden sm:inline">이음</span>
-                                        <ChevronDown className={`hidden sm:inline w-3.5 h-3.5 transition-transform duration-200 ${isMapDropdownOpen ? 'rotate-180' : ''}`} />
+                                        <Map className="w-4 h-4 text-sky-400 shrink-0" />
                                     </button>
                                     {isMapDropdownOpen && (
                                         <>
@@ -3045,12 +3284,32 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             type="button"
                             onClick={() => setIsAiReportCopyOpen(true)}
                             disabled={!aiReportCopyText}
-                            title="AI 분석 결과 복사"
-                            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 sm:px-4 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/5"
+                            title="리포트"
+                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/5"
                         >
-                            <Download className="w-4 h-4 text-sky-400" />
-                            <span className="hidden sm:inline">리포트</span>
+                            <Download className="w-4 h-4 text-sky-400 shrink-0" />
                         </button>
+                        {isApartment && naverKeyword && (
+                            <a
+                                href={`https://new.land.naver.com/?keyword=${encodeURIComponent(naverKeyword)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="네이버 부동산"
+                                className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all shrink-0 overflow-hidden"
+                            >
+                                <img src="/naver.png" alt="네이버 부동산" className="w-5 h-5 object-contain" />
+                            </a>
+                        )}
+                        {embeddedInApartment && (
+                            <button
+                                type="button"
+                                onClick={handleNewApartmentAnalysis}
+                                className="bg-emerald-500 hover:bg-emerald-400 text-white px-2.5 sm:px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5"
+                            >
+                                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                <span className="hidden sm:inline">AI 분석</span>
+                            </button>
+                        )}
                         {/* <button
                             onClick={handleAiAnalysisClick}
                             disabled={isCheckingAccess}
@@ -3091,6 +3350,26 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                         지도 비교
                                     </button>
                                 )}
+                            {isApartment && naverKeyword && (
+                                <a
+                                    href={`https://new.land.naver.com/?keyword=${encodeURIComponent(naverKeyword)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/30 rounded text-[10px] font-bold text-green-400 transition-colors cursor-pointer"
+                                >
+                                    <ExternalLink className="w-3 h-3 text-green-400" />
+                                    네이버 매물 보기
+                                </a>
+                            )}
+                            {isApartment && sigunguCd && sigunguName && (
+                                <Link
+                                    href={`/ranking?rankingType=apartment&sigunguCd=${sigunguCd}&sigunguName=${encodeURIComponent(sigunguName)}`}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 rounded text-[10px] font-bold text-indigo-400 transition-colors cursor-pointer"
+                                >
+                                    <TrendingUp className="w-3 h-3 text-indigo-400" />
+                                    '{sigunguName}' 아파트 랭킹보기
+                                </Link>
+                            )}
                         </div>
                         <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
                             {reportData?.propertyTitle || report?.address || mergedData?.address || '매물 상세'}
@@ -3483,6 +3762,67 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                             exit={{ opacity: 0, y: -10 }}
                             className="space-y-8"
                         >
+                            {embeddedInApartment && (
+                                <section className="rounded-[24px] border border-white/[0.08] bg-[#0f172a]/60 p-4 sm:p-5">
+                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                        <div>
+                                            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">AI 분석 이력</p>
+                                            <h2 className="text-sm sm:text-base font-black text-white mt-1">{embeddedAptName}</h2>
+                                        </div>
+                                        <span className="text-[11px] font-bold text-slate-400 shrink-0">
+                                            {embeddedApartmentReports.length}건
+                                        </span>
+                                    </div>
+                                    {embeddedApartmentReports.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
+                                            <p className="text-sm text-slate-400 mb-3">AI 완료된 분석이 없습니다.</p>
+                                            <button
+                                                type="button"
+                                                onClick={handleNewApartmentAnalysis}
+                                                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold transition-all"
+                                            >
+                                                <Sparkles className="w-4 h-4" />
+                                                AI 새로 분석하기
+                                            </button>
+                                        </div>
+                                    ) : (
+                                    <div className="space-y-2">
+                                        {embeddedApartmentReports.map((item) => {
+                                            const selected = item.id === embeddedSelectedReportId;
+                                            const areaLabel = item.area != null ? `${item.area}㎡` : '면적 미입력';
+                                            const dateLabel = formatEmbeddedReportDate(item.createdAt);
+                                            return (
+                                                <button
+                                                    key={item.id}
+                                                    type="button"
+                                                    onClick={() => setHistoryModalReport(item)}
+                                                    className={`w-full text-left rounded-2xl border px-4 py-3 transition-all ${
+                                                        selected
+                                                            ? 'border-emerald-400/60 bg-emerald-500/10'
+                                                            : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-black text-white truncate">
+                                                                {areaLabel}
+                                                                {dateLabel ? ` · ${dateLabel}` : ''}
+                                                            </p>
+                                                            <p className="text-xs font-bold text-slate-400 mt-1">
+                                                                {formatEmbeddedReportPrice(item)}
+                                                            </p>
+                                                        </div>
+                                                        <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-black border text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                                                            AI 완료
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    )}
+                                </section>
+                            )}
                             <AiReportView
                                 ai={reportData || {}}
                                 mergedData={mergedData}
@@ -5378,6 +5718,7 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                 const populationAge = commercial.populationAge;
                                 const housingType = commercial.housingType;
                                 const workingPop = commercial.workingPopulation;
+                                const academyStores = commercial.academyStores;
                                 const tenants: any[] = commercial.buildingTenants || [];
 
                                 const SectionCard = ({ title, icon: Icon, color, children }: { title: string; icon: any; color: string; children: React.ReactNode }) => (
@@ -5431,6 +5772,21 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                                             <h3 className="text-2xl font-black">상권 분석 지표</h3>
                                             <span className="text-[10px] font-black px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">실시간</span>
                                         </div>
+
+                                        {academyStores && (
+                                            <SectionCard title="주변 학원" icon={GraduationCap} color="#0ea5e9">
+                                                <DataRow
+                                                    label="반경 1km"
+                                                    value={`${academyStores.within1km?.totalStores ?? 0}개`}
+                                                    color="#0ea5e9"
+                                                />
+                                                <DataRow
+                                                    label="1~2km"
+                                                    value={`${academyStores.within2km?.totalStores ?? 0}개`}
+                                                    color="#38bdf8"
+                                                />
+                                            </SectionCard>
+                                        )}
 
                                         {/* 1. 반경 500m 상권 현황 */}
                                         {storeOverview && (
@@ -5910,33 +6266,97 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/75 backdrop-blur-xl px-4"
+                        className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-xl px-4 overflow-y-auto py-8"
                     >
-                        <div className="relative flex items-center justify-center mb-12">
-                            <div className="w-[140px] h-[140px] rounded-full border-2 border-[#0ea5e9] shadow-[0_0_30px_10px_rgba(14,165,233,0.3)] animate-pulse" />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                {aiSteps[aiStep]?.icon && (
-                                    <img
-                                        src={aiSteps[aiStep].icon}
-                                        alt={aiSteps[aiStep].label}
-                                        className="w-[72px] h-[72px] object-contain drop-shadow-[0_0_12px_rgba(14,165,233,0.45)]"
-                                    />
-                                )}
+                        <div className="w-full max-w-md bg-slate-900/50 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col">
+                            <div className="text-center mb-6">
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-bold mb-3 animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
+                                    공공데이터 수집 및 분석 중
+                                </div>
+                                <h3 className="text-xl font-black text-white tracking-tight">실시간 데이터 조회 중</h3>
+                                <p className="text-xs text-white/50 mt-1.5 font-semibold">
+                                    최신 정부 부처 및 지자체 API에서 실시간 조회 중... ({aiElapsed}초 경과)
+                                </p>
                             </div>
-                        </div>
-                        <h3 className="text-2xl font-[900] text-white tracking-[-0.5px] mb-4 text-center">{aiSteps[aiStep]?.label}</h3>
-                        <p className="text-base text-white/70 text-center px-12 mb-16 font-bold leading-relaxed">{aiSteps[aiStep]?.desc}</p>
-                        <div className="w-full max-w-[280px] z-10">
-                            <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
-                                <motion.div
-                                    className="h-full bg-[#0ea5e9]"
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${Math.min((aiElapsed / 30) * 100, 100)}%` }}
-                                    transition={{ duration: 0.5 }}
-                                />
+
+                            {/* Steps List */}
+                            <div className="space-y-3 my-2">
+                                {[
+                                    { label: '위치 데이터 매칭', desc: '좌표를 기반으로 정확한 필지(PNU)를 식별합니다', start: 0, end: 2 },
+                                    { label: '국가 API 연동', desc: '건축물대장 및 토지특성 데이터를 수집합니다', start: 3, end: 5 },
+                                    { label: '주변 실거래가 수집', desc: '인근 지역의 최근 거래 정보를 필터링합니다', start: 6, end: 8 },
+                                    { label: '공시가격 조회', desc: '연도별 공시지가 및 주택가격을 확인합니다', start: 9, end: 11 },
+                                    { label: '인허가/규제 확인', desc: '토지이용계획 및 개발 행위 제한 사항을 검토합니다', start: 12, end: 14 },
+                                    { label: '인구/통계 데이터 수집', desc: '지역 인구 이동 및 상권 활성도를 분석합니다', start: 15, end: 17 },
+                                    { label: '기초 데이터 조립', desc: '수집된 모든 데이터를 분석용 리포트로 구성합니다', start: 18, end: 20 },
+                                    { label: '수집 완료', desc: '데이터 수집이 완료되었습니다. 상세 페이지로 이동합니다', start: 21, end: 999 },
+                                ].map((step, idx) => {
+                                    const isCompleted = aiElapsed > step.end;
+                                    const isInProgress = aiElapsed >= step.start && aiElapsed <= step.end;
+
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className={`flex gap-3 items-start p-3 rounded-2xl border transition-all ${
+                                                isInProgress
+                                                    ? 'bg-sky-500/5 border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.05)]'
+                                                    : isCompleted
+                                                    ? 'bg-emerald-500/[0.02] border-emerald-500/10'
+                                                    : 'bg-transparent border-transparent opacity-40'
+                                            }`}
+                                        >
+                                            <div className="shrink-0 mt-0.5">
+                                                {isCompleted ? (
+                                                    <div className="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    </div>
+                                                ) : isInProgress ? (
+                                                    <div className="w-5 h-5 rounded-full bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
+                                                        <div className="w-2.5 h-2.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/30 text-[10px] font-bold">
+                                                        {idx + 1}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className={`text-xs font-bold leading-none ${isInProgress ? 'text-sky-400' : isCompleted ? 'text-emerald-400/90' : 'text-white/60'}`}>
+                                                    {step.label}
+                                                </p>
+                                                <p className="text-[10px] text-white/40 font-semibold mt-1 leading-relaxed">
+                                                    {step.desc}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                            <div className="text-[13px] font-bold text-white/50 mt-5 text-center">
-                                AI 분석 중입니다... (예상 20초 - {aiElapsed}초)
+
+                            {/* Buttons */}
+                            <div className="flex flex-col gap-2 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsAiAnalyzing(false);
+                                        router.push('/profile?tab=my-analyses');
+                                    }}
+                                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white text-xs font-bold transition-all shadow-lg shadow-sky-500/15 flex items-center justify-center gap-2"
+                                >
+                                    내 기록에서 나중에 확인하기
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsAiAnalyzing(false);
+                                    }}
+                                    className="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/70 hover:text-white text-xs font-bold transition-all flex items-center justify-center"
+                                >
+                                    뒤로 가기
+                                </button>
                             </div>
                         </div>
                     </motion.div>
@@ -6072,6 +6492,140 @@ export default function AnalysisDetailPage({ initialData }: { initialData?: any 
                         }}
                     />
                 )}
+            </AnimatePresence>
+
+            {/* AI 분석 이력 간편 다이알로그 모달 */}
+            <AnimatePresence>
+                {historyModalReport && (() => {
+                    const parsedAi = (() => {
+                        if (!historyModalReport.aiSummary) return null;
+                        try {
+                            return typeof historyModalReport.aiSummary === 'string'
+                                ? JSON.parse(historyModalReport.aiSummary)
+                                : historyModalReport.aiSummary;
+                        } catch (e) {
+                            console.error("aiSummary 파싱 실패:", e);
+                            return null;
+                        }
+                    })();
+
+                    const compRisk = parsedAi?.['1_comprehensiveRisk'] || {};
+                    const priceReasonableness = parsedAi?.['5_priceReasonableness'] || {};
+                    
+                    const coreJudgement = compRisk.coreJudgement || "분석 리포트가 안전하게 로드되었습니다.";
+                    const totalVerdict = compRisk.verdict || compRisk.riskGrade || "AI 분석 완료";
+                    const priceVerdict = priceReasonableness.verdict || priceReasonableness.result || "";
+                    
+                    const areaLabel = historyModalReport.area != null ? `${historyModalReport.area}㎡` : '면적 미입력';
+                    const dateLabel = formatEmbeddedReportDate(historyModalReport.createdAt);
+                    const priceLabel = formatEmbeddedReportPrice(historyModalReport);
+
+                    const totalVerdictStyle = getVerdictBadgeStyle(totalVerdict);
+                    const priceVerdictStyle = priceVerdict ? getVerdictBadgeStyle(priceVerdict) : null;
+
+                    return (
+                        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                                onClick={() => setHistoryModalReport(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                className="relative w-full max-w-2xl bg-[#0a0a0c] border border-white/10 rounded-[32px] p-6 sm:p-8 shadow-2xl z-10 max-h-[85vh] overflow-y-auto flex flex-col gap-6"
+                            >
+                                {/* 헤더 */}
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="text-xs font-black text-emerald-400 uppercase tracking-wider">AI 분석 이력 리포트</p>
+                                        <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+                                            {areaLabel} · {dateLabel}
+                                        </h3>
+                                        <p className="text-sm font-bold text-slate-400 mt-0.5">
+                                            {priceLabel}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setHistoryModalReport(null)}
+                                        className="w-10 h-10 rounded-full border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] text-slate-400 hover:text-white transition-colors flex items-center justify-center text-lg font-black"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div className="h-px w-full bg-white/10" />
+
+                                {/* 본문 */}
+                                <div className="space-y-6 flex-1">
+                                    {/* 판정 결과 배지 라인 */}
+                                    <div className="flex flex-wrap gap-2">
+                                        <span
+                                            className="px-3 py-1 rounded-xl text-xs font-black border tracking-wide"
+                                            style={{
+                                                color: totalVerdictStyle.color,
+                                                borderColor: totalVerdictStyle.borderColor,
+                                                backgroundColor: totalVerdictStyle.backgroundColor
+                                            }}
+                                        >
+                                            종합: {totalVerdict}
+                                        </span>
+                                        {priceVerdict && priceVerdictStyle && (
+                                            <span
+                                                className="px-3 py-1 rounded-xl text-xs font-black border tracking-wide"
+                                                style={{
+                                                    color: priceVerdictStyle.color,
+                                                    borderColor: priceVerdictStyle.borderColor,
+                                                    backgroundColor: priceVerdictStyle.backgroundColor
+                                                }}
+                                            >
+                                                가격: {priceVerdict}
+                                            </span>
+                                        )}
+                                        <span className="px-3 py-1 rounded-xl text-xs font-black border text-emerald-300 border-emerald-500/30 bg-emerald-500/10">
+                                            AI 완료
+                                        </span>
+                                    </div>
+
+                                    {/* 판독 총평 본문 */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-sm font-black text-slate-400">🕵️ AI 탐정 판독 결과</h4>
+                                        <div className="rounded-2xl bg-white/[0.02] border border-white/[0.05] p-5 text-sm sm:text-base text-slate-200 font-bold leading-relaxed whitespace-pre-line">
+                                            {coreJudgement}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="h-px w-full bg-white/10" />
+
+                                {/* 하단 버튼 액션 */}
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setHistoryModalReport(null)}
+                                        className="flex-1 py-3.5 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] text-white text-sm font-black transition-colors"
+                                    >
+                                        닫기
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onEmbeddedReportSelect?.(historyModalReport.id);
+                                            setHistoryModalReport(null);
+                                        }}
+                                        className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-lg shadow-emerald-500/10 transition-colors"
+                                    >
+                                        이 분석 전체 불러오기
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    );
+                })()}
             </AnimatePresence>
 
             {/* Comparable Map Bottom Sheet Modal */}

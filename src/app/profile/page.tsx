@@ -8,6 +8,7 @@ import { onAuthStateChanged, updateProfile, User } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import SideNav from '../../components/SideNav';
 import { makeAnalyzeSlug } from '../../lib/slug';
+import PropertyCard from '../../components/PropertyCard';
 
 type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries';
 
@@ -24,6 +25,35 @@ interface AnalysisCard {
     propertyGrade?: { riskScore?: string; overall?: string };
     createdAt?: string;
     likes?: string[];
+    aptSeq?: string | null;
+    pnu?: string | null;
+    riseRate6m?: number | null;
+    avgPrice1m?: number | null;
+    minArea?: number | null;
+    maxArea?: number | null;
+    exclusiveArea?: number | null;
+    area?: number | null;
+}
+
+interface ApartmentGroup {
+    groupKey: string;
+    aptSeq?: number | null;
+    pnu?: string | null;
+    aptName: string;
+    address?: string | null;
+    reportCount: number;
+    latestReportAt?: string | null;
+    latestAiStatus?: string;
+    latestReportId?: string | null;
+}
+
+interface ApartmentGroupReport {
+    id: string;
+    bldNm?: string | null;
+    area?: string | number | null;
+    price?: string | number | null;
+    aiAnalysisStatus?: string;
+    createdAt?: string | null;
 }
 
 const getScoreBadgeClasses = (score: string | undefined | null) => {
@@ -122,6 +152,13 @@ function ProfilePageContent() {
     const [myTotalPages, setMyTotalPages] = useState(1);
     const [myTotalCount, setMyTotalCount] = useState(0);
 
+    const [aptGroups, setAptGroups] = useState<ApartmentGroup[]>([]);
+    const [aptGroupPage, setAptGroupPage] = useState(1);
+    const [aptGroupTotalPages, setAptGroupTotalPages] = useState(1);
+    const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
+    const [expandedReports, setExpandedReports] = useState<ApartmentGroupReport[] | null>(null);
+    const [loadingGroupReports, setLoadingGroupReports] = useState(false);
+
     const [myDiscoveries, setMyDiscoveries] = useState<any[]>([]);
     const [discLoading, setDiscLoading] = useState(false);
 
@@ -182,25 +219,85 @@ function ProfilePageContent() {
         }
     };
 
-    const loadMyAnalyses = async (page = 1) => {
+    const loadApartmentGroups = async (page = 1) => {
         if (!user) return;
-        setMyLoading(true);
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch(`/api/land/detective/apartment-groups?page=${page}&limit=20`, {
+                headers: { 'Authorization': `Bearer ${idToken}` },
+            });
+            const data = await res.json();
+            setAptGroups(data.groups || []);
+            setAptGroupPage(data.page || 1);
+            setAptGroupTotalPages(data.totalPages || 1);
+        } catch {
+            setAptGroups([]);
+        }
+    };
+
+    const loadOtherAnalyses = async (page = 1) => {
+        if (!user) return;
         try {
             const idToken = await user.getIdToken();
             const res = await fetch(`/api/land/detective/my-reports?page=${page}&limit=20`, {
-                headers: {
-                    'Authorization': `Bearer ${idToken}`
-                }
+                headers: { 'Authorization': `Bearer ${idToken}` },
             });
             const data = await res.json();
-            setMyAnalyses(data.analyses || []);
+            const allAnalyses = data.analyses || [];
+            setMyAnalyses(allAnalyses);
             setMyPage(data.page || 1);
             setMyTotalPages(data.totalPages || 1);
             setMyTotalCount(data.total || 0);
         } catch {
             setMyAnalyses([]);
+        }
+    };
+
+    const loadMyAnalyses = async () => {
+        if (!user) return;
+        setMyLoading(true);
+        try {
+            await loadOtherAnalyses(myPage);
         } finally {
             setMyLoading(false);
+        }
+    };
+
+    const loadApartmentGroupReports = async (groupKey: string) => {
+        if (!user) return;
+        setLoadingGroupReports(true);
+        try {
+            const idToken = await user.getIdToken();
+            const encoded = encodeURIComponent(groupKey);
+            const res = await fetch(`/api/land/detective/apartment-groups/${encoded}/reports?scope=mine`, {
+                headers: { 'Authorization': `Bearer ${idToken}` },
+            });
+            const data = await res.json();
+            setExpandedReports(data.reports || []);
+        } catch {
+            setExpandedReports([]);
+        } finally {
+            setLoadingGroupReports(false);
+        }
+    };
+
+    const toggleApartmentGroup = async (group: ApartmentGroup) => {
+        if (expandedGroupKey === group.groupKey) {
+            setExpandedGroupKey(null);
+            setExpandedReports(null);
+            return;
+        }
+        setExpandedGroupKey(group.groupKey);
+        setExpandedReports(null);
+        await loadApartmentGroupReports(group.groupKey);
+    };
+
+    const openApartmentPage = (group: ApartmentGroup) => {
+        if (group.aptSeq) {
+            const q = group.pnu ? `?pnu=${encodeURIComponent(group.pnu)}` : '';
+            router.push(`/apartment/${group.aptSeq}${q}`);
+        } else if (group.pnu) {
+            router.push(`/apartment/pnu?pnu=${encodeURIComponent(group.pnu)}`);
         }
     };
 
@@ -474,74 +571,39 @@ function ProfilePageContent() {
                                 ) : (
                                     <div className="space-y-3">
                                         {favorites.map((item) => (
-                                            <div
+                                            <PropertyCard
                                                 key={item.id}
-                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
-                                                onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`)}
-                                            >
-                                                <div className="flex items-start gap-4">
-                                                    <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-50 border border-slate-150 flex items-center justify-center p-2">
-                                                        <img src={catIconMap[item.category || ''] || '/land.svg'} alt="" className="w-full h-full object-contain" />
-                                                    </div>
-                                                    
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                            <h3 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-emerald-600 transition-colors">
-                                                                {item.propertyTitle || '부동산탐정 판독'}
-                                                            </h3>
-                                                            
-                                                            <div className="flex items-center gap-2 shrink-0">
-                                                                {(item.propertyGrade?.riskScore || (item as any).riskScore) && formatScoreLabel(item.propertyGrade?.riskScore || (item as any).riskScore) && (
-                                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getScoreBadgeClasses(item.propertyGrade?.riskScore || (item as any).riskScore)}`}>
-                                                                        AI평가 {formatScoreLabel(item.propertyGrade?.riskScore || (item as any).riskScore)}
-                                                                    </span>
-                                                                )}
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        toggleLike(item.id!);
-                                                                    }}
-                                                                    className="flex items-center gap-1 group/like text-sm transition-all focus:outline-none"
-                                                                >
-                                                                    <span className="text-rose-500 hover:text-rose-600 transition-colors">♥</span>
-                                                                    <span className="text-[10px] font-bold text-slate-450">{item.likes?.length || 0}</span>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {item.location?.name && (
-                                                            <p className="text-xs text-slate-400 font-semibold mb-2 flex items-center gap-1">
-                                                                <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                                </svg>
-                                                                {item.location.name}
-                                                            </p>
-                                                        )}
-
-                                                        {item.detectiveNote && (
-                                                            <div className="bg-emerald-50/30 border border-emerald-100/50 rounded-xl p-2.5 mb-2">
-                                                                <p className="text-[11px] text-emerald-800 font-bold line-clamp-1">
-                                                                    {item.detectiveNote}
-                                                                </p>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="flex items-center gap-2">
-                                                            {item.category && (
-                                                                <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                                                                    {item.category === 'land' ? '토지' : item.category === 'house' ? '주택' : item.category === 'apartment' ? '아파트' : item.category === 'building' ? '빌딩' : item.category}
-                                                                </span>
-                                                            )}
-                                                            {item.createdAt && (
-                                                                <span className="text-[9px] text-slate-350 font-bold ml-auto">
-                                                                    {formatDate(item.createdAt)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                data={{
+                                                    id: item.id!,
+                                                    bldNm: item.bldNm,
+                                                    propertyTitle: item.propertyTitle,
+                                                    location: item.location,
+                                                    category: item.category,
+                                                    detectiveNote: item.detectiveNote,
+                                                    propertyGrade: item.propertyGrade,
+                                                    likes: item.likes,
+                                                    createdAt: item.createdAt,
+                                                    riseRate6m: item.riseRate6m,
+                                                    avgPrice1m: item.avgPrice1m,
+                                                    minArea: item.minArea,
+                                                    maxArea: item.maxArea,
+                                                    exclusiveArea: item.exclusiveArea,
+                                                    area: item.area,
+                                                }}
+                                                currentUid={user?.uid}
+                                                onLikeToggle={(id, e) => toggleLike(id)}
+                                                onClick={() => {
+                                                    const cat = (item.category || '').toLowerCase();
+                                                    const isApartment = cat === 'apartment' || cat === '아파트';
+                                                    if (isApartment && (item.aptSeq || item.pnu)) {
+                                                        const targetAptSeq = item.aptSeq || 'pnu';
+                                                        const q = item.pnu ? `?pnu=${encodeURIComponent(item.pnu)}&reportId=${item.id}` : `?reportId=${item.id}`;
+                                                        router.push(`/apartment/${targetAptSeq}${q}`);
+                                                    } else {
+                                                        router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
+                                                    }
+                                                }}
+                                            />
                                         ))}
                                         <Pagination page={favPage} totalPages={favTotalPages} onPageChange={loadFavorites} />
                                     </div>
@@ -568,78 +630,54 @@ function ProfilePageContent() {
                                         </Link>
                                     </div>
                                 ) : (
-                                    <div className="space-y-3">
-                                        {myAnalyses.map((item) => (
-                                            <div
-                                                key={item.id}
-                                                className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
-                                                onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`)}
-                                            >
-                                                <div className="flex items-start gap-4">
-                                                    <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-50 border border-slate-150 flex items-center justify-center p-2">
-                                                        <img src={catIconMap[item.category || ''] || '/land.svg'} alt="" className="w-full h-full object-contain" />
-                                                    </div>
-
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                            <h3 className="text-sm font-extrabold text-slate-900 truncate group-hover:text-emerald-600 transition-colors">
-                                                                {item.propertyTitle || '부동산탐정 판독'}
-                                                            </h3>
-                                                            
-                                                            <div className="flex items-center gap-2 shrink-0">
-                                                                {item.propertyGrade?.riskScore && formatScoreLabel(item.propertyGrade.riskScore) && (
-                                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getScoreBadgeClasses(item.propertyGrade.riskScore)}`}>
-                                                                        AI평가 {formatScoreLabel(item.propertyGrade.riskScore)}
-                                                                    </span>
-                                                                )}
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        toggleLike(item.id!);
-                                                                    }}
-                                                                    className="flex items-center gap-1 group/like text-sm transition-all focus:outline-none"
-                                                                >
-                                                                    <span className={item.likes?.includes(user?.uid || '') ? 'text-rose-500' : 'text-slate-300'}>♥</span>
-                                                                    <span className="text-[10px] font-bold text-slate-400">{item.likes?.length || 0}</span>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {item.location?.name && (
-                                                            <p className="text-xs text-slate-400 font-semibold mb-2 flex items-center gap-1">
-                                                                <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                                </svg>
-                                                                {item.location.name}
-                                                            </p>
-                                                        )}
-
-                                                        {item.detectiveNote && (
-                                                            <div className="bg-emerald-50/30 border border-emerald-100/50 rounded-xl p-2.5 mb-2">
-                                                                <p className="text-[11px] text-emerald-800 font-bold line-clamp-1">
-                                                                    {item.detectiveNote}
-                                                                </p>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="flex items-center gap-2">
-                                                            {item.category && (
-                                                                <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
-                                                                    {item.category === 'land' ? '토지' : item.category === 'house' ? '주택' : item.category === 'apartment' ? '아파트' : item.category === 'building' ? '빌딩' : item.category}
-                                                                </span>
-                                                            )}
-                                                            {item.createdAt && (
-                                                                <span className="text-[9px] text-slate-350 font-bold ml-auto">
-                                                                    {formatDate(item.createdAt)}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <Pagination page={myPage} totalPages={myTotalPages} onPageChange={loadMyAnalyses} />
+                                    <div className="space-y-6">
+                                        <div className="space-y-3">
+                                            {myAnalyses.map((item) => (
+                                                <PropertyCard
+                                                    key={item.id}
+                                                    data={{
+                                                        id: item.id!,
+                                                        bldNm: item.bldNm,
+                                                        propertyTitle: item.propertyTitle,
+                                                        location: item.location,
+                                                        category: item.category,
+                                                        detectiveNote: item.detectiveNote,
+                                                        propertyGrade: item.propertyGrade,
+                                                        likes: item.likes,
+                                                        createdAt: item.createdAt,
+                                                        riseRate6m: item.riseRate6m,
+                                                        avgPrice1m: item.avgPrice1m,
+                                                        minArea: item.minArea,
+                                                        maxArea: item.maxArea,
+                                                        exclusiveArea: item.exclusiveArea,
+                                                        area: item.area,
+                                                    }}
+                                                    currentUid={user?.uid}
+                                                    onLikeToggle={(id, e) => toggleLike(id)}
+                                                    onClick={() => {
+                                                        const cat = (item.category || '').toLowerCase();
+                                                        const isApartment = cat === 'apartment' || cat === '아파트';
+                                                        if (isApartment && (item.aptSeq || item.pnu)) {
+                                                            const targetAptSeq = item.aptSeq || 'pnu';
+                                                            const q = item.pnu ? `?pnu=${encodeURIComponent(item.pnu)}&reportId=${item.id}` : `?reportId=${item.id}`;
+                                                            router.push(`/apartment/${targetAptSeq}${q}`);
+                                                        } else {
+                                                            router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
+                                                        }
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                        <Pagination
+                                            page={myPage}
+                                            totalPages={myTotalPages}
+                                            onPageChange={async (p) => {
+                                                setMyPage(p);
+                                                setMyLoading(true);
+                                                await loadOtherAnalyses(p);
+                                                setMyLoading(false);
+                                            }}
+                                        />
                                     </div>
                                 )}
                             </div>

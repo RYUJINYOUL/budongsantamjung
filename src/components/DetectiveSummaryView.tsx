@@ -717,6 +717,38 @@ export default function DetectiveSummaryView({
     const calcPropTax = calculatePropertyTax(calcPublicPrice);
     const calcComprehensiveTax = calcPublicPrice >= 1200000000 ? '12억 이상이므로 종부세 확인 필요' : '종부세 없음';
 
+    const renderRedevelopmentBadge = () => {
+        const redev = rawData?.redevelopmentStatus as {
+            isInZone?: boolean;
+            projects?: Array<{ name?: string; stage?: string; distanceM?: number; isTarget?: boolean }>;
+        } | undefined;
+        if (!redev) return null;
+
+        if (redev.isInZone) {
+            const target = redev.projects?.find((p) => p.isTarget) || redev.projects?.[0];
+            if (!target) return null;
+            return (
+                <div className="p-4 rounded-2xl border border-red-500/40 bg-red-950/40">
+                    <p className="text-red-300 text-sm font-black">🔴 재건축·재개발 진행 중</p>
+                    <p className="text-white/90 text-xs font-semibold mt-1">
+                        {target.name || '정비사업'} · {target.stage || '진행 중'}
+                    </p>
+                </div>
+            );
+        }
+
+        const nearest = redev.projects?.[0];
+        if (!nearest) return null;
+        return (
+            <div className="p-4 rounded-2xl border border-amber-500/35 bg-amber-950/30">
+                <p className="text-amber-300 text-sm font-black">🟡 인근 재개발·재건축 사업</p>
+                <p className="text-white/90 text-xs font-semibold mt-1">
+                    {nearest.distanceM ?? '?'}m · {nearest.name || '사업'} ({nearest.stage || '진행 중'})
+                </p>
+            </div>
+        );
+    };
+
     if (shortsSections && shortsSections.length > 0) {
         const blocks: ReactNode[] = [];
         if (shortsSections.includes('pyungTrades')) {
@@ -742,6 +774,7 @@ export default function DetectiveSummaryView({
 
     return (
         <div className="space-y-8 pb-12">
+            {renderRedevelopmentBadge()}
             {/* 📊 입력한 상세 정보 Section */}
             {renderUserDetailedInfoSection()}
 

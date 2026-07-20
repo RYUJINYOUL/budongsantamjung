@@ -28,12 +28,26 @@ export interface PropertyCardData {
   likes?: string[];
   /** 생성일 ISO string */
   createdAt?: string;
+  /** 6개월 상승률 (%) */
+  riseRate6m?: number | null;
+  /** 최근 1개월 평균가 (만원) */
+  avgPrice1m?: number | null;
+  /** 대표 평수 최소 면적 (㎡) */
+  minArea?: number | null;
+  /** 대표 평수 최대 면적 (㎡) */
+  maxArea?: number | null;
+  /** 전용 면적 (㎡) */
+  exclusiveArea?: number | null;
+  /** 면적 (㎡) */
+  area?: number | null;
 }
 
 export interface PropertyCardProps {
   data: PropertyCardData;
   /** 카드를 클릭했을 때 이동할 경로 — 생략 시 router.push(`/analyze/${id}`) */
   href?: string;
+  /** 클릭 핸들러 — 지정 시 기본 이동 대신 실행 */
+  onClick?: (e: React.MouseEvent) => void;
   /** 현재 로그인된 유저 uid (찜 하이라이트용) */
   currentUid?: string;
   /** 찜 버튼 클릭 콜백 — 없으면 찜 버튼을 숨김 */
@@ -82,6 +96,16 @@ function formatDate(dateString?: string): string {
   });
 }
 
+function formatPyeong(sqm: number): number {
+  return Math.round(sqm * 0.3025);
+}
+
+function formatRepresentativeArea(exclusiveArea?: number | null, area?: number | null): string {
+  const displayArea = area || exclusiveArea;
+  if (!displayArea) return '-';
+  return `전용 ${displayArea}㎡(${formatPyeong(displayArea)}평)`;
+}
+
 // ────────────────────────────────────────────────
 // 컴포넌트
 // ────────────────────────────────────────────────
@@ -104,6 +128,7 @@ function formatDate(dateString?: string): string {
 export default function PropertyCard({
   data,
   href,
+  onClick,
   currentUid,
   onLikeToggle,
   selected = false,
@@ -113,6 +138,7 @@ export default function PropertyCard({
   const router = useRouter();
   const isDark = theme === 'dark';
   const isCompact = size === 'compact';
+  const isApartment = data.category === '아파트' || data.category === 'apartment';
 
   const riskScore = data.propertyGrade?.riskScore;
   const riskLight = getRiskConfig(riskScore);
@@ -120,7 +146,15 @@ export default function PropertyCard({
 
   const isLiked = currentUid ? (data.likes?.includes(currentUid) ?? false) : false;
 
-  const handleClick = () => {
+  const handleClick = (e?: React.MouseEvent) => {
+    if (onClick) {
+      if (e) {
+        onClick(e);
+      } else {
+        onClick(new MouseEvent('click') as any);
+      }
+      return;
+    }
     const target = href ?? `/analyze/${makeAnalyzeSlug(data.id, data.bldNm)}`;
     router.push(target);
   };
@@ -161,36 +195,61 @@ export default function PropertyCard({
             )}
           </div>
 
-          <div className="flex flex-col items-end gap-1.5 shrink-0">
-            <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">
-              분석완료
-            </span>
-            {riskScore && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
-                <span
-                  className={[
-                    'text-[11px] font-black px-1.5 py-0.5 rounded-md border',
-                    riskLight.bg,
-                    riskLight.text,
-                    riskLight.border,
-                  ].join(' ')}
-                >
-                  {riskScore}
-                </span>
-              </div>
-            )}
-          </div>
+          {!isApartment && (
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
+              <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">
+                분석완료
+              </span>
+              {riskScore && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
+                  <span
+                    className={[
+                      'text-[11px] font-black px-1.5 py-0.5 rounded-md border',
+                      riskLight.bg,
+                      riskLight.text,
+                      riskLight.border,
+                    ].join(' ')}
+                  >
+                    {riskScore}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 탐정 노트 */}
-        {!isCompact && data.detectiveNote && (
-          <div className="bg-slate-50 border border-slate-100/50 rounded-xl p-2.5 mb-2.5">
-            <p className="text-[12px] text-slate-600 font-medium line-clamp-2 leading-relaxed">
-              {data.detectiveNote}
-            </p>
+        {/* 아파트 통계 또는 탐정 노트 */}
+        {!isCompact && (isApartment ? (
+          <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-100/50 rounded-xl p-3 mb-3 text-center">
+            <div>
+              <p className="text-[10px] text-slate-400 font-bold">6개월</p>
+              <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-500' : (data.riseRate6m || 0) < 0 ? 'text-blue-500' : 'text-slate-600'}`}>
+                {data.riseRate6m != null ? `${data.riseRate6m > 0 ? '+' : ''}${data.riseRate6m}%` : '-'}
+              </p>
+            </div>
+            <div className="border-x border-slate-200/60 flex flex-col justify-center">
+              <p className="text-[10px] text-slate-400 font-bold">평수</p>
+              <p className="text-[11px] font-extrabold text-slate-700 mt-1 leading-tight">
+                {formatRepresentativeArea(data.exclusiveArea, data.area)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 font-bold">최근 1개월 실거래가</p>
+              <p className="text-xs font-extrabold text-slate-700 mt-1">
+                {data.avgPrice1m ? `${(data.avgPrice1m / 10000).toFixed(1)}억` : '-'}
+              </p>
+            </div>
           </div>
-        )}
+        ) : (
+          data.detectiveNote && (
+            <div className="bg-slate-50 border border-slate-100/50 rounded-xl p-2.5 mb-2.5">
+              <p className="text-[12px] text-slate-600 font-medium line-clamp-2 leading-relaxed">
+                {data.detectiveNote}
+              </p>
+            </div>
+          )
+        ))}
 
         {/* 하단: 날짜 + 카테고리 + 찜 */}
         <div className="flex items-center justify-between mt-auto">
@@ -263,7 +322,7 @@ export default function PropertyCard({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {riskScore && (
+          {!isApartment && riskScore && (
             <span
               className={[
                 'text-xs font-bold px-2 py-0.5 rounded-lg border',
@@ -302,12 +361,35 @@ export default function PropertyCard({
         </div>
       </div>
 
-      {/* 탐정 노트 */}
-      {!isCompact && data.detectiveNote && (
-        <p className="text-xs text-emerald-400 font-semibold line-clamp-1 mb-2">
-          🕵️ {data.detectiveNote}
-        </p>
-      )}
+      {/* 아파트 통계 또는 탐정 노트 */}
+      {!isCompact && (isApartment ? (
+        <div className="grid grid-cols-3 gap-2 bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-3 text-center">
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold">6개월</p>
+            <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-400' : (data.riseRate6m || 0) < 0 ? 'text-blue-400' : 'text-slate-300'}`}>
+              {data.riseRate6m != null ? `${data.riseRate6m > 0 ? '+' : ''}${data.riseRate6m}%` : '-'}
+            </p>
+          </div>
+          <div className="border-x border-slate-700/60 flex flex-col justify-center">
+            <p className="text-[10px] text-slate-400 font-bold">평수</p>
+            <p className="text-[11px] font-extrabold text-slate-300 mt-1 leading-tight">
+              {formatRepresentativeArea(data.exclusiveArea, data.area)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-bold">최근 1개월 실거래가</p>
+            <p className="text-xs font-extrabold text-slate-300 mt-1">
+              {data.avgPrice1m ? `${(data.avgPrice1m / 10000).toFixed(1)}억` : '-'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        data.detectiveNote && (
+          <p className="text-xs text-emerald-400 font-semibold line-clamp-1 mb-2">
+            🕵️ {data.detectiveNote}
+          </p>
+        )
+      ))}
 
       {/* 하단: 카테고리 + 날짜 */}
       <div className="flex items-center justify-between mt-1">

@@ -8,6 +8,7 @@ import SideNav from '../components/SideNav';
 import AnalyzePanel from '../components/AnalyzePanel';
 import RankingPanel from '../components/RankingPanel';
 import ComparePanel from '../components/ComparePanel';
+import PropertyCard from '../components/PropertyCard';
 import { makeAnalyzeSlug } from '../lib/slug';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -38,6 +39,15 @@ interface Analysis {
   lat?: number;
   lng?: number;
   likes?: string[];
+  aptSeq?: string | null;
+  pnu?: string | null;
+  bldNm?: string | null;
+  riseRate6m?: number | null;
+  avgPrice1m?: number | null;
+  minArea?: number | null;
+  maxArea?: number | null;
+  exclusiveArea?: number | null;
+  area?: number | null;
 }
 
 function HomePageContent() {
@@ -262,7 +272,15 @@ function HomePageContent() {
     } catch { /* ignore */ }
   };
 
-  const navigateToDetail = (analysisId: string) => {
+  const navigateToDetail = (analysisId: string, aptSeq?: string | null, pnu?: string | null, category?: string) => {
+    const isApartment = category === '아파트' || category === 'apartment';
+    if (isApartment && (aptSeq || pnu)) {
+      const targetAptSeq = aptSeq || 'pnu';
+      const q = pnu ? `?pnu=${encodeURIComponent(pnu)}&reportId=${analysisId}` : `?reportId=${analysisId}`;
+      router.push(`/apartment/${targetAptSeq}${q}`);
+      return;
+    }
+
     const params = new URLSearchParams();
     params.set('tab', showMobileMap ? 'map' : 'list');
     // 실시간 드래그가 반영된 지도의 중심 좌표(mapPosition)를 최우선으로 지정하여 위치를 유지함
@@ -394,9 +412,62 @@ function HomePageContent() {
     };
   }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
 
-  const CATEGORIES = ['all', '토지', '주택', '아파트', '상가', '빌딩'];
+  const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
   const [listSearchQuery, setListSearchQuery] = useState('');
+  const [listSearchResults, setListSearchResults] = useState<any[]>([]);
+  const ignoreSearchRef = useRef(false);
+
+  useEffect(() => {
+    if (ignoreSearchRef.current) {
+      ignoreSearchRef.current = false;
+      return;
+    }
+
+    const query = listSearchQuery.trim();
+    if (!query || query.length < 2) {
+      setListSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (typeof window !== 'undefined' && window.kakao?.maps?.services) {
+        const { kakao } = window;
+        const geocoder = new kakao.maps.services.Geocoder();
+
+        // 1. 주소 검색 시도
+        geocoder.addressSearch(query, (result: any, status: any) => {
+          if (status === kakao.maps.services.Status.OK && result.length > 0) {
+            setListSearchResults(result.slice(0, 5).map((p: any) => ({
+              place_name: p.address_name || p.road_address?.address_name,
+              address_name: p.address_name,
+              road_address_name: p.road_address?.address_name || '',
+              x: p.x,
+              y: p.y
+            })));
+          } else {
+            // 2. 주소 검색 실패 시 키워드/장소 검색
+            const ps = new kakao.maps.services.Places();
+            ps.keywordSearch(query, (data: any, status: any) => {
+              if (status === kakao.maps.services.Status.OK) {
+                setListSearchResults(data.slice(0, 5).map((p: any) => ({
+                  place_name: p.place_name,
+                  address_name: p.address_name,
+                  road_address_name: p.road_address_name,
+                  x: p.x,
+                  y: p.y
+                })));
+              } else {
+                setListSearchResults([]);
+              }
+            });
+          }
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [listSearchQuery]);
 
   const searchFilteredAnalyses = useMemo(() => {
     const q = listSearchQuery.trim().toLowerCase();
@@ -408,6 +479,47 @@ function HomePageContent() {
       (a.detectiveNote || '').toLowerCase().includes(q)
     );
   }, [filteredAnalyses, listSearchQuery]);
+
+  const handleListSearchSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const query = listSearchQuery.trim();
+    if (!query) return;
+
+    // 1. 먼저 현재 필터링된 최근 분석 리스트에서 매칭되는 항목이 있는지 확인
+    const localMatch = searchFilteredAnalyses.find(a => a.lat && a.lng);
+    if (localMatch && localMatch.lat && localMatch.lng) {
+      setMapCenter({ lat: localMatch.lat, lng: localMatch.lng });
+      setSelectedProperty(localMatch);
+      return;
+    }
+
+    // 2. 만약 최근 분석 리스트에 매칭되는 항목이 없다면, Kakao Maps API를 사용하여 주소/키워드 검색 후 지도 이동
+    if (typeof window !== 'undefined' && window.kakao?.maps?.services) {
+      const { kakao } = window;
+      const geocoder = new kakao.maps.services.Geocoder();
+
+      geocoder.addressSearch(query, (result: any, status: any) => {
+        if (status === kakao.maps.services.Status.OK && result.length > 0) {
+          const first = result[0];
+          const lat = parseFloat(first.y);
+          const lng = parseFloat(first.x);
+          setMapCenter({ lat, lng });
+          setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
+        } else {
+          const ps = new kakao.maps.services.Places();
+          ps.keywordSearch(query, (data: any, status: any) => {
+            if (status === kakao.maps.services.Status.OK && data.length > 0) {
+              const first = data[0];
+              const lat = parseFloat(first.y);
+              const lng = parseFloat(first.x);
+              setMapCenter({ lat, lng });
+              setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
+            }
+          });
+        }
+      });
+    }
+  };
 
   return (
     <div className="detective-bg min-h-screen text-slate-900 relative">
@@ -507,30 +619,72 @@ function HomePageContent() {
               <div className="flex flex-col gap-3 mb-4">
                 <h2 className="text-sm font-bold text-slate-800">최근 분석</h2>
 
-                <div className={PANEL_INPUT_WRAP}>
-                  <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="매물명, 지역, 키워드 검색..."
-                    value={listSearchQuery}
-                    onChange={e => setListSearchQuery(e.target.value)}
-                    className={PANEL_INPUT}
-                  />
-                  {listSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setListSearchQuery('')}
-                      className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
-                      aria-label="검색어 지우기"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                <form onSubmit={handleListSearchSubmit} className="w-full relative">
+                  <div className={PANEL_INPUT_WRAP}>
+                    <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="매물명, 지역, 키워드 검색..."
+                      value={listSearchQuery}
+                      onChange={e => setListSearchQuery(e.target.value)}
+                      className={PANEL_INPUT}
+                    />
+                    {listSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => { setListSearchQuery(''); setListSearchResults([]); }}
+                        className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
+                        aria-label="검색어 지우기"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 검색 결과 드롭다운 */}
+                  {listSearchResults.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-slate-200/80 overflow-hidden z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div className="max-h-[240px] overflow-y-auto">
+                        {listSearchResults.map((result, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => {
+                              const lat = parseFloat(result.y);
+                              const lng = parseFloat(result.x);
+                              ignoreSearchRef.current = true;
+                              setMapCenter({ lat, lng });
+                              setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
+                              setListSearchResults([]);
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 transition-colors border-b border-slate-100 last:border-0 group flex flex-col gap-0.5"
+                          >
+                            <div className="flex items-start gap-2">
+                              <div className="mt-0.5 flex-shrink-0">
+                                <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-600 transition-colors truncate">
+                                  {result.place_name}
+                                </div>
+                                <div className="text-[10px] text-slate-500 leading-relaxed truncate">
+                                  {result.road_address_name || result.address_name}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </div>
+                </form>
 
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
@@ -578,62 +732,31 @@ function HomePageContent() {
               ) : (
                 <div className="space-y-2">
                   {searchFilteredAnalyses.slice(0, displayCount).map(analysis => {
-                    const categoryLabel = getCategoryDisplay(analysis.category);
                     return (
-                      <div key={analysis.id}
-                        className={`group relative bg-white border rounded-2xl p-4 cursor-pointer transition-all hover:border-emerald-300 hover:shadow-md ${selectedProperty?.id === analysis.id ? 'border-emerald-400 ring-1 ring-emerald-400 shadow-sm' : 'border-slate-100'}`}
-                        onClick={() => navigateToDetail(analysis.id)}>
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-[15px] font-bold text-slate-900 tracking-tight truncate leading-tight group-hover:text-emerald-600 transition-colors">
-                              {analysis.propertyTitle || '부동산탐정 판독'}
-                            </h3>
-                            {analysis.location?.name && (
-                              <p className="text-xs text-slate-400 truncate font-medium mt-1">{analysis.location.name}</p>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            <div className="flex items-center gap-1 flex-wrap justify-end">
-                              {categoryLabel && (
-                                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-bold border border-slate-200/60">
-                                  {categoryLabel}
-                                </span>
-                              )}
-                              <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">분석완료</span>
-                            </div>
-                            {analysis.propertyGrade?.riskScore && (() => {
-                              const scoreColors = getScoreColors(parseFloat(analysis.propertyGrade.riskScore));
-                              return (
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI평가</span>
-                                  <span
-                                    className="text-[11px] font-black px-1.5 py-0.5 rounded-md border border-white/30 shadow-sm"
-                                    style={{ backgroundColor: scoreColors.bg, color: '#000000' }}
-                                  >
-                                    {analysis.propertyGrade.riskScore}
-                                  </span>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                        {analysis.detectiveNote && (
-                          <div className="bg-slate-50 border border-slate-100/50 rounded-xl p-2.5 mb-2.5">
-                            <p className="text-[12px] text-slate-600 font-medium line-clamp-2 leading-relaxed">{analysis.detectiveNote}</p>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between mt-auto">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-300 font-medium">{formatDate(analysis.createdAt)}</span>
-                            <button onClick={e => toggleLike(e, analysis.id)}
-                              className={`flex items-center gap-1 text-sm transition-all focus:outline-none ml-1 ${analysis.likes?.includes(user?.uid || '') ? 'text-rose-500 hover:text-rose-600' : 'text-slate-300 hover:text-rose-400'}`}>
-                              <span className={analysis.likes?.includes(user?.uid || '') ? 'animate-pulse' : ''}>♥</span>
-                              <span className="text-[10px] font-bold mt-0.5">{analysis.likes?.length || 0}</span>
-                            </button>
-                          </div>
-                          <span className="text-[10px] text-emerald-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">자세히 보기 →</span>
-                        </div>
-                      </div>
+                      <PropertyCard
+                        key={analysis.id}
+                        data={{
+                          id: analysis.id,
+                          bldNm: analysis.bldNm || undefined,
+                          propertyTitle: analysis.propertyTitle,
+                          location: analysis.location,
+                          category: analysis.category,
+                          detectiveNote: analysis.detectiveNote,
+                          propertyGrade: analysis.propertyGrade,
+                          likes: analysis.likes,
+                          createdAt: analysis.createdAt,
+                          riseRate6m: analysis.riseRate6m,
+                          avgPrice1m: analysis.avgPrice1m,
+                          minArea: analysis.minArea,
+                          maxArea: analysis.maxArea,
+                          exclusiveArea: analysis.exclusiveArea,
+                          area: analysis.area,
+                        }}
+                        selected={selectedProperty?.id === analysis.id}
+                        currentUid={user?.uid}
+                        onLikeToggle={(id, e) => toggleLike(e, id)}
+                        onClick={() => navigateToDetail(analysis.id, analysis.aptSeq, analysis.pnu, analysis.category)}
+                      />
                     );
                   })}
 
@@ -731,7 +854,7 @@ function HomePageContent() {
               {/* 선택 매물 팝업 — 일반 */}
               {(selectedProperty && activePanel !== 'ranking') && (
                 <div className="absolute bottom-24 lg:bottom-6 left-4 right-4 lg:left-6 lg:right-6 z-30 bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-emerald-200 cursor-pointer hover:bg-emerald-50/30 transition-all hover:scale-[1.01]"
-                  onClick={() => navigateToDetail(selectedProperty.id)}>
+                  onClick={() => navigateToDetail(selectedProperty.id, selectedProperty.aptSeq, selectedProperty.pnu, selectedProperty.category)}>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 mb-0.5">
