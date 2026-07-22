@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import PresaleShellLayout from './PresaleShellLayout';
 
 export const metadata: Metadata = {
   title: '분양 정보 | 청약홈 민간·공공·분양결과',
@@ -9,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function PresaleLayout({ children }: { children: React.ReactNode }) {
-  return <PresaleShellLayout>{children}</PresaleShellLayout>;
+  return children;
 }
