@@ -34,7 +34,7 @@ import {
     ShieldCheck, Hexagon, Search, ArrowLeft, Plus, Heart, Star, ChevronDown, ChevronUp,
     Clipboard, ExternalLink, ShieldAlert, Gavel, Check, Copy, Download, X,
     Users, Map, Lightbulb, ShoppingBag, School, GraduationCap,
-    Stethoscope, Trees, Train, Car, Tag, Clock, Video, Sparkles
+    Stethoscope, Trees, Train, Car, Tag, Clock, Video, Sparkles, History
 } from 'lucide-react';
 
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
@@ -1740,6 +1740,27 @@ function isAiAnalysisCompleted(data: any): boolean {
     return status === 'completed';
 }
 
+/** 아파트 AI 분석 가능 여부 (실거래·10년 통계 없으면 false) */
+function isApartmentAiTradeDataAvailable(data: any): boolean {
+    const raw = data?.rawData;
+    if (!raw) return true;
+    if (raw.tradeDataAvailable === false) return false;
+    if (raw.tradeDataAvailable === true) return true;
+    const category = String(data?.report?.category || raw?.category || '').toLowerCase();
+    if (category !== 'apartment' && category !== '아파트') return true;
+    const trades = raw?.targetTrades || raw?.nearbyData?.targetTrades || [];
+    const quarterlyCount = raw?.targetComplexInfo?.quarterlyStats?.length || 0;
+    return trades.length > 0 || quarterlyCount > 0;
+}
+
+const NO_TRADE_DATA_AI_MESSAGE =
+    '최근 6개월간 해당 단지의 실거래가 데이터가 없어 AI 분석을 진행할 수 없습니다.';
+
+type RecentAnalysisBlockedState = {
+    message: string;
+    reportId?: string;
+};
+
 function getDefaultActiveTab(data: any): string {
     return isAiAnalysisCompleted(data) ? 'ai_report' : 'report';
 }
@@ -1920,6 +1941,7 @@ export default function AnalysisDetailPage({
 
     // AI 분석 제보용 입력 상태 (카테고리별 필드 — DetectiveSummaryView / Flutter ai_analysis_modal 기준)
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+    const [recentAnalysisBlocked, setRecentAnalysisBlocked] = useState<RecentAnalysisBlockedState | null>(null);
     const [aiInput, setAiInput] = useState<AiAnalysisInputState>(defaultAiAnalysisInput);
     const patchAiInput = (patch: Partial<AiAnalysisInputState>) =>
         setAiInput((prev) => ({ ...prev, ...patch }));
@@ -2057,9 +2079,13 @@ export default function AnalysisDetailPage({
             alert('로그인이 필요한 서비스입니다.');
             return;
         }
+        if (!isApartmentAiTradeDataAvailable(analysisData)) {
+            alert(NO_TRADE_DATA_AI_MESSAGE);
+            return;
+        }
         setAiInput(parseAiInputFromReportData(mergedData));
         setIsInputModalOpen(true);
-    }, [mergedData, user]);
+    }, [analysisData, mergedData, user]);
 
     /** AnalyzePanel에서 입력한 상세 정보 → AI 모달 prefill */
     useEffect(() => {
@@ -2446,6 +2472,41 @@ export default function AnalysisDetailPage({
         }
     };
 
+    const navigateToExistingReport = useCallback((reportId: string) => {
+        if (!reportId) return;
+        setRecentAnalysisBlocked(null);
+
+        if (embeddedInApartment && onEmbeddedReportSelect) {
+            onEmbeddedReportSelect(reportId);
+            return;
+        }
+
+        if (String(id) === String(reportId)) {
+            void fetchAnalysis(true);
+            return;
+        }
+
+        if (embeddedInApartment) {
+            const aptSeqParam = searchParams.get('aptSeq') || analysisData?.report?.apt_seq || 'pnu';
+            const pnuVal = searchParams.get('pnu') || analysisData?.report?.pnu;
+            const pnuParam = pnuVal
+                ? `?pnu=${encodeURIComponent(pnuVal)}&reportId=${reportId}`
+                : `?reportId=${reportId}`;
+            router.replace(`/apartment/${aptSeqParam}${pnuParam}`);
+            return;
+        }
+
+        router.replace(`/analyze/apartment/${reportId}`);
+    }, [
+        analysisData?.report?.apt_seq,
+        analysisData?.report?.pnu,
+        embeddedInApartment,
+        id,
+        onEmbeddedReportSelect,
+        router,
+        searchParams,
+    ]);
+
     const fetchPaymentAndUsageStatus = async () => {
         if (!user) return;
         try {
@@ -2551,6 +2612,10 @@ export default function AnalysisDetailPage({
             alert('로그인이 필요한 서비스입니다.');
             return;
         }
+        if (!isApartmentAiTradeDataAvailable(analysisData)) {
+            alert(NO_TRADE_DATA_AI_MESSAGE);
+            return;
+        }
         setAiInput(parseAiInputFromReportData(mergedData));
         setIsInputModalOpen(true);
     };
@@ -2642,8 +2707,26 @@ export default function AnalysisDetailPage({
             });
 
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.message || 'AI 분석 요청 실패');
+                const errData = await response.json().catch(() => ({} as Record<string, unknown>));
+                const errorCode = typeof errData.error === 'string' ? errData.error : '';
+                const errorMessage = typeof errData.message === 'string'
+                    ? errData.message
+                    : 'AI 분석 요청 실패';
+
+                if (errorCode === 'RECENT_ANALYSIS_EXISTS') {
+                    setRecentAnalysisBlocked({
+                        message: errorMessage,
+                        reportId: errData.reportId != null ? String(errData.reportId) : undefined,
+                    });
+                    return;
+                }
+
+                if (errorCode === 'NO_TRADE_DATA') {
+                    alert(errorMessage || NO_TRADE_DATA_AI_MESSAGE);
+                    return;
+                }
+
+                throw new Error(errorMessage);
             }
 
             const result = await response.json();
@@ -2918,8 +3001,8 @@ export default function AnalysisDetailPage({
         );
     }
 
-    // 1. 공공데이터 수집 실패 상태 처리
-    if (status === 'failed') {
+    // 1. 공공데이터 수집 실패 상태 처리 (rawData 없을 때만)
+    if (status === 'failed' && !hasRawData) {
         return (
             <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center p-6">
                 <motion.div
@@ -3134,8 +3217,10 @@ export default function AnalysisDetailPage({
     }
 
     const aiAnalysisStatus = report?.ai_analysis_status || analysisData?.ai_analysis_status || '';
+    const aiTradeDataAvailable = isApartmentAiTradeDataAvailable(analysisData);
     const showAiBottomBar =
         aiAnalysisStatus !== 'completed' &&
+        aiTradeDataAvailable &&
         !isAiAnalyzing &&
         !isInputModalOpen &&
         !isPaymentModalOpen;
@@ -3300,7 +3385,7 @@ export default function AnalysisDetailPage({
                                 <img src="/naver.png" alt="네이버 부동산" className="w-5 h-5 object-contain" />
                             </a>
                         )}
-                        {embeddedInApartment && (
+                        {embeddedInApartment && aiTradeDataAvailable && (
                             <button
                                 type="button"
                                 onClick={handleNewApartmentAnalysis}
@@ -3326,6 +3411,12 @@ export default function AnalysisDetailPage({
             </nav>
 
             <main className={`relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 sm:pt-2.5 pb-8 sm:pb-12 ${showAiBottomBar ? 'pb-28' : ''}`}>
+
+                {!aiTradeDataAvailable && hasRawData && isApartment && (
+                    <div className="mb-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90 font-medium">
+                        해당 단지의 최근 실거래가 데이터가 없어 AI 분석은 이용할 수 없습니다. 건축물대장·학군·공시지가 등 공공데이터는 확인할 수 있습니다.
+                    </div>
+                )}
 
                 {/* 헤더: 매물 대시보드 */}
                 <header className={`-mx-2 sm:mx-0 mt-0.5 ${isMapCollapsed ? "mb-4" : "mb-8"}`}>
@@ -3776,14 +3867,18 @@ export default function AnalysisDetailPage({
                                     {embeddedApartmentReports.length === 0 ? (
                                         <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
                                             <p className="text-sm text-slate-400 mb-3">AI 완료된 분석이 없습니다.</p>
-                                            <button
-                                                type="button"
-                                                onClick={handleNewApartmentAnalysis}
-                                                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold transition-all"
-                                            >
-                                                <Sparkles className="w-4 h-4" />
-                                                AI 새로 분석하기
-                                            </button>
+                                            {aiTradeDataAvailable ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleNewApartmentAnalysis}
+                                                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold transition-all"
+                                                >
+                                                    <Sparkles className="w-4 h-4" />
+                                                    AI 새로 분석하기
+                                                </button>
+                                            ) : (
+                                                <p className="text-sm text-amber-400/90 font-medium">{NO_TRADE_DATA_AI_MESSAGE}</p>
+                                            )}
                                         </div>
                                     ) : (
                                     <div className="space-y-2">
@@ -6491,6 +6586,59 @@ export default function AnalysisDetailPage({
                             setTimeout(() => runAiAnalysis(), 800);
                         }}
                     />
+                )}
+            </AnimatePresence>
+
+            {/* 7일 이내 중복 AI 분석 안내 */}
+            <AnimatePresence>
+                {recentAnalysisBlocked && (
+                    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center px-4 pb-4 sm:pb-0">
+                        <motion.button
+                            type="button"
+                            aria-label="닫기"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 bg-black/60"
+                            onClick={() => setRecentAnalysisBlocked(null)}
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, y: 40 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 24 }}
+                            className="relative w-full max-w-md rounded-t-[28px] sm:rounded-[28px] bg-[#13131A] border border-white/10 px-6 pt-4 pb-8 shadow-2xl"
+                        >
+                            <div className="mx-auto mb-5 h-1 w-9 rounded-full bg-white/20" />
+                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-[18px] bg-sky-500/10">
+                                <History className="h-7 w-7 text-sky-400" />
+                            </div>
+                            <h3 className="text-center text-lg font-black text-white">최근 분석 이력 있음</h3>
+                            <p className="mt-3 text-center text-sm leading-relaxed text-slate-400">
+                                {recentAnalysisBlocked.message}
+                            </p>
+                            <p className="mt-2 text-center text-xs leading-relaxed text-slate-500">
+                                동일 단지·동일 평형은 7일 이내 AI 분석을 다시 실행할 수 없습니다.
+                            </p>
+                            <div className="mt-6 space-y-2.5">
+                                {recentAnalysisBlocked.reportId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigateToExistingReport(recentAnalysisBlocked.reportId!)}
+                                        className="w-full rounded-2xl bg-sky-500 py-3.5 text-sm font-black text-white transition-colors hover:bg-sky-400"
+                                    >
+                                        이전 분석 보기
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setRecentAnalysisBlocked(null)}
+                                    className="w-full rounded-2xl py-3.5 text-sm font-bold text-slate-400 transition-colors hover:text-slate-300"
+                                >
+                                    닫기
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
 

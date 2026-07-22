@@ -7,7 +7,17 @@ export interface MapMarkerProperty {
   category?: string;
   propertyTitle?: string;
   rank?: number;
+  /** AI 분석 미완료 타임라인 매물 — 0.svg + 00 배지 (분양 등은 설정하지 않음) */
+  pendingAi?: boolean;
+  /** 분양 지도 마커 — by.svg + D-day 배지(있을 때만) */
+  markerKind?: 'presale';
+  presaleDDay?: number | null;
 }
+
+const PENDING_AI_MARKER_ICON = '/0.svg';
+const PRESALE_MARKER_ICON = '/by.svg';
+const PRESALE_TAIL_COLOR = '#fec933';
+const PRESALE_DDAY_BADGE_BG = '#e11d48';
 
 type CategoryKey = 'apartment' | 'land' | 'house' | 'store' | 'building' | 'gosi' | 'other';
 
@@ -37,7 +47,7 @@ export function getScoreColors(score: number) {
   if (score >= 70) return { bg: '#FFE566', text: '#ffffff', label: '우수' };
   if (score >= 40) return { bg: '#66DFF6', text: '#ffffff', label: '보통' };
   if (score > 0) return { bg: '#F67D90', text: '#ffffff', label: '주의' };
-  return { bg: '#64748b', text: '#ffffff', label: '-' };
+  return { bg: '#64748b', text: '#ffffff', label: '준비' };
 }
 
 /** 점수 구간별 마커 아이콘 (1–39 / 40–69 / 70+) */
@@ -59,6 +69,67 @@ export function getMarkerSize(zoomLevel: number): number {
   if (zoomLevel <= 5) return 44;
   if (zoomLevel <= 7) return 36;
   return 30;
+}
+
+export function formatPresaleMarkerBadge(dDay: number | null | undefined): string | null {
+  if (dDay == null || dDay < 0) return null;
+  return `D-${dDay}`;
+}
+
+function attachMarkerHover(root: HTMLDivElement, selected: boolean) {
+  root.addEventListener('mouseenter', () => {
+    if (!selected) root.style.transform = 'scale(1.12)';
+  });
+  root.addEventListener('mouseleave', () => {
+    root.style.transform = selected ? 'scale(1.18)' : 'scale(1)';
+  });
+}
+
+function appendMapBadge(
+  root: HTMLDivElement,
+  text: string,
+  options: { bg: string; textColor: string; title: string; fontSize?: number },
+) {
+  const badge = document.createElement('div');
+  badge.textContent = text;
+  badge.title = options.title;
+  badge.style.cssText = `
+    position:absolute;top:-6px;right:-8px;min-width:22px;height:22px;padding:0 5px;
+    border-radius:999px;background:${options.bg};color:${options.textColor};
+    font-size:${options.fontSize ?? 11}px;font-weight:800;line-height:22px;text-align:center;
+    border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;
+  `;
+  root.appendChild(badge);
+}
+
+function appendIconMarkerBody(
+  root: HTMLDivElement,
+  size: number,
+  iconSrc: string,
+  alt: string,
+  selected: boolean,
+) {
+  const body = document.createElement('div');
+  body.style.cssText = `
+    width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;
+    border:3px solid ${selected ? '#10b981' : '#fff'};
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:${selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
+  `;
+  const img = document.createElement('img');
+  img.src = iconSrc;
+  img.alt = alt;
+  img.width = size;
+  img.height = size;
+  img.style.cssText = 'object-fit:cover;pointer-events:none;display:block;';
+  body.appendChild(img);
+  root.appendChild(body);
+}
+
+function appendMarkerTail(root: HTMLDivElement, color: string) {
+  const tail = document.createElement('div');
+  tail.style.cssText = `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid ${color};margin-top:-2px;`;
+  root.appendChild(tail);
 }
 
 export function hasValidCoords(p: MapMarkerProperty): boolean {
@@ -139,6 +210,69 @@ export function createMarkerElement(
   const cat = CATEGORY_STYLES[catKey];
   const score = getScoreColors(property.riskScore);
   const scoreIcon = getScoreIcon(property.riskScore);
+  const isPendingAi = property.pendingAi === true && catKey !== 'gosi';
+
+  if (isPendingAi) {
+    const pendingScore = getScoreColors(0);
+    const badge = document.createElement('div');
+    badge.textContent = '00';
+    badge.title = 'AI 분석 준비 중';
+    badge.style.cssText = `
+      position:absolute;top:-6px;right:-8px;min-width:22px;height:22px;padding:0 5px;
+      border-radius:999px;background:${pendingScore.bg};color:${pendingScore.text};
+      font-size:11px;font-weight:800;line-height:22px;text-align:center;
+      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;
+    `;
+    root.appendChild(badge);
+
+    const body = document.createElement('div');
+    body.style.cssText = `
+      width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;
+      border:3px solid ${options.selected ? '#10b981' : '#fff'};
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
+    `;
+    const img = document.createElement('img');
+    img.src = PENDING_AI_MARKER_ICON;
+    img.alt = pendingScore.label;
+    img.width = size;
+    img.height = size;
+    img.style.cssText = 'object-fit:cover;pointer-events:none;display:block;';
+    body.appendChild(img);
+    root.appendChild(body);
+
+    const tail = document.createElement('div');
+    tail.style.cssText = `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid ${pendingScore.bg};margin-top:-2px;`;
+    root.appendChild(tail);
+
+    root.title = property.propertyTitle || property.address || 'AI 분석 준비 중';
+
+    root.addEventListener('mouseenter', () => {
+      if (!options.selected) root.style.transform = 'scale(1.12)';
+    });
+    root.addEventListener('mouseleave', () => {
+      root.style.transform = options.selected ? 'scale(1.18)' : 'scale(1)';
+    });
+
+    return root;
+  }
+
+  if (property.markerKind === 'presale') {
+    const badgeLabel = formatPresaleMarkerBadge(property.presaleDDay);
+    if (badgeLabel) {
+      appendMapBadge(root, badgeLabel, {
+        bg: PRESALE_DDAY_BADGE_BG,
+        textColor: '#ffffff',
+        title: `${badgeLabel} · ${property.propertyTitle || '분양'}`,
+        fontSize: badgeLabel.length > 4 ? 10 : 11,
+      });
+    }
+    appendIconMarkerBody(root, size, PRESALE_MARKER_ICON, '분양', options.selected);
+    appendMarkerTail(root, PRESALE_TAIL_COLOR);
+    root.title = property.propertyTitle || property.address || '분양';
+    attachMarkerHover(root, options.selected);
+    return root;
+  }
 
   if (property.riskScore > 0 && catKey !== 'gosi') {
     const badge = document.createElement('div');
@@ -238,6 +372,7 @@ export function createMarkerElement(
 }
 
 export const LEGEND_ITEMS = [
+  { icon: '/0.svg', label: '준비' },
   { icon: '/70.svg', label: '우수' },
   { icon: '/50.svg', label: '보통' },
   { icon: '/30.svg', label: '주의' },

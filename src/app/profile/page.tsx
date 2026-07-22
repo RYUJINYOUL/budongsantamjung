@@ -67,7 +67,7 @@ const getScoreBadgeClasses = (score: string | undefined | null) => {
 
 const formatScoreLabel = (score: string | undefined | null) => {
     const n = parseFloat(score || '0');
-    if (!score || Number.isNaN(n) || n <= 0) return null;
+    if (!score || Number.isNaN(n) || n <= 0) return '준비';
     return `${Math.round(n)}점`;
 };
 
@@ -178,24 +178,15 @@ function ProfilePageContent() {
     }, [router]);
 
     useEffect(() => {
-        if (user) {
+        if (!user) return;
+        if (activeTab === 'favorites') {
             loadFavorites();
+        } else if (activeTab === 'my-analyses') {
             loadMyAnalyses();
+        } else if (activeTab === 'my-discoveries') {
             loadMyDiscoveries();
         }
-    }, [user]);
-
-    useEffect(() => {
-        if (user && activeTab === 'favorites') {
-            loadFavorites();
-        }
-        if (user && activeTab === 'my-analyses') {
-            loadMyAnalyses();
-        }
-        if (user && activeTab === 'my-discoveries') {
-            loadMyDiscoveries();
-        }
-    }, [activeTab]);
+    }, [user, activeTab]);
 
     const loadFavorites = async (page = 1) => {
         if (!user) return;

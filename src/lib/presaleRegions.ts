@@ -46,6 +46,6 @@ export type PresaleRegion = (typeof PRESALE_REGIONS)[number];
 
 export const PRESALE_TABS = [
   { id: 'private' as const, label: '민간분양' },
-  { id: 'public' as const, label: 'LH 공공분양' },
+  { id: 'public' as const, label: 'LH분양' },
   { id: 'results' as const, label: '분양결과' },
 ];

@@ -64,16 +64,28 @@ export interface PropertyCardProps {
 // 유틸
 // ────────────────────────────────────────────────
 
+/** AI 종합 점수 — 높을수록 우수 (mapMarkers·지도 마커와 동일) */
 function getRiskConfig(score: string | undefined | null): {
   label: string;
   bg: string;
   text: string;
   border: string;
 } {
-  const n = parseInt(score || '0');
-  if (n > 70) return { label: '고위험', bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-100' };
-  if (n > 40) return { label: '주의', bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-100' };
-  return { label: '양호', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' };
+  const n = parseInt(score || '0', 10);
+  if (n >= 70) return { label: '우수', bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100' };
+  if (n >= 40) return { label: '보통', bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-100' };
+  if (n > 0) return { label: '주의', bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-100' };
+  return { label: '준비', bg: 'bg-slate-50', text: 'text-slate-500', border: 'border-slate-100' };
+}
+
+function formatRiskScoreDisplay(score: string | undefined | null): string {
+  const n = parseInt(score || '0', 10);
+  if (Number.isNaN(n) || n <= 0) return '준비';
+  return String(n);
+}
+
+function hasRiskScore(score: string | undefined | null): boolean {
+  return score != null && score !== '';
 }
 
 function getRiskConfigDark(score: string | undefined | null): {
@@ -81,10 +93,17 @@ function getRiskConfigDark(score: string | undefined | null): {
   text: string;
   border: string;
 } {
-  const n = parseInt(score || '0');
-  if (n > 70) return { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'border-rose-500/30' };
-  if (n > 40) return { bg: 'bg-amber-500/20', text: 'text-amber-300', border: 'border-amber-500/30' };
-  return { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/30' };
+  const n = parseInt(score || '0', 10);
+  if (n >= 70) return { bg: 'bg-emerald-500/20', text: 'text-emerald-300', border: 'border-emerald-500/30' };
+  if (n >= 40) return { bg: 'bg-sky-500/20', text: 'text-sky-300', border: 'border-sky-500/30' };
+  if (n > 0) return { bg: 'bg-rose-500/20', text: 'text-rose-300', border: 'border-rose-500/30' };
+  return { bg: 'bg-slate-700', text: 'text-slate-400', border: 'border-slate-600' };
+}
+
+function formatDetectiveNote(note?: string): string | undefined {
+  if (!note) return note;
+  if (note === '데이터 분석이 완료되었습니다.') return '데이터 분석 완료 - AI분석 준비 중입니다.';
+  return note;
 }
 
 function formatDate(dateString?: string): string {
@@ -96,14 +115,22 @@ function formatDate(dateString?: string): string {
   });
 }
 
-function formatPyeong(sqm: number): number {
-  return Math.round(sqm * 0.3025);
+function formatExclusiveAreaValue(exclusiveArea?: number | null, area?: number | null): string {
+  const displayArea = area ?? exclusiveArea;
+  if (displayArea == null) return '-';
+  const sqmInt = Math.round(Number(displayArea));
+  if (!Number.isFinite(sqmInt) || sqmInt <= 0) return '-';
+  return `${sqmInt}㎡`;
 }
 
-function formatRepresentativeArea(exclusiveArea?: number | null, area?: number | null): string {
-  const displayArea = area || exclusiveArea;
-  if (!displayArea) return '-';
-  return `전용 ${displayArea}㎡(${formatPyeong(displayArea)}평)`;
+function formatRiseRate6m(riseRate6m?: number | null): string {
+  if (riseRate6m == null) return '-';
+  return `${riseRate6m > 0 ? '+' : ''}${riseRate6m}%`;
+}
+
+function formatAvgPrice1m(avgPrice1m?: number | null): string {
+  if (avgPrice1m == null || avgPrice1m <= 0) return '-';
+  return `${(avgPrice1m / 10000).toFixed(1)}억`;
 }
 
 // ────────────────────────────────────────────────
@@ -179,15 +206,34 @@ export default function PropertyCard({
         {/* 상단: 제목 + 리스크 */}
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex-1 min-w-0">
-            <h3
-              className={[
-                'font-bold text-slate-900 tracking-tight truncate leading-tight',
-                'group-hover:text-emerald-600 transition-colors',
-                isCompact ? 'text-sm' : 'text-[15px]',
-              ].join(' ')}
-            >
-              {data.propertyTitle || '부동산탐정 판독'}
-            </h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3
+                className={[
+                  'font-bold text-slate-900 tracking-tight truncate leading-tight flex-1 min-w-0',
+                  'group-hover:text-emerald-600 transition-colors',
+                  isCompact ? 'text-sm' : 'text-[15px]',
+                ].join(' ')}
+              >
+                {data.propertyTitle || '부동산탐정 판독'}
+              </h3>
+              {isApartment && hasRiskScore(riskScore) && (
+                <span
+                  className={[
+                    'shrink-0 text-[11px] font-black px-1.5 py-0.5 rounded-md border tabular-nums',
+                    riskLight.bg,
+                    riskLight.text,
+                    riskLight.border,
+                  ].join(' ')}
+                  title={
+                    formatRiskScoreDisplay(riskScore) === '준비'
+                      ? 'AI 분석 준비 중'
+                      : `AI ${riskLight.label} ${riskScore}점`
+                  }
+                >
+                  {formatRiskScoreDisplay(riskScore)}
+                </span>
+              )}
+            </div>
             {data.location?.name && (
               <p className="text-xs text-slate-400 truncate font-medium mt-0.5">
                 {data.location.name}
@@ -200,7 +246,7 @@ export default function PropertyCard({
               <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">
                 분석완료
               </span>
-              {riskScore && (
+              {hasRiskScore(riskScore) && (
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
                   <span
@@ -211,7 +257,7 @@ export default function PropertyCard({
                       riskLight.border,
                     ].join(' ')}
                   >
-                    {riskScore}
+                    {formatRiskScoreDisplay(riskScore)}
                   </span>
                 </div>
               )}
@@ -225,19 +271,19 @@ export default function PropertyCard({
             <div>
               <p className="text-[10px] text-slate-400 font-bold">6개월</p>
               <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-500' : (data.riseRate6m || 0) < 0 ? 'text-blue-500' : 'text-slate-600'}`}>
-                {data.riseRate6m != null ? `${data.riseRate6m > 0 ? '+' : ''}${data.riseRate6m}%` : '-'}
+                {formatRiseRate6m(data.riseRate6m)}
               </p>
             </div>
             <div className="border-x border-slate-200/60 flex flex-col justify-center">
-              <p className="text-[10px] text-slate-400 font-bold">평수</p>
-              <p className="text-[11px] font-extrabold text-slate-700 mt-1 leading-tight">
-                {formatRepresentativeArea(data.exclusiveArea, data.area)}
+              <p className="text-[10px] text-slate-400 font-bold">전용면적</p>
+              <p className="text-xs font-extrabold text-slate-700 mt-1 leading-tight">
+                {formatExclusiveAreaValue(data.exclusiveArea, data.area)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-slate-400 font-bold">최근 1개월 실거래가</p>
+              <p className="text-[10px] text-slate-400 font-bold">최근 1개월</p>
               <p className="text-xs font-extrabold text-slate-700 mt-1">
-                {data.avgPrice1m ? `${(data.avgPrice1m / 10000).toFixed(1)}억` : '-'}
+                {formatAvgPrice1m(data.avgPrice1m)}
               </p>
             </div>
           </div>
@@ -245,7 +291,7 @@ export default function PropertyCard({
           data.detectiveNote && (
             <div className="bg-slate-50 border border-slate-100/50 rounded-xl p-2.5 mb-2.5">
               <p className="text-[12px] text-slate-600 font-medium line-clamp-2 leading-relaxed">
-                {data.detectiveNote}
+                {formatDetectiveNote(data.detectiveNote)}
               </p>
             </div>
           )
@@ -308,21 +354,35 @@ export default function PropertyCard({
       {/* 상단: 제목 + 리스크 + 찜 */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <h3
-            className={[
-              'font-bold text-white truncate group-hover:text-emerald-300 transition-colors',
-              isCompact ? 'text-xs' : 'text-sm',
-            ].join(' ')}
-          >
-            {data.propertyTitle || '부동산탐정 판독'}
-          </h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3
+              className={[
+                'font-bold text-white truncate group-hover:text-emerald-300 transition-colors flex-1 min-w-0',
+                isCompact ? 'text-xs' : 'text-sm',
+              ].join(' ')}
+            >
+              {data.propertyTitle || '부동산탐정 판독'}
+            </h3>
+            {isApartment && hasRiskScore(riskScore) && (
+              <span
+                className={[
+                  'shrink-0 text-[11px] font-black px-1.5 py-0.5 rounded-md border tabular-nums',
+                  riskDark.bg,
+                  riskDark.text,
+                  riskDark.border,
+                ].join(' ')}
+              >
+                {formatRiskScoreDisplay(riskScore)}
+              </span>
+            )}
+          </div>
           {data.location?.name && (
             <p className="text-xs text-slate-400 truncate mt-0.5">{data.location.name}</p>
           )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {!isApartment && riskScore && (
+          {!isApartment && hasRiskScore(riskScore) && (
             <span
               className={[
                 'text-xs font-bold px-2 py-0.5 rounded-lg border',
@@ -331,7 +391,7 @@ export default function PropertyCard({
                 riskDark.border,
               ].join(' ')}
             >
-              {riskScore}
+              {formatRiskScoreDisplay(riskScore)}
             </span>
           )}
           {/* 찜 버튼 */}
@@ -367,26 +427,26 @@ export default function PropertyCard({
           <div>
             <p className="text-[10px] text-slate-400 font-bold">6개월</p>
             <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-400' : (data.riseRate6m || 0) < 0 ? 'text-blue-400' : 'text-slate-300'}`}>
-              {data.riseRate6m != null ? `${data.riseRate6m > 0 ? '+' : ''}${data.riseRate6m}%` : '-'}
+              {formatRiseRate6m(data.riseRate6m)}
             </p>
           </div>
           <div className="border-x border-slate-700/60 flex flex-col justify-center">
-            <p className="text-[10px] text-slate-400 font-bold">평수</p>
-            <p className="text-[11px] font-extrabold text-slate-300 mt-1 leading-tight">
-              {formatRepresentativeArea(data.exclusiveArea, data.area)}
+            <p className="text-[10px] text-slate-400 font-bold">전용면적</p>
+            <p className="text-xs font-extrabold text-slate-300 mt-1 leading-tight">
+              {formatExclusiveAreaValue(data.exclusiveArea, data.area)}
             </p>
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 font-bold">최근 1개월 실거래가</p>
+            <p className="text-[10px] text-slate-400 font-bold">최근 1개월</p>
             <p className="text-xs font-extrabold text-slate-300 mt-1">
-              {data.avgPrice1m ? `${(data.avgPrice1m / 10000).toFixed(1)}억` : '-'}
+              {formatAvgPrice1m(data.avgPrice1m)}
             </p>
           </div>
         </div>
       ) : (
         data.detectiveNote && (
           <p className="text-xs text-emerald-400 font-semibold line-clamp-1 mb-2">
-            🕵️ {data.detectiveNote}
+            🕵️ {formatDetectiveNote(data.detectiveNote)}
           </p>
         )
       ))}

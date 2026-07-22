@@ -7,6 +7,11 @@ import { auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { isAdminUser } from '../lib/adminUids';
 
+const EMERALD_ICON_FILTER =
+  'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)';
+const SLATE_ICON_FILTER =
+  'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)';
+
 const NAV_ITEMS = [
   {
     id: 'home',
@@ -127,11 +132,9 @@ function SideNavInner() {
                         alt={item.label}
                         className="w-5 h-5 lg:w-6 lg:h-6 object-contain transition-all"
                         style={
-                          active
-                            ? { filter: 'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)' } // emerald-600 / emerald-700
-                            : (item.id === 'ranking'
-                              ? { filter: 'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)' } // 랭킹은 항상 녹색 고정
-                              : { filter: 'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)' }) // slate-500
+                          active || item.id === 'analyze'
+                            ? { filter: EMERALD_ICON_FILTER }
+                            : { filter: SLATE_ICON_FILTER }
                         }
                       />
                     </span>

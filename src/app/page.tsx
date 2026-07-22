@@ -363,15 +363,19 @@ function HomePageContent() {
     }
     return filteredAnalyses
       .filter(a => a.lat != null && a.lng != null)
-      .map(a => ({
-        id: a.id,
-        address: a.location?.address || '주소 없음',
-        propertyTitle: a.propertyTitle,
-        category: a.category,
-        riskScore: parseFloat(a.propertyGrade?.riskScore || '0'),
-        lat: a.lat,
-        lng: a.lng,
-      }));
+      .map(a => {
+        const riskScore = parseFloat(a.propertyGrade?.riskScore || '0');
+        return {
+          id: a.id,
+          address: a.location?.address || '주소 없음',
+          propertyTitle: a.propertyTitle,
+          category: a.category,
+          riskScore,
+          pendingAi: riskScore <= 0,
+          lat: a.lat,
+          lng: a.lng,
+        };
+      });
   }, [filteredAnalyses, activePanel, rankingProperties, rankingGosiPoints, searchParams]);
 
   const selectedMapProperty = useMemo(() => {
@@ -401,12 +405,14 @@ function HomePageContent() {
       };
     }
     if (!selectedProperty) return null;
+    const riskScore = parseFloat(selectedProperty.propertyGrade?.riskScore || '0');
     return {
       id: selectedProperty.id,
       address: selectedProperty.location?.address || '주소 없음',
       propertyTitle: selectedProperty.propertyTitle,
       category: selectedProperty.category,
-      riskScore: parseFloat(selectedProperty.propertyGrade?.riskScore || '0'),
+      riskScore,
+      pendingAi: riskScore <= 0,
       lat: selectedProperty.lat,
       lng: selectedProperty.lng,
     };
@@ -863,14 +869,17 @@ function HomePageContent() {
                       <p className="text-sm text-slate-700 font-semibold truncate">{selectedProperty.propertyTitle}</p>
                       <p className="text-xs text-slate-500 truncate">{selectedProperty.location?.name}</p>
                     </div>
-                    {selectedProperty.propertyGrade?.riskScore && (() => {
-                      const scoreColors = getScoreColors(parseFloat(selectedProperty.propertyGrade.riskScore));
+                    {selectedProperty.propertyGrade?.riskScore != null && (() => {
+                      const raw = selectedProperty.propertyGrade.riskScore;
+                      const n = parseFloat(raw);
+                      const display = !n || n <= 0 ? '준비' : raw;
+                      const scoreColors = getScoreColors(n > 0 ? n : 0);
                       return (
                         <span
                           className="text-xs font-bold px-2 py-1 rounded-lg shrink-0 border border-white/30 shadow-sm"
                           style={{ backgroundColor: scoreColors.bg, color: scoreColors.text }}
                         >
-                          {selectedProperty.propertyGrade.riskScore}
+                          {display}
                         </span>
                       );
                     })()}

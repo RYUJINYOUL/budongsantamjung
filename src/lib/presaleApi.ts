@@ -140,14 +140,15 @@ export function encodePresaleId(houseManageNo: string, pblancNo: string) {
   return `${encodeURIComponent(houseManageNo)}__${encodeURIComponent(pblancNo)}`;
 }
 
-export function getPresaleItemHref(item: PresaleListItem) {
+export function getPresaleItemHref(item: PresaleListItem, listQuery?: string) {
   if (item.itemKind === 'redev') {
     const filter = item.discoverFilter || item.projectType || '재개발';
     const q = encodeURIComponent(item.houseName);
     return `/discover?filter=${encodeURIComponent(filter)}&stage=5&q=${q}`;
   }
   if (!item.houseManageNo || !item.pblancNo) return '/presale';
-  return `/presale/${encodePresaleId(item.houseManageNo, item.pblancNo)}`;
+  const base = `/presale/${encodePresaleId(item.houseManageNo, item.pblancNo)}`;
+  return listQuery ? `${base}?${listQuery}` : base;
 }
 
 export function buildRankingHref(detail: { address?: string | null; lawdCd?: string | null; rankingSigunguName?: string | null }) {
