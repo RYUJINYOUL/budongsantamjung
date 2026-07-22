@@ -15,6 +15,17 @@ function resolveGroupKey(aptSeq: string, pnu?: string | null) {
     return `apt:${aptSeq}`;
 }
 
+async function buildAuthHeaders(): Promise<Record<string, string>> {
+    const user = auth.currentUser;
+    if (!user) return {};
+    try {
+        const idToken = await user.getIdToken();
+        return { Authorization: `Bearer ${idToken}` };
+    } catch {
+        return {};
+    }
+}
+
 export default function ApartmentClientPage({ aptSeq }: { aptSeq: string }) {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -28,69 +39,109 @@ export default function ApartmentClientPage({ aptSeq }: { aptSeq: string }) {
     const [aptName, setAptName] = useState('아파트 단지');
     const [initialReportData, setInitialReportData] = useState<any>(null);
 
+    const redirectToLogin = useCallback(() => {
+        const returnUrl = typeof window !== 'undefined'
+            ? `${window.location.pathname}${window.location.search}`
+            : '/';
+        router.replace(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
+    }, [router]);
+
+    const prefetchReportDetail = useCallback(async (
+        reportId: string,
+        headers: Record<string, string>,
+    ) => {
+        const detailRes = await fetch(`/api/land/detective/report/${reportId}`, { headers });
+        if (detailRes.status === 403) {
+            redirectToLogin();
+            return null;
+        }
+        if (!detailRes.ok) return null;
+        return detailRes.json();
+    }, [redirectToLogin]);
+
     const loadReports = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const user = auth.currentUser;
-            if (!user) {
-                router.replace('/login');
-                return;
-            }
-            const idToken = await user.getIdToken();
+            const headers = await buildAuthHeaders();
             const groupKey = resolveGroupKey(aptSeq, pnu);
             const encoded = encodeURIComponent(groupKey);
+
             const res = await fetch(
                 `/api/land/detective/apartment-groups/${encoded}/reports?aiCompletedOnly=1`,
-                { headers: { Authorization: `Bearer ${idToken}` } },
+                { headers },
             );
-            if (!res.ok) throw new Error('단지 분석 이력을 불러오지 못했습니다.');
-            const data = await res.json();
 
-            const completedList: EmbeddedApartmentReport[] = data.reports || [];
-            const latestForTabs = data.latestReportId as string | null;
-            const latestCompleted = data.latestCompletedReportId as string | null;
+            let completedList: EmbeddedApartmentReport[] = [];
+            let latestForTabs: string | null = null;
+            let latestCompleted: string | null = null;
+            let groupAptName = '아파트 단지';
 
-            if (!latestForTabs && completedList.length === 0) {
+            if (res.ok) {
+                const data = await res.json();
+                completedList = data.reports || [];
+                latestForTabs = data.latestReportId ?? null;
+                latestCompleted = data.latestCompletedReportId ?? null;
+                groupAptName = data.aptName || completedList[0]?.bldNm || groupAptName;
+            }
+
+            const reportInList = reportIdParam && completedList.some((r) => r.id === reportIdParam);
+            const initialId = reportIdParam && (reportIdParam === latestForTabs || reportInList)
+                ? reportIdParam
+                : (latestCompleted || latestForTabs || reportIdParam);
+
+            // URL reportId 직접 접근(공유 링크·시크릿): public 리포트는 비로그인 조회
+            if (reportIdParam && !reportInList && !latestForTabs && completedList.length === 0) {
+                const detailData = await prefetchReportDetail(reportIdParam, headers);
+                if (detailData) {
+                    setInitialReportData(detailData);
+                    setSelectedReportId(reportIdParam);
+                    setAptName(
+                        detailData.report?.bld_nm
+                        || detailData.report?.propertyTitle
+                        || groupAptName,
+                    );
+                    setAiReports([]);
+                    return;
+                }
+            }
+
+            if (!latestForTabs && completedList.length === 0 && !reportIdParam) {
                 setAiReports([]);
                 setError('이 단지의 분석 이력이 없습니다.');
                 return;
             }
 
-            const initialId = reportIdParam && (reportIdParam === latestForTabs || completedList.some((r) => r.id === reportIdParam))
-                ? reportIdParam
-                : (latestCompleted || latestForTabs);
+            if (!initialId) {
+                setAiReports([]);
+                setError('분석 이력을 불러올 수 없습니다.');
+                return;
+            }
 
-            // 최초 활성화할 리포트의 상세 데이터를 미리 조회(Pre-fetch)하여 이중 로딩 현상 방지
             if (initialId) {
-                try {
-                    const detailRes = await fetch(
-                        `/api/land/detective/report/${initialId}`,
-                        { headers: { Authorization: `Bearer ${idToken}` } }
-                    );
-                    if (detailRes.ok) {
-                        const detailData = await detailRes.json();
-                        setInitialReportData(detailData);
-                    }
-                } catch (e) {
-                    console.error('초기 상세 리포트 Pre-fetch 실패:', e);
+                const detailData = await prefetchReportDetail(initialId, headers);
+                if (detailData === null && !res.ok) {
+                    throw new Error('단지 분석 이력을 불러오지 못했습니다.');
+                }
+                if (detailData) {
+                    setInitialReportData(detailData);
                 }
             }
 
             setAiReports(completedList);
             setSelectedReportId(initialId);
-            setAptName(data.aptName || completedList[0]?.bldNm || '아파트 단지');
+            setAptName(groupAptName);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : '오류가 발생했습니다.');
             setAiReports([]);
         } finally {
             setLoading(false);
         }
-    }, [aptSeq, pnu, reportIdParam, router]);
+    }, [aptSeq, pnu, reportIdParam, prefetchReportDetail]);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (user) => {
-            if (user) loadReports();
+        const unsub = onAuthStateChanged(auth, () => {
+            loadReports();
         });
         return () => unsub();
     }, [loadReports]);
