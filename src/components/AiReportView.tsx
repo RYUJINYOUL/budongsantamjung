@@ -3145,8 +3145,8 @@ export default function AiReportView({
                             <Building className="w-4 h-4" style={{ color: accentColor }} />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-white text-base font-bold tracking-tight">아파트 프리미엄 검증 및 분석</span>
-                            <span className="text-white/38 text-[11px] font-medium">Apartment Valuation Ledger · {aptTarget.aptName || ''}</span>
+                            <span className="text-white text-base font-bold tracking-tight">프리미엄 분석</span>
+                            <span className="text-white/38 text-[11px] font-medium">{aptTarget.aptName || ''}</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -3162,7 +3162,7 @@ export default function AiReportView({
                                 }}
                             >
                                 <Map className="w-3.5 h-3.5" />
-                                <span>지도 보기</span>
+                                <span>지도</span>
                             </button>
                         )}
                         <div style={{
