@@ -1811,7 +1811,12 @@ function formatEmbeddedReportPrice(r: EmbeddedApartmentReport) {
             ? `${(dep / 100000000).toFixed(dep % 100000000 === 0 ? 0 : 1)}억`
             : `${Math.round(dep / 10000).toLocaleString()}만`;
         if (r.monthlyRent != null && Number(r.monthlyRent) > 0) {
-            return `보 ${depStr} / 월 ${Number(r.monthlyRent).toLocaleString()}만`;
+            const rent = Number(r.monthlyRent);
+            // deposit과 동일하게 원 단위 → 만원 표기
+            const rentStr = rent >= 10000
+                ? `${Math.round(rent / 10000).toLocaleString()}만`
+                : `${rent.toLocaleString()}원`;
+            return `보 ${depStr} / 월 ${rentStr}`;
         }
         return `전세 ${depStr}`;
     }
