@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ShortsDownloadBar from './ShortsDownloadBar';
 import ShortsStudioTab from './shorts/ShortsStudioTab';
@@ -17,7 +17,13 @@ import ShortsNativeFrames, {
 } from './shorts/ShortsNativeFrames';
 import { Toaster, toast } from 'react-hot-toast';
 import { ChevronLeft, ChevronRight, ImageDown, Loader2, ZoomIn, X } from 'lucide-react';
-import { buildShortsSceneData, SHORTS_HEIGHT, SHORTS_WIDTH } from '../lib/shortsSceneData';
+import {
+    buildShortsSceneData,
+    computeShortsZoomScale,
+    computeShortsZoomScaleFromViewport,
+    SHORTS_HEIGHT,
+    SHORTS_WIDTH,
+} from '../lib/shortsSceneData';
 import { downloadScenePng, getShortsSceneMeta } from '../lib/shortsFrameDownload';
 
 interface ShortsFrameViewProps {
@@ -63,9 +69,11 @@ export default function ShortsFrameView({
     const [fontsReady, setFontsReady] = useState(false);
     const [downloadingSceneId, setDownloadingSceneId] = useState<number | null>(null);
     const [isZoomOpen, setIsZoomOpen] = useState(false);
+    const [studioZoomOpen, setStudioZoomOpen] = useState(false);
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [zoomScale, setZoomScale] = useState(0.4);
     const zoomScrollRef = useRef<HTMLDivElement>(null);
+    const zoomStageRef = useRef<HTMLDivElement>(null);
     const isProgrammaticScrollRef = useRef(false);
 
     const sceneData = useMemo(
@@ -81,12 +89,12 @@ export default function ShortsFrameView({
     );
 
     const updateZoomScale = useCallback(() => {
-        const vh = window.innerHeight;
-        const vw = window.innerWidth;
-        const targetH = vh * 0.78;
-        const targetW = vw - 16;
-        const scale = Math.min(targetH / SHORTS_HEIGHT, targetW / SHORTS_WIDTH);
-        setZoomScale(scale);
+        const stage = zoomStageRef.current;
+        if (stage && stage.clientWidth > 0 && stage.clientHeight > 0) {
+            setZoomScale(computeShortsZoomScale(stage.clientWidth, stage.clientHeight));
+            return;
+        }
+        setZoomScale(computeShortsZoomScaleFromViewport());
     }, []);
 
     const zoomViewerHeight = SHORTS_HEIGHT * zoomScale;
@@ -116,6 +124,12 @@ export default function ShortsFrameView({
         };
     }, [analyzeId]);
 
+    useEffect(() => {
+        if (activeTab !== 'studio') {
+            setStudioZoomOpen(false);
+        }
+    }, [activeTab]);
+
     const scrollToCarouselIndex = useCallback((idx: number, behavior: ScrollBehavior = 'auto') => {
         const container = zoomScrollRef.current;
         if (!container || scenes.length === 0) return;
@@ -139,10 +153,22 @@ export default function ShortsFrameView({
         }
     }, [scenes.length]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isZoomOpen) return;
 
         updateZoomScale();
+        const stage = zoomStageRef.current;
+        if (!stage || typeof ResizeObserver === 'undefined') return;
+
+        const observer = new ResizeObserver(() => {
+            updateZoomScale();
+        });
+        observer.observe(stage);
+        return () => observer.disconnect();
+    }, [isZoomOpen, updateZoomScale]);
+
+    useEffect(() => {
+        if (!isZoomOpen) return;
 
         const onResize = () => {
             updateZoomScale();
@@ -188,7 +214,10 @@ export default function ShortsFrameView({
         const idx = scenes.findIndex((s) => s.id === sceneId);
         setIsZoomOpen(true);
         requestAnimationFrame(() => {
-            scrollToCarouselIndex(idx >= 0 ? idx : 0, 'auto');
+            requestAnimationFrame(() => {
+                updateZoomScale();
+                scrollToCarouselIndex(idx >= 0 ? idx : 0, 'auto');
+            });
         });
     };
 
@@ -361,6 +390,7 @@ export default function ShortsFrameView({
                         analyzeId={analyzeId}
                         sceneData={sceneData}
                         showVideoStudio={showVideoStudio}
+                        onZoomOpenChange={setStudioZoomOpen}
                     />
                 ) : showPreviewUi ? (
                     <div className="shorts-capture-root flex flex-wrap justify-center gap-4 sm:gap-6 max-w-[1200px] mx-auto w-full">
@@ -443,7 +473,7 @@ export default function ShortsFrameView({
                             </button>
                         </div>
 
-                        <div className="relative flex-1 min-h-0 min-w-0 w-full">
+                        <div ref={zoomStageRef} className="relative flex-1 min-h-0 min-w-0 w-full">
                             <button
                                 type="button"
                                 onClick={goPrevCarousel}
@@ -523,7 +553,7 @@ export default function ShortsFrameView({
                 </div>
             )}
 
-            {showPreviewUi && (
+            {showPreviewUi && !isZoomOpen && !studioZoomOpen && (
                 <ShortsDownloadBar
                     analyzeId={analyzeId}
                     isApartment={sceneData.isApartment}

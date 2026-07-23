@@ -405,7 +405,7 @@ export function extractAptRegionLabel(address: string | null | undefined): strin
 /** 아파트명 정규화 — 정보없음·빈값이면 빈 문자열 */
 export function sanitizeAptName(aptName?: string | null): string {
   const name = (aptName || '').trim();
-  if (!name || name === '정보없음' || name === '-') return '';
+  if (!name || name === '정보없음' || name === '정보 없음' || name === '-') return '';
   return name;
 }
 

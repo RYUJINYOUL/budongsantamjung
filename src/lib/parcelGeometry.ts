@@ -50,3 +50,31 @@ export function parseParcelPolygonFromVworldResponse(data: unknown): LatLngPoint
   if (!feature || typeof feature !== 'object') return null;
   return parseParcelPolygon((feature as { geometry?: unknown }).geometry);
 }
+
+/** 폴리곤 무게중심 */
+export function computePolygonCentroid(points: LatLngPoint[]): { lat: number; lng: number } | null {
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length;
+    const cross = points[i].lng * points[j].lat - points[j].lng * points[i].lat;
+    area += cross;
+    cx += (points[i].lng + points[j].lng) * cross;
+    cy += (points[i].lat + points[j].lat) * cross;
+  }
+
+  area *= 0.5;
+  if (Math.abs(area) < 1e-12) {
+    const lat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+    const lng = points.reduce((sum, p) => sum + p.lng, 0) / points.length;
+    return { lat, lng };
+  }
+
+  cx /= (6 * area);
+  cy /= (6 * area);
+  return { lat: cy, lng: cx };
+}

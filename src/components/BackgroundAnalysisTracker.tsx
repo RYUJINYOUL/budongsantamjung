@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Search, X, Clock, CheckCircle2 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { buildAnalyzeReportHref, getViewingReportId } from '../lib/reportNavigation';
 
 interface ActiveAnalysis {
     id: string;
@@ -38,9 +39,9 @@ function dismissItem(id: string) {
     return updated;
 }
 
-function getCurrentReportId(pathname: string): string | null {
-    const match = pathname.match(/^\/analyze\/([^/]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
+/** legacy wrapper — apartment ?reportId= 포함 */
+function getCurrentReportId(pathname: string, reportIdParam: string | null): string | null {
+    return getViewingReportId(pathname, reportIdParam);
 }
 
 /** 서버에 reportId 상태 조회 */
@@ -62,10 +63,15 @@ async function checkReportStatus(id: string, idToken?: string): Promise<'pending
     }
 }
 
-export default function BackgroundAnalysisTracker() {
+interface BackgroundAnalysisTrackerProps {
+    embedded?: boolean;
+}
+
+export default function BackgroundAnalysisTracker({ embedded = false }: BackgroundAnalysisTrackerProps) {
     const router = useRouter();
     const pathname = usePathname();
-    const currentReportId = getCurrentReportId(pathname);
+    const searchParams = useSearchParams();
+    const currentReportId = getCurrentReportId(pathname, searchParams.get('reportId'));
     const [analyses, setAnalyses] = useState<ActiveAnalysis[]>([]);
     const [ready, setReady] = useState(false);
     const [user, setUser] = useState<User | null>(null);
@@ -193,6 +199,12 @@ export default function BackgroundAnalysisTracker() {
         setAnalyses(dismissItem(id));
     };
 
+    const handleOpenReport = (item: ActiveAnalysis) => {
+        router.push(buildAnalyzeReportHref(item.id));
+        watchedIds.current.delete(item.id);
+        setAnalyses(dismissItem(item.id));
+    };
+
     // 현재 보고 있는 리포트 페이지의 카드는 표시하지 않음 (페이지에서 이미 확인 중)
     const visibleAnalyses = analyses.filter(
         (item) => String(item.id) !== String(currentReportId)
@@ -200,9 +212,7 @@ export default function BackgroundAnalysisTracker() {
 
     if (!ready || visibleAnalyses.length === 0) return null;
 
-    return (
-        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-auto">
-            {visibleAnalyses.map(item => {
+    const cards = visibleAnalyses.map(item => {
                 const categoryLabel =
                     item.category === 'apartment' ? '아파트' :
                     item.category === 'house' ? '주택' :
@@ -221,11 +231,11 @@ export default function BackgroundAnalysisTracker() {
                 return (
                     <div
                         key={item.id}
-                        onClick={() => router.push(`/analyze/${item.id}`)}
-                        className={`backdrop-blur-xl border p-4 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3.5 transition-all cursor-pointer group ${
+                        onClick={isCompleted ? () => handleOpenReport(item) : undefined}
+                        className={`backdrop-blur-xl border p-4 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-start gap-3.5 transition-all group ${
                             isCompleted
-                                ? 'bg-emerald-950/90 border-emerald-500/30 hover:bg-emerald-900/95'
-                                : 'bg-slate-900/90 border-white/10 hover:bg-slate-800/95'
+                                ? 'bg-emerald-950/90 border-emerald-500/30 hover:bg-emerald-900/95 cursor-pointer'
+                                : 'bg-slate-900/90 border-white/10 cursor-default'
                         }`}
                     >
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 relative ${
@@ -263,7 +273,12 @@ export default function BackgroundAnalysisTracker() {
                             {!isCompleted && isWatched && (
                                 <p className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
-                                    {elapsedMin > 0 ? `${elapsedMin}분 ` : ''}{elapsedSec}초 진행 중
+                                    {elapsedMin > 0 ? `${elapsedMin}분 ` : ''}{elapsedSec}초 진행 중 · 완료 후 확인 가능
+                                </p>
+                            )}
+                            {!isCompleted && !isWatched && (
+                                <p className="text-[10px] text-slate-500 mt-1">
+                                    상태 확인 중 · 완료 후 카드를 눌러 확인하세요
                                 </p>
                             )}
                             {isCompleted && (
@@ -275,10 +290,14 @@ export default function BackgroundAnalysisTracker() {
 
                         {isCompleted ? (
                             <button
-                                onClick={(e) => handleDismiss(item.id, e)}
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenReport(item);
+                                }}
                                 className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 transition-colors shrink-0"
                             >
-                                확인
+                                보기
                             </button>
                         ) : (
                             <button
@@ -290,7 +309,15 @@ export default function BackgroundAnalysisTracker() {
                         )}
                     </div>
                 );
-            })}
+            });
+
+    if (embedded) {
+        return <>{cards}</>;
+    }
+
+    return (
+        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 max-w-sm w-full pointer-events-auto">
+            {cards}
         </div>
     );
 }

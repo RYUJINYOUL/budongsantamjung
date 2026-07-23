@@ -12,7 +12,7 @@ import {
   defaultAnalysisDetailInput,
   type AnalysisDetailInput,
 } from '../lib/collectAnalysisInputData';
-import { parseParcelPolygonFromVworldResponse } from '../lib/parcelGeometry';
+import { parseParcelPolygonFromVworldResponse, computePolygonCentroid } from '../lib/parcelGeometry';
 import {
   PANEL_CARD,
   PANEL_CARD_INNER,
@@ -178,6 +178,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [primaryPnu, setPrimaryPnu] = useState<string | null>(null);
+  const [primaryPolygon, setPrimaryPolygon] = useState<{ lat: number; lng: number }[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -270,6 +271,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       setLat(latVal);
       setLng(lngVal);
       setPrimaryPnu(pnu);
+      setPrimaryPolygon(polygon ?? null);
       onLocationSelect?.(latVal, lngVal, addr, polygon);
     }
   }, [externalClickParcel]);
@@ -480,6 +482,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setLocationError(null);
     const { pnu, polygon } = await getPnuAndPolygonFromCoords(latVal, lngVal);
     setPrimaryPnu(pnu);
+    setPrimaryPolygon(polygon ?? null);
     onLocationSelect?.(latVal, lngVal, addr, polygon);
   };
 
@@ -516,6 +519,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setLat(null);
     setLng(null);
     setPrimaryPnu(null);
+    setPrimaryPolygon(null);
     setSearchQuery('');
     setSearchResults([]);
     setIsMultiParcel(false);
@@ -618,6 +622,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       if (pnuList.length > 0) {
         payload.primaryPnu = resolvedPnu;
         payload.pnuList = pnuList;
+        const centroid = primaryPolygon ? computePolygonCentroid(primaryPolygon) : null;
+        if (centroid) {
+          payload.parcelCentroidLat = centroid.lat;
+          payload.parcelCentroidLng = centroid.lng;
+        }
       }
       Object.entries(storeData).forEach(([key, value]) => {
         if (value != null) payload[key] = value;

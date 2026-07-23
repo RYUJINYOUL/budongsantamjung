@@ -22,6 +22,23 @@ import { generateMarketInsights, type MarketInsightItem } from './marketRone';
 
 export const SHORTS_WIDTH = 1080;
 export const SHORTS_HEIGHT = 1920;
+
+/** 줌/썸네일 영역 크기에 맞는 9:16 scale (contain) */
+export function computeShortsZoomScale(containerWidth: number, containerHeight: number): number {
+    if (containerWidth <= 0 || containerHeight <= 0) return 0.35;
+    const horizontalPad = 16;
+    const targetW = Math.max(containerWidth - horizontalPad, 1);
+    const targetH = Math.max(containerHeight, 1);
+    return Math.min(targetH / SHORTS_HEIGHT, targetW / SHORTS_WIDTH);
+}
+
+/** 줌 모달 ref 미준비 시 뷰포트 기준 fallback (헤더·하단 CTA·safe-area·다운로드 바 여유) */
+export function computeShortsZoomScaleFromViewport(): number {
+    if (typeof window === 'undefined') return 0.35;
+    const downloadBarHeight = 72;
+    const chromeHeight = 56 + 88 + downloadBarHeight + 24;
+    return computeShortsZoomScale(window.innerWidth, window.innerHeight - chromeHeight);
+}
 export const SHORTS_BG = '#0a0a0c';
 
 export function formatKoreanCurrency(val: number): string {

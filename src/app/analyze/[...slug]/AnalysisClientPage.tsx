@@ -63,6 +63,14 @@ import {
     buildTenYearHistoryCopyText,
     buildTenYearOutlookKeywordsCopyText,
 } from '../../../lib/shortsSceneData';
+import { AI_ANALYSIS_STEPS } from '../../../lib/aiAnalysisSteps';
+import {
+    completeActiveAiAnalysis,
+    dismissActiveAiAnalysis,
+    readActiveAiAnalyses,
+    registerActiveAiAnalysis,
+    updateActiveAiAnalysis,
+} from '../../../lib/activeAiAnalyses';
 
 // 타입 정의
 interface ComprehensiveRisk {
@@ -2040,18 +2048,6 @@ export default function AnalysisDetailPage({
     }, [shareToast]);
     const propertyId = analysisData?.report?.pnu as string | undefined;
 
-    const aiSteps = [
-        { icon: '/tak/1a.png', label: '실거래가 분석', desc: '주변 동일 면적과 동일사례 실거래가를 분석합니다' },
-        // { icon: '/tak/2a.png', label: '등기부 권리관계 진단', desc: '근저당·압류·가처분 여부를 확인합니다' },
-        { icon: '/tak/2a.png', label: '입지 및 상권 분석', desc: '주변 유동인구와 배후 상권을 검토합니다' },
-        { icon: '/tak/3a.png', label: '가격 거품 산정', desc: '공시지가 대비 호가의 거품률을 계산합니다' },
-        { icon: '/tak/4a.png', label: '법적 리스크 교차검증', desc: '권리 관계와 행정 제약을 확인합니다' },
-        { icon: '/tak/5a.png', label: '물리적 하자 탐지', desc: '시설 노후도와 수선 필요 비용을 추산합니다' },
-        { icon: '/tak/6a.png', label: '네고 전략 수립', desc: '하자 근거로 협상 가능 금액을 산출합니다' },
-        { icon: '/tak/7a.png', label: '계약 방어 특약 생성', desc: '리스크를 막을 필수 특약 문구를 작성합니다' },
-        { icon: '/tak/8a.png', label: '최종 판독서 작성', desc: '탐정의 최종 판결을 정리합니다' },
-    ];
-
     const { images: dataImages, report: dataReport, rawData } = analysisData || {};
     const report = dataReport || analysisData;
     const images = dataImages || analysisData?.images || [];
@@ -2343,7 +2339,6 @@ export default function AnalysisDetailPage({
         setAnalysisData(initialData || null);
         setLoading(!initialData);
         setInitialFetchDone(!!initialData?.rawData);
-        setCollectElapsed(0);
 
         let isMounted = true;
         let timer: NodeJS.Timeout | null = null;
@@ -2496,7 +2491,7 @@ export default function AnalysisDetailPage({
             return;
         }
 
-        router.replace(`/analyze/apartment/${reportId}`);
+        router.replace(`/analyze/${reportId}`);
     }, [
         analysisData?.report?.apt_seq,
         analysisData?.report?.pnu,
@@ -2684,14 +2679,24 @@ export default function AnalysisDetailPage({
     const runAiAnalysis = async () => {
         if (!id || !user) return;
 
+        const reportIdStr = String(Array.isArray(id) ? id[0] : id);
+
         setIsInputModalOpen(false);
         setIsAiAnalyzing(true);
         setAiStep(0);
         setAiElapsed(0);
 
+        registerActiveAiAnalysis({
+            id: reportIdStr,
+            address: analysisData?.report?.address || '주소 정보 없음',
+            category: analysisData?.report?.category || 'apartment',
+            startedAt: Date.now(),
+            currentStep: 0,
+        });
+
         const timer = setInterval(() => setAiElapsed(prev => prev + 1), 1000);
         const stepTimer = setInterval(() => {
-            setAiStep(prev => (prev < aiSteps.length - 1 ? prev + 1 : prev));
+            setAiStep(prev => (prev < AI_ANALYSIS_STEPS.length - 1 ? prev + 1 : prev));
         }, 5000);
 
         try {
@@ -2714,6 +2719,7 @@ export default function AnalysisDetailPage({
                     : 'AI 분석 요청 실패';
 
                 if (errorCode === 'RECENT_ANALYSIS_EXISTS') {
+                    dismissActiveAiAnalysis(reportIdStr);
                     setRecentAnalysisBlocked({
                         message: errorMessage,
                         reportId: errData.reportId != null ? String(errData.reportId) : undefined,
@@ -2722,6 +2728,7 @@ export default function AnalysisDetailPage({
                 }
 
                 if (errorCode === 'NO_TRADE_DATA') {
+                    dismissActiveAiAnalysis(reportIdStr);
                     alert(errorMessage || NO_TRADE_DATA_AI_MESSAGE);
                     return;
                 }
@@ -2731,16 +2738,17 @@ export default function AnalysisDetailPage({
 
             const result = await response.json();
             const newReportId = result.reportId;
+            const finalId = newReportId ? String(newReportId) : reportIdStr;
+            completeActiveAiAnalysis(reportIdStr, finalId !== reportIdStr ? finalId : undefined);
 
             if (newReportId && String(newReportId) !== String(id)) {
                 if (embeddedInApartment) {
                     const aptSeqParam = searchParams.get('aptSeq') || analysisData?.report?.apt_seq || 'pnu';
                     const pnuVal = searchParams.get('pnu') || analysisData?.report?.pnu;
                     const pnuParam = pnuVal ? `?pnu=${encodeURIComponent(pnuVal)}&reportId=${newReportId}` : `?reportId=${newReportId}`;
-                    // URL을 변경하면 ApartmentClientPage가 알아서 새로운 reportId로 이력을 다시 로드하여 세팅합니다.
                     router.replace(`/apartment/${aptSeqParam}${pnuParam}`);
                 } else {
-                    router.replace(`/analyze/apartment/${newReportId}`);
+                    router.replace(`/analyze/${newReportId}`);
                 }
             } else {
                 await fetchAnalysis();
@@ -2750,6 +2758,7 @@ export default function AnalysisDetailPage({
             setShareToast('AI 탐정의 판독이 완료되었습니다! 🕵️');
         } catch (err: any) {
             console.error(err);
+            dismissActiveAiAnalysis(reportIdStr);
             alert(err.message);
             setError(err.message);
         } finally {
@@ -2933,15 +2942,25 @@ export default function AnalysisDetailPage({
     const isDataCollecting = initialFetchDone && status === 'pending' && !hasRawData;
 
     useEffect(() => {
-        if (!isDataCollecting) {
-            setCollectElapsed(0);
-            return;
+        if (!isAiAnalyzing || !id) return;
+        const reportIdStr = String(Array.isArray(id) ? id[0] : id);
+        updateActiveAiAnalysis(reportIdStr, { currentStep: aiStep });
+    }, [isAiAnalyzing, id, aiStep]);
+
+    useEffect(() => {
+        if (isAiAnalyzing || !id || !analysisData) return;
+        if (!isAiAnalysisCompleted(analysisData)) return;
+        try {
+            const targetId = String(Array.isArray(id) ? id[0] : id);
+            const list = readActiveAiAnalyses();
+            const hasEntry = list.some((item) => String(item.id) === targetId);
+            if (hasEntry) {
+                dismissActiveAiAnalysis(targetId);
+            }
+        } catch (e) {
+            console.error('AI 배경 분석 정리 오류:', e);
         }
-        const timer = setInterval(() => {
-            setCollectElapsed(prev => prev + 1);
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [isDataCollecting]);
+    }, [isAiAnalyzing, id, analysisData]);
 
     useEffect(() => {
         if (!isDataCollecting || !id) return;
@@ -2964,6 +2983,32 @@ export default function AnalysisDetailPage({
             console.error('배경 분석 등록 오류:', e);
         }
     }, [isDataCollecting, id, analysisData]);
+
+    useEffect(() => {
+        if (!isDataCollecting || !id) {
+            setCollectElapsed(0);
+            return;
+        }
+
+        const targetId = String(Array.isArray(id) ? id[0] : id);
+
+        const syncElapsed = () => {
+            try {
+                const stored = localStorage.getItem('active_analyses');
+                const list: Array<{ id: string; startedAt?: number }> = stored ? JSON.parse(stored) : [];
+                const item = list.find((entry) => String(entry.id) === targetId);
+                if (item?.startedAt) {
+                    setCollectElapsed(Math.floor((Date.now() - item.startedAt) / 1000));
+                    return;
+                }
+            } catch { /* noop */ }
+            setCollectElapsed(0);
+        };
+
+        syncElapsed();
+        const timer = setInterval(syncElapsed, 1000);
+        return () => clearInterval(timer);
+    }, [isDataCollecting, id]);
 
     // 수집 완료된 리포트 페이지를 방문하면 트래커에서 자동 제거 (이미 페이지에서 확인 중)
     useEffect(() => {
@@ -3273,19 +3318,10 @@ export default function AnalysisDetailPage({
                             type="button"
                             onClick={handleShare}
                             title="공유"
-                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0"
+                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 overflow-hidden"
                         >
-                            <Share2 className="w-4 h-4 shrink-0" />
+                            <img src="/high/SHARE.png" alt="공유" className="w-5 h-5 object-contain shrink-0" />
                         </button>
-                        <Link
-                            replace
-                            href={buildShortsHref()}
-                            className="relative flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 transition-all bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 border border-violet-400/50 text-white shadow-md shadow-violet-500/25 hover:shadow-violet-500/40 active:scale-[0.98]"
-                            title="카드로 보기"
-                        >
-                            <Video className="w-3.5 h-3.5 shrink-0" />
-                            <span className="hidden sm:inline">카드</span>
-                        </Link>
                         {(() => {
                             const navPnu = report?.pnu || rawData?.pnu || mergedData?.pnu || '';
                             const navAddress = report?.address || '';
@@ -3300,9 +3336,9 @@ export default function AnalysisDetailPage({
                                         type="button"
                                         onClick={() => setIsMapDropdownOpen(!isMapDropdownOpen)}
                                         title="이음"
-                                        className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 cursor-pointer"
+                                        className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 cursor-pointer overflow-hidden"
                                     >
-                                        <Map className="w-4 h-4 text-sky-400 shrink-0" />
+                                        <img src="/high/DATA.png" alt="이음" className="w-5 h-5 object-contain shrink-0" />
                                     </button>
                                     {isMapDropdownOpen && (
                                         <>
@@ -3370,9 +3406,9 @@ export default function AnalysisDetailPage({
                             onClick={() => setIsAiReportCopyOpen(true)}
                             disabled={!aiReportCopyText}
                             title="리포트"
-                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/5"
+                            className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white/5 overflow-hidden"
                         >
-                            <Download className="w-4 h-4 text-sky-400 shrink-0" />
+                            <img src="/high/DAUN.png" alt="리포트" className="w-5 h-5 object-contain shrink-0" />
                         </button>
                         {isApartment && naverKeyword && (
                             <a
@@ -3382,16 +3418,26 @@ export default function AnalysisDetailPage({
                                 title="네이버 부동산"
                                 className="w-9 h-9 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all shrink-0 overflow-hidden"
                             >
-                                <img src="/naver.png" alt="네이버 부동산" className="w-5 h-5 object-contain" />
+                                <img src="/high/nav.png" alt="네이버 부동산" className="w-5 h-5 object-contain" />
                             </a>
                         )}
+                        <Link
+                            replace
+                            href={buildShortsHref()}
+                            className="h-9 flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 transition-all bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 border border-violet-400/50 text-white shadow-md shadow-violet-500/25 hover:shadow-violet-500/40 active:scale-[0.98] overflow-hidden"
+                            title="카드로 보기"
+                        >
+                            <img src="/high/CARD.png" alt="카드" className="w-4 h-4 object-contain shrink-0" />
+                            <span className="hidden sm:inline">카드</span>
+                        </Link>
                         {embeddedInApartment && aiTradeDataAvailable && (
                             <button
                                 type="button"
                                 onClick={handleNewApartmentAnalysis}
-                                className="bg-emerald-500 hover:bg-emerald-400 text-white px-2.5 sm:px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 shadow-md shadow-emerald-500/20 transition-all flex items-center gap-1.5"
+                                title="AI 분석"
+                                className="h-9 flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 transition-all bg-emerald-500 hover:bg-emerald-400 text-white shadow-md shadow-emerald-500/20 active:scale-[0.98] overflow-hidden"
                             >
-                                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                                <img src="/high/AI.png" alt="" className="w-4 h-4 object-contain shrink-0" />
                                 <span className="hidden sm:inline">AI 분석</span>
                             </button>
                         )}
@@ -3438,7 +3484,7 @@ export default function AnalysisDetailPage({
                                         className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 rounded text-[10px] font-bold text-sky-400 transition-colors cursor-pointer"
                                     >
                                         <Map className="w-3.5 h-3.5 text-sky-400" />
-                                        지도 비교
+                                        지도
                                     </button>
                                 )}
                             {isApartment && naverKeyword && (
@@ -3449,7 +3495,7 @@ export default function AnalysisDetailPage({
                                     className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/30 rounded text-[10px] font-bold text-green-400 transition-colors cursor-pointer"
                                 >
                                     <ExternalLink className="w-3 h-3 text-green-400" />
-                                    네이버 매물 보기
+                                    네이버부동산
                                 </a>
                             )}
                             {isApartment && sigunguCd && sigunguName && (
@@ -3458,7 +3504,7 @@ export default function AnalysisDetailPage({
                                     className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 rounded text-[10px] font-bold text-indigo-400 transition-colors cursor-pointer"
                                 >
                                     <TrendingUp className="w-3 h-3 text-indigo-400" />
-                                    '{sigunguName}' 아파트 랭킹보기
+                                    '{sigunguName}' 랭킹
                                 </Link>
                             )}
                         </div>
@@ -3860,9 +3906,21 @@ export default function AnalysisDetailPage({
                                             <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">AI 분석 이력</p>
                                             <h2 className="text-sm sm:text-base font-black text-white mt-1">{embeddedAptName}</h2>
                                         </div>
-                                        <span className="text-[11px] font-bold text-slate-400 shrink-0">
-                                            {embeddedApartmentReports.length}건
-                                        </span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <span className="text-[11px] font-bold text-slate-400">
+                                                {embeddedApartmentReports.length}건
+                                            </span>
+                                            {aiTradeDataAvailable && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleNewApartmentAnalysis}
+                                                    className="h-8 inline-flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 active:scale-[0.98]"
+                                                >
+                                                    <img src="/high/AI.png" alt="" className="w-4 h-4 object-contain shrink-0" />
+                                                    <span>AI 분석</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                     {embeddedApartmentReports.length === 0 ? (
                                         <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
@@ -6332,6 +6390,7 @@ export default function AnalysisDetailPage({
                 <AiAnalysisBottomBar
                     onTriggerAnalysis={handleAiAnalysisClick}
                     isCheckingAccess={isCheckingAccess}
+                    isLoggedIn={!!user}
                     hasAccess={hasAccess}
                     hasPaidToday={hasPaidToday}
                     isDevAccount={isDevAccount}
@@ -6365,37 +6424,28 @@ export default function AnalysisDetailPage({
                     >
                         <div className="w-full max-w-md bg-slate-900/50 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col">
                             <div className="text-center mb-6">
-                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-bold mb-3 animate-pulse">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
-                                    공공데이터 수집 및 분석 중
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-bold mb-3 animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-ping" />
+                                    AI 탐정 분석 중
                                 </div>
-                                <h3 className="text-xl font-black text-white tracking-tight">실시간 데이터 조회 중</h3>
+                                <h3 className="text-xl font-black text-white tracking-tight">계약 전 리스크 검토 중</h3>
                                 <p className="text-xs text-white/50 mt-1.5 font-semibold">
-                                    최신 정부 부처 및 지자체 API에서 실시간 조회 중... ({aiElapsed}초 경과)
+                                    AI가 매물 데이터를 종합 분석하고 있습니다... ({aiElapsed}초 경과)
                                 </p>
                             </div>
 
                             {/* Steps List */}
-                            <div className="space-y-3 my-2">
-                                {[
-                                    { label: '위치 데이터 매칭', desc: '좌표를 기반으로 정확한 필지(PNU)를 식별합니다', start: 0, end: 2 },
-                                    { label: '국가 API 연동', desc: '건축물대장 및 토지특성 데이터를 수집합니다', start: 3, end: 5 },
-                                    { label: '주변 실거래가 수집', desc: '인근 지역의 최근 거래 정보를 필터링합니다', start: 6, end: 8 },
-                                    { label: '공시가격 조회', desc: '연도별 공시지가 및 주택가격을 확인합니다', start: 9, end: 11 },
-                                    { label: '인허가/규제 확인', desc: '토지이용계획 및 개발 행위 제한 사항을 검토합니다', start: 12, end: 14 },
-                                    { label: '인구/통계 데이터 수집', desc: '지역 인구 이동 및 상권 활성도를 분석합니다', start: 15, end: 17 },
-                                    { label: '기초 데이터 조립', desc: '수집된 모든 데이터를 분석용 리포트로 구성합니다', start: 18, end: 20 },
-                                    { label: '수집 완료', desc: '데이터 수집이 완료되었습니다. 상세 페이지로 이동합니다', start: 21, end: 999 },
-                                ].map((step, idx) => {
-                                    const isCompleted = aiElapsed > step.end;
-                                    const isInProgress = aiElapsed >= step.start && aiElapsed <= step.end;
+                            <div className="space-y-3 my-2 max-h-[360px] overflow-y-auto pr-1 custom-scrollbar">
+                                {AI_ANALYSIS_STEPS.map((step, idx) => {
+                                    const isCompleted = idx < aiStep;
+                                    const isInProgress = idx === aiStep;
 
                                     return (
                                         <div
-                                            key={idx}
+                                            key={step.label}
                                             className={`flex gap-3 items-start p-3 rounded-2xl border transition-all ${
                                                 isInProgress
-                                                    ? 'bg-sky-500/5 border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.05)]'
+                                                    ? 'bg-violet-500/5 border-violet-500/30 shadow-[0_0_15px_rgba(139,92,246,0.08)]'
                                                     : isCompleted
                                                     ? 'bg-emerald-500/[0.02] border-emerald-500/10'
                                                     : 'bg-transparent border-transparent opacity-40'
@@ -6403,23 +6453,18 @@ export default function AnalysisDetailPage({
                                         >
                                             <div className="shrink-0 mt-0.5">
                                                 {isCompleted ? (
-                                                    <div className="w-5 h-5 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                                                        </svg>
-                                                    </div>
-                                                ) : isInProgress ? (
-                                                    <div className="w-5 h-5 rounded-full bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
-                                                        <div className="w-2.5 h-2.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                                                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                                                        <CheckCircle2 className="w-4 h-4" />
                                                     </div>
                                                 ) : (
-                                                    <div className="w-5 h-5 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/30 text-[10px] font-bold">
-                                                        {idx + 1}
+                                                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center ${isInProgress ? 'bg-violet-500/15 border-violet-500/30 animate-pulse' : 'bg-white/5 border-white/10 opacity-60'}`}>
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img src={step.icon} alt="" className="w-5 h-5 object-contain" />
                                                     </div>
                                                 )}
                                             </div>
                                             <div className="min-w-0">
-                                                <p className={`text-xs font-bold leading-none ${isInProgress ? 'text-sky-400' : isCompleted ? 'text-emerald-400/90' : 'text-white/60'}`}>
+                                                <p className={`text-xs font-bold leading-none ${isInProgress ? 'text-violet-300' : isCompleted ? 'text-emerald-400/90' : 'text-white/60'}`}>
                                                     {step.label}
                                                 </p>
                                                 <p className="text-[10px] text-white/40 font-semibold mt-1 leading-relaxed">
@@ -6439,7 +6484,7 @@ export default function AnalysisDetailPage({
                                         setIsAiAnalyzing(false);
                                         router.push('/profile?tab=my-analyses');
                                     }}
-                                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white text-xs font-bold transition-all shadow-lg shadow-sky-500/15 flex items-center justify-center gap-2"
+                                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 hover:from-violet-600 hover:to-indigo-700 text-white text-xs font-bold transition-all shadow-lg shadow-violet-500/15 flex items-center justify-center gap-2"
                                 >
                                     내 기록에서 나중에 확인하기
                                 </button>
@@ -6450,7 +6495,7 @@ export default function AnalysisDetailPage({
                                     }}
                                     className="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/70 hover:text-white text-xs font-bold transition-all flex items-center justify-center"
                                 >
-                                    뒤로 가기
+                                    다른 페이지로 이동 (우하단에서 진행 확인)
                                 </button>
                             </div>
                         </div>

@@ -64,8 +64,8 @@ export default function AmenitiesView({ amenities = {}, variant = 'summary' }: A
                 </div>
                 <p className="text-xs text-white/40 ml-6">
                     {totalFacilities > 0
-                        ? `반경 내 ${totalFacilities}개 시설 기준 생활 편의 점수`
-                        : '반경 내 등록된 시설 정보가 없습니다'}
+                        ? `5개 카테고리 평균 · 반경 내 ${totalFacilities}개 시설 (미탐지 0점 포함)`
+                        : '5개 카테고리 평균 · 반경 내 등록된 시설 없음 (0점 포함)'}
                 </p>
             </div>
 

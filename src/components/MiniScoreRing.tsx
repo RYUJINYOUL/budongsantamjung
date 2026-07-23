@@ -170,8 +170,8 @@ export function amenityCategoryScore(items: unknown[]): number {
     return Math.min(100, Math.round(distanceToAmenityScore(nearest) * 0.84 + countBonus));
 }
 
+/** 5개 카테고리(공원·교통·의료·쇼핑·학교) 평균 — 시설 미탐지(0점)도 포함 */
 export function amenityOverallScore(scores: number[]): number {
-    const valid = scores.filter((s) => s > 0);
-    if (valid.length === 0) return 0;
-    return Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
+    if (scores.length === 0) return 0;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
 }

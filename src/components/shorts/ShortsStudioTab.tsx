@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Download, Film, FileText, ImageDown, Loader2, Music, X, ZoomIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Scene9TenYearStudioCard } from './ShortsTenYearStudioCard';
@@ -8,7 +8,12 @@ import { ShortsTenYearStudioClosingCard } from './ShortsTenYearStudioClosingCard
 import { ShortsTenYearStudioIntroCard } from './ShortsTenYearStudioIntroCard';
 import { ShortsTenYearStudioOutlookCard } from './ShortsTenYearStudioOutlookCard';
 import type { ShortsSceneData } from '../../lib/shortsSceneData';
-import { SHORTS_HEIGHT, SHORTS_WIDTH } from '../../lib/shortsSceneData';
+import {
+    computeShortsZoomScale,
+    computeShortsZoomScaleFromViewport,
+    SHORTS_HEIGHT,
+    SHORTS_WIDTH,
+} from '../../lib/shortsSceneData';
 import { downloadScenePng } from '../../lib/shortsFrameDownload';
 import {
     STUDIO_BGM_PATH,
@@ -36,6 +41,7 @@ interface ShortsStudioTabProps {
     analyzeId?: string | number;
     sceneData: ShortsSceneData;
     showVideoStudio?: boolean;
+    onZoomOpenChange?: (open: boolean) => void;
 }
 
 function StudioSlidePreview({
@@ -249,7 +255,12 @@ function StudioDownloadThumb({
     );
 }
 
-export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio = false }: ShortsStudioTabProps) {
+export default function ShortsStudioTab({
+    analyzeId,
+    sceneData,
+    showVideoStudio = false,
+    onZoomOpenChange,
+}: ShortsStudioTabProps) {
     const [downloadingSceneId, setDownloadingSceneId] = useState<number | null>(null);
     const [downloadingAll, setDownloadingAll] = useState(false);
     const [buildingVideo, setBuildingVideo] = useState(false);
@@ -258,13 +269,16 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [zoomScale, setZoomScale] = useState(0.4);
     const zoomScrollRef = useRef<HTMLDivElement>(null);
+    const zoomStageRef = useRef<HTMLDivElement>(null);
     const isProgrammaticScrollRef = useRef(false);
 
     const updateZoomScale = useCallback(() => {
-        const targetH = window.innerHeight * 0.78;
-        const targetW = window.innerWidth - 16;
-        const scale = Math.min(targetH / SHORTS_HEIGHT, targetW / SHORTS_WIDTH);
-        setZoomScale(scale);
+        const stage = zoomStageRef.current;
+        if (stage && stage.clientWidth > 0 && stage.clientHeight > 0) {
+            setZoomScale(computeShortsZoomScale(stage.clientWidth, stage.clientHeight));
+            return;
+        }
+        setZoomScale(computeShortsZoomScaleFromViewport());
     }, []);
 
     const zoomViewerHeight = SHORTS_HEIGHT * zoomScale;
@@ -330,16 +344,20 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
 
     const openZoom = useCallback((index: number) => {
         setCarouselIndex(index);
+        onZoomOpenChange?.(true);
         setIsZoomOpen(true);
         requestAnimationFrame(() => {
-            updateZoomScale();
-            scrollToCarouselIndex(index, 'auto');
+            requestAnimationFrame(() => {
+                updateZoomScale();
+                scrollToCarouselIndex(index, 'auto');
+            });
         });
-    }, [scrollToCarouselIndex, updateZoomScale]);
+    }, [scrollToCarouselIndex, updateZoomScale, onZoomOpenChange]);
 
     const closeZoom = useCallback(() => {
         setIsZoomOpen(false);
-    }, []);
+        onZoomOpenChange?.(false);
+    }, [onZoomOpenChange]);
 
     const handleZoomCarouselScroll = useCallback(() => {
         if (isProgrammaticScrollRef.current) return;
@@ -361,10 +379,22 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
         scrollToCarouselIndex(carouselIndex + 1, 'smooth');
     }, [carouselIndex, scrollToCarouselIndex]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!isZoomOpen) return;
 
         updateZoomScale();
+        const stage = zoomStageRef.current;
+        if (!stage || typeof ResizeObserver === 'undefined') return;
+
+        const observer = new ResizeObserver(() => {
+            updateZoomScale();
+        });
+        observer.observe(stage);
+        return () => observer.disconnect();
+    }, [isZoomOpen, updateZoomScale]);
+
+    useEffect(() => {
+        if (!isZoomOpen) return;
 
         const onResize = () => {
             updateZoomScale();
@@ -383,6 +413,16 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
             document.body.style.overflow = prev;
         };
     }, [isZoomOpen]);
+
+    useEffect(() => {
+        onZoomOpenChange?.(isZoomOpen);
+    }, [isZoomOpen, onZoomOpenChange]);
+
+    useEffect(() => {
+        return () => {
+            onZoomOpenChange?.(false);
+        };
+    }, [onZoomOpenChange]);
 
     const activeCarouselSlide = slideMetas[carouselIndex];
 
@@ -483,7 +523,7 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
     }
 
     return (
-        <div className="max-w-[1200px] mx-auto w-full px-2 sm:px-0 pb-8">
+        <div className="max-w-[1200px] mx-auto w-full px-2 sm:px-0 pb-32">
             <div className="rounded-2xl border border-sky-500/20 bg-sky-950/10 px-5 py-5 sm:px-6 sm:py-6 mb-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -592,8 +632,9 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
                 <p className="text-[11px] font-bold text-white/35 uppercase tracking-widest mb-2">
                     타임라인 ({STUDIO_VIDEO_DURATION_SEC}초)
                 </p>
-                <div className="rounded-xl border border-white/10 overflow-hidden">
-                    <div className="grid grid-cols-[72px_1fr_56px_56px] gap-2 px-3 py-2 text-[10px] font-bold text-white/35 border-b border-white/10 bg-white/[0.02]">
+                <div className="rounded-xl border border-white/10 overflow-x-auto">
+                    <div className="min-w-0 sm:min-w-full">
+                    <div className="hidden sm:grid grid-cols-[72px_1fr_56px_56px] gap-2 px-3 py-2 text-[10px] font-bold text-white/35 border-b border-white/10 bg-white/[0.02]">
                         <span>구간</span>
                         <span>카드</span>
                         <span className="text-right">길이</span>
@@ -602,16 +643,19 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
                     {slideTimeline.map((item) => (
                         <div
                             key={item.sceneId}
-                            className="grid grid-cols-[72px_1fr_56px_56px] gap-2 px-3 py-2 text-[11px] text-white/55 border-b border-white/5 last:border-0"
+                            className="grid grid-cols-1 sm:grid-cols-[72px_1fr_56px_56px] gap-1 sm:gap-2 px-3 py-2.5 sm:py-2 text-[11px] text-white/55 border-b border-white/5 last:border-0"
                         >
-                            <span className="text-violet-400/80 font-mono">
+                            <span className="text-violet-400/80 font-mono text-[10px] sm:text-[11px]">
                                 {formatTimelineSec(item.startSec)}~{formatTimelineSec(item.endSec)}
                             </span>
-                            <span className="truncate">{item.label}</span>
-                            <span className="text-right font-semibold text-white/70">{item.durationSec}s</span>
-                            <span className="text-right font-mono text-white/40">{formatTimelineSec(item.startSec)}</span>
+                            <span className="truncate font-medium">{item.label}</span>
+                            <div className="flex sm:contents gap-3 text-[10px] sm:text-[11px]">
+                                <span className="sm:text-right font-semibold text-white/70">{item.durationSec}s</span>
+                                <span className="sm:text-right font-mono text-white/40">{formatTimelineSec(item.startSec)}</span>
+                            </div>
                         </div>
                     ))}
+                    </div>
                 </div>
             </div>
             )}
@@ -691,7 +735,7 @@ export default function ShortsStudioTab({ analyzeId, sceneData, showVideoStudio 
                             </button>
                         </div>
 
-                        <div className="relative flex-1 min-h-0 min-w-0 w-full">
+                        <div ref={zoomStageRef} className="relative flex-1 min-h-0 min-w-0 w-full">
                             <button
                                 type="button"
                                 onClick={goPrevCarousel}

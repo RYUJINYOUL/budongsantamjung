@@ -5,8 +5,8 @@ import Script from 'next/script'
 import dynamic from 'next/dynamic'
 import { Analytics } from '@vercel/analytics/next'
 
-const BackgroundAnalysisTracker = dynamic(
-  () => import('@/components/BackgroundAnalysisTracker'),
+const BackgroundJobTrackers = dynamic(
+  () => import('@/components/BackgroundJobTrackers'),
   { ssr: false },
 )
 
@@ -137,7 +137,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased font-noto-sans-kr">
         {children}
-        <BackgroundAnalysisTracker />
+        <BackgroundJobTrackers />
         <Analytics />
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}`}
