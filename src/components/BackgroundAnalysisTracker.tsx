@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Search, X, Clock, CheckCircle2 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { buildAnalyzeReportHref, getViewingReportId } from '../lib/reportNavigation';
+import { buildAnalyzeReportHref } from '../lib/reportNavigation';
 
 interface ActiveAnalysis {
     id: string;
@@ -39,10 +39,6 @@ function dismissItem(id: string) {
     return updated;
 }
 
-/** legacy wrapper — apartment ?reportId= 포함 */
-function getCurrentReportId(pathname: string, reportIdParam: string | null): string | null {
-    return getViewingReportId(pathname, reportIdParam);
-}
 
 /** 서버에 reportId 상태 조회 */
 async function checkReportStatus(id: string, idToken?: string): Promise<'pending' | 'finished' | 'not_found' | 'error'> {
@@ -69,9 +65,6 @@ interface BackgroundAnalysisTrackerProps {
 
 export default function BackgroundAnalysisTracker({ embedded = false }: BackgroundAnalysisTrackerProps) {
     const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const currentReportId = getCurrentReportId(pathname, searchParams.get('reportId'));
     const [analyses, setAnalyses] = useState<ActiveAnalysis[]>([]);
     const [ready, setReady] = useState(false);
     const [user, setUser] = useState<User | null>(null);
@@ -205,10 +198,8 @@ export default function BackgroundAnalysisTracker({ embedded = false }: Backgrou
         setAnalyses(dismissItem(item.id));
     };
 
-    // 현재 보고 있는 리포트 페이지의 카드는 표시하지 않음 (페이지에서 이미 확인 중)
-    const visibleAnalyses = analyses.filter(
-        (item) => String(item.id) !== String(currentReportId)
-    );
+    // 현재 상세·수집 화면에서도 진행 상태 카드 표시
+    const visibleAnalyses = analyses;
 
     if (!ready || visibleAnalyses.length === 0) return null;
 
