@@ -29,6 +29,10 @@ import {
 } from '../../../lib/apartmentCompareScoring';
 import { CompareScoreOverviewSection } from '../../../lib/apartmentCompareMomentumBreakdown';
 import {
+  CompareNarrativeOverviewSection,
+  type CompareNarrativeColumn,
+} from '../../../lib/apartmentCompareNarrativeDimensions';
+import {
   basketItemsForSave,
   isApartmentCompareHistoryResult,
   restoreCompareFromHistory,
@@ -540,6 +544,23 @@ export default function ApartmentCompareClientPage() {
     });
   }, [basket, results]);
 
+  const narrativeColumns = useMemo((): CompareNarrativeColumn[] => {
+    return columns.map(({ basket: b, data: c }, idx) => {
+      const scoringItem = scoring?.items?.find(
+        (it) =>
+          (b.masterId && it.masterId === b.masterId) ||
+          (b.rtmsAptSeq && it.rtmsAptSeq === b.rtmsAptSeq) ||
+          (it.complexName && c.complexName && it.complexName === c.complexName),
+      );
+      return {
+        aptKey: b.key || String(idx),
+        complexName: c.complexName || b.complexName || '단지',
+        data: c,
+        scoring: scoringItem ?? null,
+      };
+    });
+  }, [columns, scoring?.items]);
+
   const comparePromptInput = useMemo(() => {
     if (loading || basket.length === 0) return null;
 
@@ -795,6 +816,7 @@ export default function ApartmentCompareClientPage() {
 
   const panelClass =
     'rounded-[20px] sm:rounded-[24px] border border-white/[0.08] bg-[#0f172a]/60 shadow-lg shadow-black/20';
+  const summaryPanelClass = `${panelClass} overflow-hidden`;
   const sectionTitleClass =
     'text-[10px] font-extrabold text-emerald-400/90 mb-4 uppercase tracking-wider';
   const tableShell = `${panelClass} overflow-hidden`;
@@ -1015,38 +1037,61 @@ export default function ApartmentCompareClientPage() {
               )}
 
               {scoring && !loading && (
-                <section className={`${panelClass} p-4 sm:p-5 space-y-4`}>
-                  <div>
-                    <h2 className="text-sm font-black text-white">비교 요약</h2>
-                    <p className="text-[10px] text-white/35 mt-1 leading-relaxed">
-                      {scoring.disclaimer?.trim() ||
-                        '참고용 규칙 점수입니다. 투자 권유가 아닙니다.'}
-                    </p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {(
-                      [
-                        ['investmentTop', '상승 가능성', scoring.badges?.investmentTop],
-                        ['livabilityTop', '실거주 적합도', scoring.badges?.livabilityTop],
-                        ['stabilityTop', '안정형(리스크↓)', scoring.badges?.stabilityTop],
-                      ] as const
-                    ).map(([key, title, badge]) =>
-                      badge ? (
-                        <div
-                          key={key}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
-                        >
-                          <p className="text-[10px] font-bold text-emerald-400/90">{title}</p>
-                          <p className="text-sm font-black text-white mt-1 truncate">
-                            {formatComplexShortName(badge.complexName)} - {formatScore(badge.score)}점
-                          </p>
-                        </div>
-                      ) : null,
-                    )}
-                  </div>
+                <div className="space-y-4">
+                  <section className={`${summaryPanelClass} p-4 sm:p-5`}>
+                    <div>
+                      <h2 className="text-sm font-black text-white">비교 요약</h2>
+                      <p className="text-[10px] text-white/35 mt-1 leading-relaxed">
+                        {scoring.disclaimer?.trim() ||
+                          '참고용 규칙 점수입니다. 투자 권유가 아닙니다.'}
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3 mt-4">
+                      {(
+                        [
+                          ['investmentTop', '상승 가능성', scoring.badges?.investmentTop],
+                          ['livabilityTop', '실거주 적합도', scoring.badges?.livabilityTop],
+                          ['stabilityTop', '안정형(리스크↓)', scoring.badges?.stabilityTop],
+                        ] as const
+                      ).map(([key, title, badge]) =>
+                        badge ? (
+                          <div
+                            key={key}
+                            className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3"
+                          >
+                            <p className="text-[10px] font-bold text-emerald-400/90">{title}</p>
+                            <p className="text-sm font-black text-white mt-1 truncate">
+                              {formatComplexShortName(badge.complexName)} - {formatScore(badge.score)}점
+                            </p>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  </section>
+
                   {scoring.items && scoring.items.length > 0 && (
-                    <CompareScoreOverviewSection items={scoring.items} onOpenCards={openCompareCards} />
+                    <section className={`${summaryPanelClass} p-4 sm:p-5`}>
+                      <CompareScoreOverviewSection items={scoring.items} onOpenCards={openCompareCards} />
+                    </section>
                   )}
+
+                  {narrativeColumns.length > 0 && (
+                    <section className={`${summaryPanelClass} p-4 sm:p-5`}>
+                      <CompareNarrativeOverviewSection
+                        columns={narrativeColumns}
+                        workPlaceSet={workPlaceSet}
+                      />
+                    </section>
+                  )}
+                </div>
+              )}
+
+              {!scoring && !loading && narrativeColumns.length > 0 && (
+                <section className={`${summaryPanelClass} p-4 sm:p-5`}>
+                  <CompareNarrativeOverviewSection
+                    columns={narrativeColumns}
+                    workPlaceSet={workPlaceSet}
+                  />
                 </section>
               )}
 
@@ -1197,7 +1242,7 @@ export default function ApartmentCompareClientPage() {
                                   {canOpenNews ? (
                                     <button
                                       type="button"
-                                      className="text-left underline decoration-white/30 underline-offset-2 hover:text-emerald-300"
+                                      className="text-left font-semibold text-emerald-400 underline decoration-emerald-500/45 underline-offset-2 hover:text-emerald-300 transition-colors"
                                       onClick={() =>
                                         setNewsModal({
                                           complexName: c.complexName || '단지',

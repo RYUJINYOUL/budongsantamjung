@@ -1,5 +1,3 @@
-'use client';
-
 import MiniScoreRing from '../components/MiniScoreRing';
 import { formatScore, type CompareScoringItem } from './apartmentCompareScoring';
 
@@ -234,24 +232,24 @@ function CompareMetricBreakdownCard({
   entries: MetricCardEntry[];
 }) {
   return (
-    <div className="snap-start shrink-0 w-[min(100%,280px)] sm:w-[272px] rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 flex flex-col gap-2.5">
+    <div className="snap-start shrink-0 w-[272px] min-w-[272px] max-w-[272px] rounded-[18px] sm:rounded-[20px] border border-white/[0.06] bg-white/[0.02] py-5 px-3.5 flex flex-col">
       <p
-        className="text-[13px] font-black text-white leading-tight truncate"
+        className="text-[13px] font-black text-white leading-tight truncate text-center mb-3.5 shrink-0"
         title={formatMetricCardTitle(metric)}
       >
         {formatMetricCardTitle(metric)}
       </p>
 
-      <div className="grid grid-cols-3 gap-x-1 gap-y-4">
+      <div className="grid grid-cols-3 gap-x-1.5 gap-y-5 flex-1 content-start">
         {entries.map(({ aptKey, complexName, ring }) => (
-          <div key={aptKey} className="flex flex-col items-center gap-1.5 min-w-0">
+          <div key={aptKey} className="flex flex-col items-center gap-2 min-w-0">
             <MiniScoreRing
               label=""
               score={ring.centerText === '—' ? 0 : ring.ringScore}
               centerText={ring.centerText}
               color={ring.color}
               max={100}
-              size="md"
+              size="lg"
             />
             <p
               className="text-[10px] font-bold text-white/65 truncate max-w-full text-center leading-tight w-full"
@@ -277,10 +275,10 @@ export function CompareScoreOverviewSection({
   if (!items.length || !hasAnyScore) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-white">종합 점수 내역</p>
+          <h2 className="text-sm font-black text-white">종합 점수 내역</h2>
           <p className="text-[10px] text-white/35 mt-1 leading-relaxed">
             항목별 단지 비교 · 좌우 스크롤
           </p>
