@@ -79,10 +79,14 @@ function extendedRowValue(c: CompareNarrativeItem, id: string): string | null {
   return v && v !== '-' ? v : null;
 }
 
-/** 초등학교명 — 공백 제거 후 4자 (예: 칠금초등, 충주중앙) */
+/** 초등학교명 — 공백 제거 후 4자 (예: 칠금초등, 충주중앙). 남녀공학 등 성별 라벨은 제외 */
 function formatSchoolShortName(name: string | null | undefined): string | null {
-  const t = name?.trim().replace(/\s/g, '');
+  let t = name?.trim().replace(/\s/g, '') ?? '';
   if (!t) return null;
+  t = t
+    .replace(/\(?(남녀공학|남녀|남자|여자)\)?/g, '')
+    .replace(/초등학교|초등/g, '');
+  if (!t || /^(남녀공학|남녀|남|여|공학|남자|여자)$/.test(t)) return null;
   return t.length <= 4 ? t : t.slice(0, 4);
 }
 

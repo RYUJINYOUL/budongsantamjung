@@ -110,11 +110,6 @@ function SchoolCard({ school, index }: { school: SchoolData; index: number }) {
                                 {school.establishment_type}
                             </span>
                         )}
-                        {school.gender_type && (
-                            <span className="px-2 py-0.5 text-[11px] font-semibold rounded border bg-white/[0.05] text-slate-300 border-white/[0.08]">
-                                {school.gender_type}
-                            </span>
-                        )}
                     </div>
                 </div>
                 {/* 거리 뱃지 */}
