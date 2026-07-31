@@ -334,6 +334,7 @@ function buildOutlookContext(mergedData: Record<string, unknown>): ApartmentOutl
         dynamicNews: mergedData?.dynamicNews as Record<string, unknown> | undefined,
         amenities: nearby.amenities as Record<string, unknown> | undefined,
         spatialFacilities: (nearby.spatialFacilities || []) as Array<Record<string, unknown>>,
+        nearbyInfrastructure: (nearby.nearbyInfrastructure || null) as ApartmentOutlookContext['nearbyInfrastructure'],
     };
 }
 

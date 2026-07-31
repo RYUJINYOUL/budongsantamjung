@@ -284,12 +284,11 @@ function ProfilePageContent() {
     };
 
     const openApartmentPage = (group: ApartmentGroup) => {
-        if (group.aptSeq) {
-            const q = group.pnu ? `?pnu=${encodeURIComponent(group.pnu)}` : '';
-            router.push(`/apartment/${group.aptSeq}${q}`);
-        } else if (group.pnu) {
-            router.push(`/apartment/pnu?pnu=${encodeURIComponent(group.pnu)}`);
+        if (group.latestReportId) {
+            router.push(`/analyze/${makeAnalyzeSlug(group.latestReportId)}`);
+            return;
         }
+        router.push('/?category=아파트');
     };
 
     const loadMyDiscoveries = async () => {
@@ -584,15 +583,7 @@ function ProfilePageContent() {
                                                 currentUid={user?.uid}
                                                 onLikeToggle={(id, e) => toggleLike(id)}
                                                 onClick={() => {
-                                                    const cat = (item.category || '').toLowerCase();
-                                                    const isApartment = cat === 'apartment' || cat === '아파트';
-                                                    if (isApartment && (item.aptSeq || item.pnu)) {
-                                                        const targetAptSeq = item.aptSeq || 'pnu';
-                                                        const q = item.pnu ? `?pnu=${encodeURIComponent(item.pnu)}&reportId=${item.id}` : `?reportId=${item.id}`;
-                                                        router.push(`/apartment/${targetAptSeq}${q}`);
-                                                    } else {
-                                                        router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
-                                                    }
+                                                    router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
                                                 }}
                                             />
                                         ))}
@@ -646,15 +637,7 @@ function ProfilePageContent() {
                                                     currentUid={user?.uid}
                                                     onLikeToggle={(id, e) => toggleLike(id)}
                                                     onClick={() => {
-                                                        const cat = (item.category || '').toLowerCase();
-                                                        const isApartment = cat === 'apartment' || cat === '아파트';
-                                                        if (isApartment && (item.aptSeq || item.pnu)) {
-                                                            const targetAptSeq = item.aptSeq || 'pnu';
-                                                            const q = item.pnu ? `?pnu=${encodeURIComponent(item.pnu)}&reportId=${item.id}` : `?reportId=${item.id}`;
-                                                            router.push(`/apartment/${targetAptSeq}${q}`);
-                                                        } else {
-                                                            router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
-                                                        }
+                                                        router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
                                                     }}
                                                 />
                                             ))}
@@ -683,41 +666,53 @@ function ProfilePageContent() {
                                     </div>
                                 ) : myDiscoveries.length === 0 ? (
                                     <div className="text-center py-16 bg-white border border-slate-200/80 rounded-2xl shadow-sm">
-                                        <p className="text-slate-800 font-bold text-xs mb-1">발견 기록이 없습니다</p>
-                                        <p className="text-[10px] text-slate-450 font-semibold mb-4">AI 투자처 발굴 서비스를 이용해 우수 매물을 탐색해보세요.</p>
+                                        <p className="text-slate-800 font-bold text-xs mb-1">저장된 기록이 없습니다</p>
+                                        <p className="text-[10px] text-slate-450 font-semibold mb-4">아파트 비교에서 「저장하기」로 비교 세트를 보관할 수 있습니다.</p>
                                         <Link
-                                            href="/discover"
+                                            href="/compare/apartments"
                                             className="inline-block px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-extrabold rounded-xl transition-all shadow-sm"
                                         >
-                                            발견하러 가기
+                                            단지 비교하러 가기
                                         </Link>
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {myDiscoveries.map((item: any, idx: number) => {
                                             const id = item.id || item.historyId;
-                                            const region = item.query?.sggNm || item.region || '지역 정보 없음';
+                                            const isCompare = item.category === 'apartment_compare';
+                                            const region = isCompare
+                                                ? (item.propertyTitle || item.property_title || '아파트 단지 비교')
+                                                : (item.query?.sggNm || item.region || '지역 정보 없음');
                                             const budget = item.budget || item.query?.budget;
                                             const direction = item.direction || item.analysis?.regionalOutlook?.direction || '';
                                             const createdAt = item.created_at || item.createdAt;
+                                            const href = isCompare
+                                                ? `/compare/apartments?saved=${id}`
+                                                : `/discover/${id}`;
                                             return (
                                                 <div
                                                     key={id || idx}
                                                     className="bg-white border border-slate-100 hover:border-emerald-300 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group cursor-pointer overflow-hidden min-w-0"
-                                                    onClick={() => router.push(`/discover/${id}`)}
+                                                    onClick={() => router.push(href)}
                                                 >
                                                     <div className="flex items-start gap-4">
                                                         <div className="shrink-0 w-10 h-10 rounded-xl bg-slate-50 border border-slate-150 flex items-center justify-center p-2">
-                                                            <img src={catIconMap[item.category || ''] || '/land.svg'} alt="" className="w-full h-full object-contain" />
+                                                            <img
+                                                                src={isCompare ? '/apart.svg' : (catIconMap[item.category || ''] || '/land.svg')}
+                                                                alt=""
+                                                                className="w-full h-full object-contain"
+                                                            />
                                                         </div>
 
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-start justify-between gap-2 mb-1.5">
                                                                 <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-emerald-600 transition-colors flex items-center gap-1 min-w-0 flex-1">
+                                                                    {!isCompare && (
                                                                     <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                                                     </svg>
+                                                                    )}
                                                                     <span className="truncate">{region}</span>
                                                                 </h3>
                                                                 
@@ -726,13 +721,17 @@ function ProfilePageContent() {
                                                                 )}
                                                             </div>
 
-                                                            {budget && (
+                                                            {isCompare ? (
+                                                                <p className="text-xs text-slate-400 font-semibold mb-2">
+                                                                    {direction || '단지 비교'} · 다시 비교하기
+                                                                </p>
+                                                            ) : budget ? (
                                                                 <p className="text-xs text-slate-400 font-semibold mb-2">
                                                                     예산 {budget >= 10000 ? `${(budget / 10000).toFixed(0)}억원` : `${budget.toLocaleString()}만원`}
                                                                 </p>
-                                                            )}
+                                                            ) : null}
 
-                                                            {direction && (
+                                                            {!isCompare && direction && (
                                                                 <div className="bg-emerald-50/30 border border-emerald-100/50 rounded-xl p-2.5 mb-2.5">
                                                                     <p className="text-[11px] text-emerald-800 font-bold line-clamp-2 leading-relaxed">
                                                                         {direction}
@@ -741,11 +740,15 @@ function ProfilePageContent() {
                                                             )}
 
                                                             <div className="flex items-center gap-2">
-                                                                {item.category && item.category !== 'all' && (
+                                                                {isCompare ? (
+                                                                    <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                                                        단지 비교
+                                                                    </span>
+                                                                ) : item.category && item.category !== 'all' ? (
                                                                     <span className="text-[9px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                                                                         {item.category === 'land' ? '토지' : item.category === 'house' ? '주택' : item.category === 'apartment' ? '아파트' : item.category === 'building' ? '빌딩' : item.category}
                                                                     </span>
-                                                                )}
+                                                                ) : null}
                                                             </div>
                                                         </div>
                                                     </div>

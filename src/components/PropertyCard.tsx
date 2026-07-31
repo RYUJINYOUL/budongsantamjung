@@ -40,6 +40,11 @@ export interface PropertyCardData {
   exclusiveArea?: number | null;
   /** 면적 (㎡) */
   area?: number | null;
+  /** apartment_master.id (타임라인 aptSeq) */
+  aptSeq?: string | null;
+  rtmsAptSeq?: string | null;
+  /** discover — 리포트 없으면 카드 클릭·자세히 보기 비활성 */
+  hasReport?: boolean;
 }
 
 export interface PropertyCardProps {
@@ -54,10 +59,25 @@ export interface PropertyCardProps {
   onLikeToggle?: (id: string, e: React.MouseEvent) => void;
   /** 선택된 카드 강조 여부 */
   selected?: boolean;
+  /** 아파트 — 비교함 담기 (클릭 시 카드 이동 방지) */
+  onAddToCompare?: (e: React.MouseEvent) => void;
+  /** 비교함에 이미 담김 */
+  inCompareBasket?: boolean;
   /** 카드 크기: 'default' | 'compact' (기본: 'default') */
   size?: 'default' | 'compact';
   /** 테마: 'light' | 'dark' (기본: 'light') */
   theme?: 'light' | 'dark';
+  /** 아파트 발견 — 3칸 통계 (매매/전세/월세 모드) */
+  apartmentDisplay?: {
+    col1Label: string;
+    col1Value: string;
+    col1ValueClassName?: string;
+    col2Label: string;
+    col2Value: string;
+    col3Label: string;
+    col3Value: string;
+    col3ValueClassName?: string;
+  };
 }
 
 // ────────────────────────────────────────────────
@@ -128,9 +148,34 @@ function formatRiseRate6m(riseRate6m?: number | null): string {
   return `${riseRate6m > 0 ? '+' : ''}${riseRate6m}%`;
 }
 
+function riseRateClass(riseRate6m?: number | null): string {
+  if (riseRate6m == null || riseRate6m === 0) return 'text-slate-600';
+  if (riseRate6m > 0) return 'text-red-500';
+  return 'text-blue-500';
+}
+
+function riseRateClassDark(riseRate6m?: number | null): string {
+  if (riseRate6m == null || riseRate6m === 0) return 'text-slate-300';
+  if (riseRate6m > 0) return 'text-red-400';
+  return 'text-blue-400';
+}
+
 function formatAvgPrice1m(avgPrice1m?: number | null): string {
   if (avgPrice1m == null || avgPrice1m <= 0) return '-';
   return `${(avgPrice1m / 10000).toFixed(1)}억`;
+}
+
+function isApartmentAnalysisComplete(data: PropertyCardData): boolean {
+  if (data.hasReport === false) return false;
+  const n = parseInt(data.propertyGrade?.riskScore || '0', 10);
+  return !Number.isNaN(n) && n > 0;
+}
+
+function locationSubtitle(data: PropertyCardData): string {
+  const label = (data.location?.address || data.location?.name || '').trim();
+  const title = (data.propertyTitle || '').trim();
+  if (!label || label === title) return '';
+  return label;
 }
 
 // ────────────────────────────────────────────────
@@ -159,21 +204,28 @@ export default function PropertyCard({
   currentUid,
   onLikeToggle,
   selected = false,
+  onAddToCompare,
+  inCompareBasket = false,
   size = 'default',
   theme = 'light',
+  apartmentDisplay,
 }: PropertyCardProps) {
   const router = useRouter();
   const isDark = theme === 'dark';
   const isCompact = size === 'compact';
   const isApartment = data.category === '아파트' || data.category === 'apartment';
+  const discoverClickDisabled = isApartment && data.hasReport === false;
 
   const riskScore = data.propertyGrade?.riskScore;
   const riskLight = getRiskConfig(riskScore);
   const riskDark = getRiskConfigDark(riskScore);
+  const analysisComplete = !isApartment || isApartmentAnalysisComplete(data);
+  const subtitle = locationSubtitle(data);
 
   const isLiked = currentUid ? (data.likes?.includes(currentUid) ?? false) : false;
 
   const handleClick = (e?: React.MouseEvent) => {
+    if (discoverClickDisabled) return;
     if (onClick) {
       if (e) {
         onClick(e);
@@ -195,8 +247,9 @@ export default function PropertyCard({
         onClick={handleClick}
         onKeyDown={(e) => e.key === 'Enter' && handleClick()}
         className={[
-          'group relative bg-white border rounded-2xl cursor-pointer',
-          'transition-all hover:border-emerald-300 hover:shadow-md',
+          'group relative bg-white border rounded-2xl',
+          discoverClickDisabled ? 'cursor-default' : 'cursor-pointer',
+          !discoverClickDisabled && 'transition-all hover:border-emerald-300 hover:shadow-md',
           isCompact ? 'p-3' : 'p-4',
           selected
             ? 'border-emerald-400 ring-1 ring-emerald-400 shadow-sm'
@@ -216,74 +269,62 @@ export default function PropertyCard({
               >
                 {data.propertyTitle || '부동산탐정 판독'}
               </h3>
-              {isApartment && hasRiskScore(riskScore) && (
-                <span
-                  className={[
-                    'shrink-0 text-[11px] font-black px-1.5 py-0.5 rounded-md border tabular-nums',
-                    riskLight.bg,
-                    riskLight.text,
-                    riskLight.border,
-                  ].join(' ')}
-                  title={
-                    formatRiskScoreDisplay(riskScore) === '준비'
-                      ? 'AI 분석 준비 중'
-                      : `AI ${riskLight.label} ${riskScore}점`
-                  }
-                >
-                  {formatRiskScoreDisplay(riskScore)}
-                </span>
-              )}
             </div>
-            {data.location?.name && (
+            {subtitle && (
               <p className="text-xs text-slate-400 truncate font-medium mt-0.5">
-                {data.location.name}
+                {subtitle}
               </p>
             )}
           </div>
 
-          {!isApartment && (
-            <div className="flex flex-col items-end gap-1.5 shrink-0">
-              <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-lg font-bold border border-emerald-100/50">
-                분석완료
-              </span>
-              {hasRiskScore(riskScore) && (
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
-                  <span
-                    className={[
-                      'text-[11px] font-black px-1.5 py-0.5 rounded-md border',
-                      riskLight.bg,
-                      riskLight.text,
-                      riskLight.border,
-                    ].join(' ')}
-                  >
-                    {formatRiskScoreDisplay(riskScore)}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <span
+              className={[
+                'text-[10px] px-2 py-0.5 rounded-lg font-bold border',
+                analysisComplete
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50'
+                  : 'bg-slate-50 text-slate-500 border-slate-200/80',
+              ].join(' ')}
+            >
+              {analysisComplete ? '분석완료' : '분석 준비'}
+            </span>
+            {analysisComplete && hasRiskScore(riskScore) && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">AI</span>
+                <span
+                  className={[
+                    'text-[11px] font-black px-1.5 py-0.5 rounded-md border',
+                    riskLight.bg,
+                    riskLight.text,
+                    riskLight.border,
+                  ].join(' ')}
+                >
+                  {formatRiskScoreDisplay(riskScore)}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 아파트 통계 또는 탐정 노트 */}
         {!isCompact && (isApartment ? (
           <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-100/50 rounded-xl p-3 mb-3 text-center">
             <div>
-              <p className="text-[10px] text-slate-400 font-bold">6개월</p>
-              <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-500' : (data.riseRate6m || 0) < 0 ? 'text-blue-500' : 'text-slate-600'}`}>
-                {formatRiseRate6m(data.riseRate6m)}
+              <p className="text-[10px] text-slate-400 font-bold">{apartmentDisplay?.col1Label ?? '6개월'}</p>
+              <p className={`text-xs font-bold mt-1 ${apartmentDisplay?.col1ValueClassName ?? riseRateClass(data.riseRate6m)}`}>
+                {apartmentDisplay?.col1Value ?? formatRiseRate6m(data.riseRate6m)}
               </p>
             </div>
             <div className="border-x border-slate-200/60 flex flex-col justify-center">
-              <p className="text-[10px] text-slate-400 font-bold">전용면적</p>
+              <p className="text-[10px] text-slate-400 font-bold">{apartmentDisplay?.col2Label ?? '전용면적'}</p>
               <p className="text-xs font-extrabold text-slate-700 mt-1 leading-tight">
-                {formatExclusiveAreaValue(data.exclusiveArea, data.area)}
+                {apartmentDisplay?.col2Value ?? formatExclusiveAreaValue(data.exclusiveArea, data.area)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-slate-400 font-bold">최근 1개월</p>
-              <p className="text-xs font-extrabold text-slate-700 mt-1">
-                {formatAvgPrice1m(data.avgPrice1m)}
+              <p className="text-[10px] text-slate-400 font-bold">{apartmentDisplay?.col3Label ?? '최근 1개월'}</p>
+              <p className={`text-xs font-bold mt-1 ${apartmentDisplay?.col3ValueClassName ?? 'text-slate-700'}`}>
+                {apartmentDisplay?.col3Value ?? formatAvgPrice1m(data.avgPrice1m)}
               </p>
             </div>
           </div>
@@ -297,9 +338,9 @@ export default function PropertyCard({
           )
         ))}
 
-        {/* 하단: 날짜 + 카테고리 + 찜 */}
+        {/* 하단: 날짜 + 카테고리 + 찜 + 비교 */}
         <div className="flex items-center justify-between mt-auto">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {data.createdAt && (
               <span className="text-[10px] text-slate-300 font-medium">{formatDate(data.createdAt)}</span>
             )}
@@ -308,7 +349,6 @@ export default function PropertyCard({
                 {data.category}
               </span>
             )}
-            {/* 찜 버튼 */}
             {onLikeToggle && (
               <button
                 onClick={(e) => {
@@ -316,7 +356,7 @@ export default function PropertyCard({
                   onLikeToggle(data.id, e);
                 }}
                 className={[
-                  'flex items-center gap-1 text-sm transition-all focus:outline-none ml-1',
+                  'flex items-center gap-1 text-sm transition-all focus:outline-none',
                   isLiked
                     ? 'text-rose-500 hover:text-rose-600'
                     : 'text-slate-300 hover:text-rose-400',
@@ -328,10 +368,29 @@ export default function PropertyCard({
                 <span className="text-[10px] font-bold mt-0.5">{data.likes?.length ?? 0}</span>
               </button>
             )}
+            {isApartment && onAddToCompare && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCompare(e);
+                }}
+                className={[
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors',
+                  inCompareBasket
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100 hover:border-emerald-200',
+                ].join(' ')}
+              >
+                {inCompareBasket ? '✓ 비교함' : '+ 비교'}
+              </button>
+            )}
           </div>
+          {!discoverClickDisabled && (
           <span className="text-[10px] text-emerald-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
             자세히 보기 →
           </span>
+          )}
         </div>
       </div>
     );
@@ -345,8 +404,9 @@ export default function PropertyCard({
       onClick={handleClick}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
       className={[
-        'group bg-slate-800/60 border rounded-xl cursor-pointer',
-        'transition-all hover:border-emerald-500/50',
+        'group bg-slate-800/60 border rounded-xl',
+        discoverClickDisabled ? 'cursor-default' : 'cursor-pointer',
+        !discoverClickDisabled && 'transition-all hover:border-emerald-500/50',
         isCompact ? 'p-3' : 'p-4',
         selected ? 'border-emerald-500/60' : 'border-slate-700',
       ].join(' ')}
@@ -426,7 +486,7 @@ export default function PropertyCard({
         <div className="grid grid-cols-3 gap-2 bg-slate-800/40 border border-slate-700/50 rounded-xl p-3 mb-3 text-center">
           <div>
             <p className="text-[10px] text-slate-400 font-bold">6개월</p>
-            <p className={`text-xs font-extrabold mt-1 ${ (data.riseRate6m || 0) > 0 ? 'text-rose-400' : (data.riseRate6m || 0) < 0 ? 'text-blue-400' : 'text-slate-300'}`}>
+            <p className={`text-xs font-bold mt-1 ${riseRateClassDark(data.riseRate6m)}`}>
               {formatRiseRate6m(data.riseRate6m)}
             </p>
           </div>

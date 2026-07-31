@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
+import NearbyInfrastructurePanel from '../../../components/NearbyInfrastructurePanel';
 import ShortsFrameView from '../../../components/ShortsFrameView';
 import AmenitiesView from '../../../components/AmenitiesView';
 import AiAnalysisBottomBar from '../../../components/AiAnalysisBottomBar';
@@ -2159,6 +2160,7 @@ export default function AnalysisDetailPage({
         dynamicNews: rawData?.dynamicNews || mergedData?.dynamicNews,
         amenities: rawData?.nearbyData?.amenities || mergedData?.nearbyData?.amenities,
         spatialFacilities: rawData?.nearbyData?.spatialFacilities || mergedData?.nearbyData?.spatialFacilities || [],
+        nearbyInfrastructure: rawData?.nearbyData?.nearbyInfrastructure || mergedData?.nearbyData?.nearbyInfrastructure || null,
     }), [rawData, mergedData]);
 
     const tenYearStoryChart = useMemo(() => {
@@ -2487,12 +2489,7 @@ export default function AnalysisDetailPage({
         }
 
         if (embeddedInApartment) {
-            const aptSeqParam = searchParams.get('aptSeq') || analysisData?.report?.apt_seq || 'pnu';
-            const pnuVal = searchParams.get('pnu') || analysisData?.report?.pnu;
-            const pnuParam = pnuVal
-                ? `?pnu=${encodeURIComponent(pnuVal)}&reportId=${reportId}`
-                : `?reportId=${reportId}`;
-            router.replace(`/apartment/${aptSeqParam}${pnuParam}`);
+            router.replace(`/analyze/${reportId}`);
             return;
         }
 
@@ -2747,14 +2744,7 @@ export default function AnalysisDetailPage({
             completeActiveAiAnalysis(reportIdStr, finalId !== reportIdStr ? finalId : undefined);
 
             if (newReportId && String(newReportId) !== String(id)) {
-                if (embeddedInApartment) {
-                    const aptSeqParam = searchParams.get('aptSeq') || analysisData?.report?.apt_seq || 'pnu';
-                    const pnuVal = searchParams.get('pnu') || analysisData?.report?.pnu;
-                    const pnuParam = pnuVal ? `?pnu=${encodeURIComponent(pnuVal)}&reportId=${newReportId}` : `?reportId=${newReportId}`;
-                    router.replace(`/apartment/${aptSeqParam}${pnuParam}`);
-                } else {
-                    router.replace(`/analyze/${newReportId}`);
-                }
+                router.replace(`/analyze/${newReportId}`);
             } else {
                 await fetchAnalysis();
             }
@@ -5761,6 +5751,10 @@ export default function AnalysisDetailPage({
 
                         return (
                             <motion.div key="regulatory" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                                <NearbyInfrastructurePanel
+                                    data={rawData?.nearbyData?.nearbyInfrastructure}
+                                    variant="dark"
+                                />
                                 <h3 className="text-2xl font-black">개발 호재 및 인허가 현황</h3>
 
                                 <div className="grid grid-cols-1 gap-6">

@@ -43,6 +43,10 @@ interface KakaoMapProps {
   selectedBenefitParcel?: any;
   onBenefitParcelSelect?: (parcel: any) => void;
   isRankingMode?: boolean;
+  /** 검색·범례 등 오버레이 숨김 (비교·임베드용) */
+  compactUi?: boolean;
+  /** properties 변경 시 모든 마커가 보이도록 bounds 맞춤 */
+  fitAllPropertiesOnChange?: boolean;
   /** 검색·내 위치 이동 시 줌 (카카오: 숫자↑=축소). 기본 4 */
   navigationZoomLevel?: number;
 }
@@ -69,6 +73,8 @@ export default function KakaoMap({
   selectedBenefitParcel,
   onBenefitParcelSelect,
   isRankingMode = false,
+  compactUi = false,
+  fitAllPropertiesOnChange = false,
   navigationZoomLevel = 2,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -568,7 +574,21 @@ export default function KakaoMap({
 
     markersRef.current = newMarkers;
     setMarkerCount(isRegionMode ? 0 : newMarkers.length);
-  }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect, isRankingMode]);
+
+    if (fitAllPropertiesOnChange && validProperties.length > 0 && map && !isAnalyzeMode && !isBenefitMode) {
+      const bounds = new window.kakao.maps.LatLngBounds();
+      validProperties.forEach((p) => {
+        bounds.extend(new window.kakao.maps.LatLng(p.lat!, p.lng!));
+      });
+      if (validProperties.length === 1) {
+        const p = validProperties[0];
+        map.setCenter(new window.kakao.maps.LatLng(p.lat!, p.lng!));
+        map.setLevel(Math.min(navigationZoomLevel + 2, 8));
+      } else {
+        map.setBounds(bounds);
+      }
+    }
+  }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect, isRankingMode, fitAllPropertiesOnChange, navigationZoomLevel]);
 
 
   // 행정구역 클러스터 마커 (줌 레벨 변경 및 표시 조건 분기)
@@ -812,6 +832,8 @@ export default function KakaoMap({
     <div className="h-full relative w-full">
       {/* 지도 내장 검색 바 (Floating) - 더 깔끔한 디자인 */}
       <div className="absolute top-4 left-4 right-4 z-20 flex flex-col max-w-md mx-auto gap-2">
+        {!compactUi && (
+        <>
         <div className="flex w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 overflow-hidden">
           <div className="flex items-center pl-4 text-gray-400">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -884,10 +906,12 @@ export default function KakaoMap({
             {locationError}
           </p>
         )}
+        </>
+        )}
       </div>
 
       {/* 내 위치 */}
-      {!isLoading && (
+      {!compactUi && !isLoading && (
         <button
           type="button"
           onClick={moveToMyLocation}
@@ -910,7 +934,7 @@ export default function KakaoMap({
       )}
 
       {/* 영역 매물 수 (모바일·PC) + 범례 (PC만) */}
-      {!isAnalyzeMode && !isLoading && (
+      {!compactUi && !isAnalyzeMode && !isLoading && (
         <div className="absolute top-[70%] lg:top-auto lg:bottom-4 left-4 z-20 flex flex-col gap-2 max-w-[200px]">
           {markerCount > 0 && (
             <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-lg border border-slate-200/80 text-[11px] font-bold text-slate-700">

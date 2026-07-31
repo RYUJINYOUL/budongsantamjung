@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import AmenitiesView from './AmenitiesView';
+import NearbyInfrastructurePanel, { type NearbyInfrastructureData } from './NearbyInfrastructurePanel';
 import {
     formatAreaTypeHeader,
     parseAreaMapping,
@@ -775,6 +776,10 @@ export default function DetectiveSummaryView({
     return (
         <div className="space-y-8 pb-12">
             {renderRedevelopmentBadge()}
+            <NearbyInfrastructurePanel
+                data={rawData?.nearbyData?.nearbyInfrastructure as NearbyInfrastructureData | undefined}
+                variant="dark"
+            />
             {/* 📊 입력한 상세 정보 Section */}
             {renderUserDetailedInfoSection()}
 

@@ -3,6 +3,17 @@ export interface OutlookKeyword {
     line: string;
 }
 
+interface NearbyInfraItem {
+    name?: string;
+    displayTitle?: string;
+    distanceM?: number;
+    walkMin?: number;
+}
+
+interface NearbyInfraBundle {
+    items?: NearbyInfraItem[];
+}
+
 export interface ApartmentOutlookContext {
     marketIndicators?: Record<string, unknown>;
     housingSupply?: Record<string, unknown>;
@@ -15,6 +26,7 @@ export interface ApartmentOutlookContext {
     dynamicNews?: Record<string, unknown>;
     amenities?: Record<string, unknown>;
     spatialFacilities?: Array<Record<string, unknown>>;
+    nearbyInfrastructure?: NearbyInfraBundle | null;
 }
 
 function parseSeries(seriesData: unknown): { current: number } | null {
@@ -263,7 +275,17 @@ function developmentLine(
 function transportLine(
     amenities?: Record<string, unknown>,
     spatialFacilities?: Array<Record<string, unknown>>,
+    nearbyInfrastructure?: NearbyInfraBundle | null,
 ): OutlookKeyword | null {
+    const infraItems = nearbyInfrastructure?.items || [];
+    if (infraItems.length) {
+        const nearest = infraItems[0]!;
+        return {
+            label: '교통 · 인프라',
+            line: `${nearest.displayTitle || nearest.name} ${nearest.distanceM}m · ${nearest.walkMin}분`,
+        };
+    }
+
     const traffic = Array.isArray(amenities?.['교통']) ? amenities['교통'] as Array<Record<string, unknown>> : [];
     const infraRe = /철도|지하철|GTX|도로|터널|역|고속|철도건설/;
 
@@ -305,7 +327,7 @@ export function buildApartmentOutlookKeywords(ctx: ApartmentOutlookContext): Out
         populationLine((ctx.population || {}) as Record<string, unknown>),
         sixMonthVolumeLine(ctx.targetTrades, ctx.dealVolumeStats),
         developmentLine(reg, ctx.dynamicNews as Record<string, unknown> | undefined),
-        transportLine(ctx.amenities, ctx.spatialFacilities),
+        transportLine(ctx.amenities, ctx.spatialFacilities, ctx.nearbyInfrastructure),
     ];
 
     return items.filter((x): x is OutlookKeyword => x != null);

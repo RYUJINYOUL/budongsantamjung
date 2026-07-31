@@ -9,7 +9,35 @@ import AnalyzePanel from '../components/AnalyzePanel';
 import RankingPanel from '../components/RankingPanel';
 import ComparePanel from '../components/ComparePanel';
 import PropertyCard from '../components/PropertyCard';
+import ApartmentCompareBasketBars, { ApartmentCompareBasketBar, useCompareBasketKeys } from '../components/ApartmentCompareBasket';
+import ApartmentDiscoverToolbar from '../components/ApartmentDiscoverToolbar';
+import ApartmentDiscoverFilterSheet from '../components/ApartmentDiscoverFilterSheet';
+import {
+  loadApartmentDiscoverFilters,
+  saveApartmentDiscoverFilters,
+  defaultApartmentDiscoverFilters,
+  passesApartmentDiscoverFilters,
+  buildApartmentCardDisplay,
+  resolveAreaForCard,
+  sortApartmentDiscoverList,
+  apartmentDiscoverFilterHints,
+  hasStrictDataFilters,
+  type ApartmentDiscoverFilters,
+  type ApartmentCardSnapshot,
+} from '../lib/apartmentDiscoverFilters';
+import { fetchApartmentCardSnapshot } from '../lib/fetchApartmentDiscoverCards';
+import { fetchApartmentDiscover } from '../lib/fetchApartmentDiscover';
+import { USE_SERVER_APARTMENT_DISCOVER, useServerApartmentDiscoverForCategory } from '../lib/apartmentDiscoverFlags';
+import { mapDiscoverItemsToFeed } from '../lib/apartmentDiscoverFeedMap';
+import { fetchApartmentAreas } from '../lib/apartmentCompareAreas';
+import {
+  isPyeongFilterActive,
+  pickRepresentativeAreaM2,
+} from '../lib/aptDiscoverArea';
+import { searchKakaoPlaceSuggestions } from '../lib/kakaoResolvePlaceQuery';
 import { makeAnalyzeSlug } from '../lib/slug';
+import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../components/ApartmentAreaPickModal';
+import { compareItemKey } from '../lib/apartmentCompareBasket';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -18,8 +46,8 @@ import {
   zoomLevelToRadiusKm,
   type MapPosition,
 } from '../lib/timelineGeo';
-import { getScoreColors } from '../lib/mapMarkers';
 import { parseParcelPolygonFromVworldResponse } from '../lib/parcelGeometry';
+import { reverseGeocodeKakao } from '../lib/geolocation';
 import {
   PANEL_INPUT,
   PANEL_INPUT_WRAP,
@@ -34,12 +62,16 @@ interface Analysis {
   location?: { name: string; address: string };
   detectiveNote?: string;
   propertyGrade?: { overall: string; reason: string; riskScore: string };
+  hasReport?: boolean;
+  latestReportId?: string | null;
   warningFlags?: { falseListing: boolean; unrealisticYield: boolean; hiddenFlaws: boolean };
   createdAt: string;
   lat?: number;
   lng?: number;
   likes?: string[];
   aptSeq?: string | null;
+  rtmsAptSeq?: string | null;
+  masterId?: string | null;
   pnu?: string | null;
   bldNm?: string | null;
   riseRate6m?: number | null;
@@ -48,6 +80,18 @@ interface Analysis {
   maxArea?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
+}
+
+function analysisCardCacheKey(
+  aptSeq: string,
+  centerM2: number | null,
+): string {
+  return `${aptSeq}:${centerM2 != null && centerM2 > 0 ? centerM2 : 'default'}`;
+}
+
+function isApartmentAnalysis(a: Pick<Analysis, 'category'>) {
+  const c = (a.category || '').toLowerCase();
+  return c.includes('apartment') || c.includes('아파트');
 }
 
 function HomePageContent() {
@@ -80,6 +124,42 @@ function HomePageContent() {
 
   // 상급지 비교 결과 → 지도 영역에 표시
   const [showCompareResult, setShowCompareResult] = useState(false);
+  const compareBasketKeys = useCompareBasketKeys();
+  const [discoverFilters, setDiscoverFilters] = useState<ApartmentDiscoverFilters>(defaultApartmentDiscoverFilters);
+  const [discoverSheetOpen, setDiscoverSheetOpen] = useState(false);
+  const [discoverSheetSection, setDiscoverSheetSection] = useState<string | null>(null);
+  const [aptCardCache, setAptCardCache] = useState<Record<string, ApartmentCardSnapshot>>({});
+  /** discover 아파트 — 좌표→주소 역지오코딩 캐시 */
+  const [aptAddressById, setAptAddressById] = useState<Record<string, string>>({});
+  const aptAddressFetchedRef = useRef<Set<string>>(new Set());
+  /** aptSeq → 대표 전용㎡; null=평형 구간 밖(제외) */
+  const [aptAreaCenterM2, setAptAreaCenterM2] = useState<Record<string, number | null>>({});
+  const selectedCategoryRef = useRef(selectedCategory);
+  const discoverFiltersRef = useRef(discoverFilters);
+  const prevSelectedCategoryRef = useRef(selectedCategory);
+  useEffect(() => {
+    selectedCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
+  useEffect(() => {
+    discoverFiltersRef.current = discoverFilters;
+  }, [discoverFilters]);
+
+  const useApartmentDiscoverFeed =
+    useServerApartmentDiscoverForCategory(selectedCategory);
+  const apartmentTabDiscover =
+    USE_SERVER_APARTMENT_DISCOVER && selectedCategory === '아파트';
+
+  const [compareToast, setCompareToast] = useState<string | null>(null);
+  const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
+
+  useEffect(() => {
+    setDiscoverFilters(loadApartmentDiscoverFilters());
+    const onDiscover = () => setDiscoverFilters(loadApartmentDiscoverFilters());
+    window.addEventListener('apartment-discover-filters-updated', onDiscover);
+    return () => {
+      window.removeEventListener('apartment-discover-filters-updated', onDiscover);
+    };
+  }, []);
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -194,6 +274,65 @@ function HomePageContent() {
       const headers: Record<string, string> = {};
       if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
 
+      const category = selectedCategoryRef.current;
+      const useDiscoverOnly = USE_SERVER_APARTMENT_DISCOVER && category === '아파트';
+      const useAllTabMerge = USE_SERVER_APARTMENT_DISCOVER && category === 'all';
+
+      if (useDiscoverOnly) {
+        const { items } = await fetchApartmentDiscover(
+          discoverFiltersRef.current,
+          { lat, lng, radiusKm: radius },
+          { headers, signal: abortController.signal },
+        );
+        const { list, cardUpdates } = mapDiscoverItemsToFeed(items, analysisCardCacheKey);
+        if (Object.keys(cardUpdates).length > 0) {
+          setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
+        }
+        setAnalyses(list as Analysis[]);
+        hasTimelineLoadedRef.current = true;
+        return;
+      }
+
+      if (useAllTabMerge) {
+        const timelineParams = new URLSearchParams({
+          limit: String(TIMELINE_LIMIT),
+          lat: String(lat),
+          lng: String(lng),
+          radius: String(radius),
+        });
+        const [timelineRes, discoverResult] = await Promise.all([
+          fetch(`/api/land/detective/timeline?${timelineParams}`, {
+            headers,
+            signal: abortController.signal,
+          }),
+          fetchApartmentDiscover(
+            discoverFiltersRef.current,
+            { lat, lng, radiusKm: radius },
+            { headers, signal: abortController.signal },
+            { analyzedOnly: true },
+          ),
+        ]);
+        if (!timelineRes.ok) throw new Error('데이터를 불러오는데 실패했습니다');
+        const timelineData = await timelineRes.json();
+        const nonAptTimeline = (timelineData.analyses || [])
+          .map((item: any) => ({
+            ...item,
+            id: item.id || item._id || item.reportId || item.report_id || '',
+          }))
+          .filter((item: Analysis) => !isApartmentAnalysis(item));
+
+        const { list: aptList, cardUpdates } = mapDiscoverItemsToFeed(
+          discoverResult.items,
+          analysisCardCacheKey,
+        );
+        if (Object.keys(cardUpdates).length > 0) {
+          setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
+        }
+        setAnalyses([...nonAptTimeline, ...(aptList as Analysis[])]);
+        hasTimelineLoadedRef.current = true;
+        return;
+      }
+
       const params = new URLSearchParams({
         limit: String(TIMELINE_LIMIT),
         lat: String(lat),
@@ -222,17 +361,41 @@ function HomePageContent() {
     }
   }, []);
 
-  /** 앱 timelineProvider와 동일: 지도 이동·줌 후 300ms 디바운스 재요청 */
+  /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 */
   useEffect(() => {
     if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    const debounceMs =
+      useServerApartmentDiscoverForCategory(selectedCategory) ? 600 : 300;
     fetchDebounceRef.current = setTimeout(() => {
       const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
       fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, hasTimelineLoadedRef.current);
-    }, 300);
+    }, debounceMs);
     return () => {
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [mapPosition, fetchAnalyses]);
+  }, [mapPosition, selectedCategory, fetchAnalyses]);
+
+  useEffect(() => {
+    if (!apartmentTabDiscover) return;
+    if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    fetchDebounceRef.current = setTimeout(() => {
+      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    }, 600);
+    return () => {
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    };
+  }, [discoverFilters, selectedCategory, mapPosition, fetchAnalyses]);
+
+  useEffect(() => {
+    if (prevSelectedCategoryRef.current === selectedCategory) return;
+    prevSelectedCategoryRef.current = selectedCategory;
+    const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+    fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    if (selectedCategory === '아파트' || selectedCategory === 'all') {
+      setAptAreaCenterM2({});
+    }
+  }, [selectedCategory, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -272,19 +435,10 @@ function HomePageContent() {
     } catch { /* ignore */ }
   };
 
-  const navigateToDetail = (analysisId: string, aptSeq?: string | null, pnu?: string | null, category?: string) => {
-    const isApartment = category === '아파트' || category === 'apartment';
-    if (isApartment && (aptSeq || pnu)) {
-      const targetAptSeq = aptSeq || 'pnu';
-      const q = pnu ? `?pnu=${encodeURIComponent(pnu)}&reportId=${analysisId}` : `?reportId=${analysisId}`;
-      router.push(`/apartment/${targetAptSeq}${q}`);
-      return;
-    }
-
+  const buildDiscoverReturnParams = useCallback(() => {
     const params = new URLSearchParams();
     params.set('tab', showMobileMap ? 'map' : 'list');
-    // 실시간 드래그가 반영된 지도의 중심 좌표(mapPosition)를 최우선으로 지정하여 위치를 유지함
-    if (mapPosition && mapPosition.lat && mapPosition.lng) {
+    if (mapPosition?.lat && mapPosition?.lng) {
       params.set('lat', mapPosition.lat.toString());
       params.set('lng', mapPosition.lng.toString());
     } else if (mapCenter) {
@@ -295,8 +449,50 @@ function HomePageContent() {
       params.set('lng', ((mapBounds.neLng + mapBounds.swLng) / 2).toString());
     }
     if (selectedCategory !== 'all') params.set('category', selectedCategory);
-    router.push(`/analyze/${analysisId}?return=${encodeURIComponent(params.toString())}`);
+    return params;
+  }, [showMobileMap, mapPosition, mapCenter, mapBounds, selectedCategory]);
+
+  const navigateToDetail = (
+    analysisId: string,
+    aptSeq?: string | null,
+    pnu?: string | null,
+    category?: string,
+    _hasReport?: boolean,
+    slugTitle?: string | null,
+    latestReportId?: string | null,
+  ) => {
+    const isApartment = category === '아파트' || category === 'apartment';
+    const returnQs = buildDiscoverReturnParams().toString();
+
+    if (isApartment && _hasReport === false) return;
+
+    if (isApartment && (aptSeq || pnu)) {
+      const reportId = latestReportId || analysisId;
+      const slug = makeAnalyzeSlug(reportId, slugTitle);
+      router.push(`/analyze/${slug}?return=${encodeURIComponent(returnQs)}`);
+      return;
+    }
+
+    router.push(`/analyze/${analysisId}?return=${encodeURIComponent(returnQs)}`);
   };
+
+  const handleAddApartmentToCompare = useCallback((analysis: Analysis) => {
+    const areaRaw = analysis.exclusiveArea ?? analysis.area;
+    const exclusiveAreaM2 = areaRaw != null ? Number(areaRaw) : null;
+    const rtms = analysis.rtmsAptSeq || (analysis.aptSeq?.includes('-') ? analysis.aptSeq : undefined);
+    const masterId = analysis.masterId || (analysis.aptSeq && !analysis.aptSeq.includes('-') ? analysis.aptSeq : undefined);
+    setComparePickPending({
+      masterId: masterId ? String(masterId) : undefined,
+      rtmsAptSeq: rtms ? String(rtms) : undefined,
+      complexName: analysis.bldNm || analysis.propertyTitle || undefined,
+      suggestedAreaM2: Number.isFinite(exclusiveAreaM2) ? exclusiveAreaM2 : null,
+    });
+  }, []);
+
+  const showCompareToast = useCallback((message: string) => {
+    setCompareToast(message);
+    window.setTimeout(() => setCompareToast(null), 2800);
+  }, []);
 
   const categoryMappings: Record<string, string[]> = {
     '아파트': ['apartment', '아파트'],
@@ -306,21 +502,323 @@ function HomePageContent() {
     '빌딩': ['building', '빌딩', '상업용빌딩'],
   };
 
-  const filteredAnalyses = analyses.filter(a => {
-    if (selectedCategory === 'all') return true;
-    if (!a.category) return false;
+  const filteredAnalyses = useMemo(() => {
+    return analyses.filter((a) => {
+      if (selectedCategory === 'all') return true;
+      if (!a.category) return false;
 
-    const allowedValues = categoryMappings[selectedCategory] || [selectedCategory];
-    const categoryLower = a.category.toLowerCase().trim();
+      const allowedValues = categoryMappings[selectedCategory] || [selectedCategory];
+      const categoryLower = a.category.toLowerCase().trim();
 
-    return allowedValues.some(val =>
-      categoryLower.includes(val.toLowerCase()) ||
-      val.toLowerCase().includes(categoryLower)
+      return allowedValues.some(
+        (val) =>
+          categoryLower.includes(val.toLowerCase()) ||
+          val.toLowerCase().includes(categoryLower),
+      );
+    });
+  }, [analyses, selectedCategory]);
+  const selectedMapProperty = useMemo(() => {
+    // 분석 패널에서 위치 선택 시 해당 위치로 지도 이동
+    if (activePanel === 'analyze' && analyzeLocation) {
+      return {
+        id: '__analyze_pin__',
+        address: analyzeLocation.address,
+        propertyTitle: analyzeLocation.address,
+        category: 'pin',
+        riskScore: 0,
+        lat: analyzeLocation.lat,
+        lng: analyzeLocation.lng,
+      };
+    }
+    // 랭킹 조회 후 특정 아파트가 선택된 경우
+    if (activePanel === 'ranking' && selectedRankingApt) {
+      return {
+        id: selectedRankingApt.reportId,
+        address: selectedRankingApt.address || '주소 없음',
+        propertyTitle: selectedRankingApt.bldNm,
+        category: searchParams.get('rankingType') || 'apartment',
+        riskScore: 0,
+        lat: selectedRankingApt.lat,
+        lng: selectedRankingApt.lng,
+        rank: selectedRankingApt.rank,
+      };
+    }
+    if (!selectedProperty) return null;
+    const riskScore = parseFloat(selectedProperty.propertyGrade?.riskScore || '0');
+    const pendingAi = riskScore <= 0;
+    return {
+      id: selectedProperty.id,
+      address: selectedProperty.location?.address || '주소 없음',
+      propertyTitle: selectedProperty.propertyTitle,
+      category: selectedProperty.category,
+      riskScore,
+      pendingAi,
+      lat: selectedProperty.lat,
+      lng: selectedProperty.lng,
+    };
+  }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
+
+  const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
+  const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
+  const [listSearchQuery, setListSearchQuery] = useState('');
+  const [listSearchResults, setListSearchResults] = useState<any[]>([]);
+  const ignoreSearchRef = useRef(false);
+
+  useEffect(() => {
+    if (ignoreSearchRef.current) {
+      ignoreSearchRef.current = false;
+      return;
+    }
+
+    const query = listSearchQuery.trim();
+    if (!query || query.length < 2) {
+      setListSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const list = await searchKakaoPlaceSuggestions(query);
+        setListSearchResults(list);
+      } catch {
+        setListSearchResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [listSearchQuery]);
+
+  const searchFilteredAnalyses = useMemo(() => {
+    const q = listSearchQuery.trim().toLowerCase();
+    if (!q) return filteredAnalyses;
+    return filteredAnalyses.filter(a =>
+      (a.propertyTitle || '').toLowerCase().includes(q) ||
+      (a.location?.name || '').toLowerCase().includes(q) ||
+      (a.location?.address || '').toLowerCase().includes(q) ||
+      (a.detectiveNote || '').toLowerCase().includes(q)
     );
-  });
+  }, [filteredAnalyses, listSearchQuery]);
+
+  const getAptCenterM2 = useCallback(
+    (a: Analysis): number | null | undefined => {
+      const id = a.aptSeq ? String(a.aptSeq) : '';
+      if (!id) return undefined;
+      if (USE_SERVER_APARTMENT_DISCOVER && useServerApartmentDiscoverForCategory(selectedCategory) && isApartmentAnalysis(a)) {
+        return resolveAreaForCard(null, a.exclusiveArea ?? a.area ?? null);
+      }
+      if (isPyeongFilterActive(discoverFilters)) {
+        if (id in aptAreaCenterM2) return aptAreaCenterM2[id];
+        return undefined;
+      }
+      return resolveAreaForCard(null, a.exclusiveArea ?? a.area ?? null);
+    },
+    [discoverFilters, aptAreaCenterM2, selectedCategory],
+  );
+
+  const cardKeyForAnalysis = useCallback(
+    (a: Analysis) => {
+      if (!a.aptSeq) return '';
+      const center = getAptCenterM2(a);
+      if (center === undefined) return '';
+      if (center === null) return '';
+      return analysisCardCacheKey(String(a.aptSeq), center);
+    },
+    [getAptCenterM2],
+  );
+
+  const buildPropertyCardBundle = useCallback(
+    (analysis: Analysis) => {
+      const cardKey = cardKeyForAnalysis(analysis);
+      const cardSnap = cardKey ? aptCardCache[cardKey] : undefined;
+      const centerM2 = getAptCenterM2(analysis);
+      const areaLocked = isPyeongFilterActive(discoverFilters);
+      const aptDisplay =
+        useApartmentDiscoverFeed && isApartmentAnalysis(analysis)
+          ? buildApartmentCardDisplay(
+              discoverFilters.dealMode,
+              cardSnap,
+              {
+                riseRate6m: analysis.riseRate6m,
+                avgPrice1m: analysis.avgPrice1m,
+                area: resolveAreaForCard(
+                  typeof centerM2 === 'number' ? centerM2 : null,
+                  analysis.exclusiveArea ?? analysis.area ?? null,
+                ),
+              },
+              { areaLocked },
+            )
+          : undefined;
+      const resolvedLocation = aptAddressById[analysis.id]
+        ? { name: aptAddressById[analysis.id], address: aptAddressById[analysis.id] }
+        : analysis.location;
+      return {
+        aptDisplay,
+        data: {
+          id: analysis.id,
+          bldNm: analysis.bldNm || undefined,
+          propertyTitle: analysis.propertyTitle,
+          location: resolvedLocation,
+          category: analysis.category,
+          detectiveNote: analysis.detectiveNote,
+          propertyGrade: analysis.propertyGrade,
+          likes: analysis.likes,
+          createdAt: analysis.createdAt,
+          riseRate6m: cardSnap?.riseRate6m ?? analysis.riseRate6m,
+          avgPrice1m: cardSnap?.avgPrice1m ?? analysis.avgPrice1m,
+          minArea: analysis.minArea,
+          maxArea: analysis.maxArea,
+          exclusiveArea: cardSnap?.exclusiveAreaM2 ?? analysis.exclusiveArea,
+          area: analysis.area,
+          aptSeq: analysis.aptSeq,
+          rtmsAptSeq: analysis.rtmsAptSeq,
+          hasReport: analysis.hasReport,
+        },
+      };
+    },
+    [
+      cardKeyForAnalysis,
+      aptCardCache,
+      getAptCenterM2,
+      discoverFilters,
+      useApartmentDiscoverFeed,
+      aptAddressById,
+    ],
+  );
+
+  const listAnalysesForDisplay = useMemo(() => {
+    let list = searchFilteredAnalyses;
+    if (selectedCategory === '아파트') {
+      if (apartmentTabDiscover) {
+        list = sortApartmentDiscoverList(list, discoverFilters, (a) => {
+          const centerM2 = a.exclusiveArea ?? a.area ?? null;
+          if (!a.aptSeq || centerM2 == null) return undefined;
+          return aptCardCache[analysisCardCacheKey(String(a.aptSeq), centerM2)];
+        });
+        return list;
+      }
+      list = list.filter((a) => {
+        if (!isApartmentAnalysis(a)) return true;
+        if (isPyeongFilterActive(discoverFilters) && a.aptSeq) {
+          const center = aptAreaCenterM2[String(a.aptSeq)];
+          if (center === null || center === undefined) return false;
+        }
+        const key = cardKeyForAnalysis(a);
+        return passesApartmentDiscoverFilters(
+          { category: a.category, avgPrice1m: a.avgPrice1m },
+          key ? aptCardCache[key] : undefined,
+          discoverFilters,
+        );
+      });
+      list = sortApartmentDiscoverList(list, discoverFilters, (a) => {
+        const key = cardKeyForAnalysis(a);
+        return key ? aptCardCache[key] : undefined;
+      });
+    }
+    return list;
+  }, [
+    searchFilteredAnalyses,
+    selectedCategory,
+    useApartmentDiscoverFeed,
+    discoverFilters,
+    aptCardCache,
+    aptAreaCenterM2,
+    cardKeyForAnalysis,
+  ]);
+
+  useEffect(() => {
+    if (!useApartmentDiscoverFeed) return;
+    const targets = listAnalysesForDisplay.filter((a) => {
+      if (!isApartmentAnalysis(a) || a.lat == null || a.lng == null) return false;
+      if (aptAddressFetchedRef.current.has(a.id)) return false;
+      const loc = (a.location?.address || a.location?.name || '').trim();
+      const title = (a.propertyTitle || '').trim();
+      return !loc || loc === title || /^[가-힣]+(?:동|읍|면|리|가)$/.test(loc);
+    }).slice(0, 24);
+    if (targets.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const a of targets) {
+        if (cancelled) break;
+        aptAddressFetchedRef.current.add(a.id);
+        try {
+          const addr = await reverseGeocodeKakao(Number(a.lat), Number(a.lng));
+          if (cancelled || !addr.trim()) continue;
+          setAptAddressById((prev) => (prev[a.id] ? prev : { ...prev, [a.id]: addr.trim() }));
+        } catch {
+          /* 역지오코딩 실패 — 동·읍·면 fallback 유지 */
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [listAnalysesForDisplay, useApartmentDiscoverFeed]);
+
+  useEffect(() => {
+    setAptAreaCenterM2({});
+  }, [discoverFilters.pyeongMin, discoverFilters.pyeongMax]);
+
+  useEffect(() => {
+    if (USE_SERVER_APARTMENT_DISCOVER && selectedCategory === '아파트') return;
+    if (selectedCategory !== '아파트') return;
+    const targets = searchFilteredAnalyses.filter((a) => a.aptSeq && isApartmentAnalysis(a)).slice(0, 48);
+    let cancelled = false;
+    const pyeongActive = isPyeongFilterActive(discoverFilters);
+
+    (async () => {
+      const centerUpdates: Record<string, number | null> = {};
+      const cardUpdates: Record<string, ApartmentCardSnapshot> = {};
+
+      await Promise.all(
+        targets.map(async (a) => {
+          const aptKey = String(a.aptSeq);
+          const reportArea = a.exclusiveArea ?? a.area ?? null;
+          let centerM2: number | null = null;
+
+          if (pyeongActive) {
+            const areasRes = await fetchApartmentAreas(aptKey);
+            centerM2 = pickRepresentativeAreaM2(
+              areasRes.areas || [],
+              discoverFilters.pyeongMin,
+              discoverFilters.pyeongMax,
+              reportArea,
+            );
+            centerUpdates[aptKey] = centerM2;
+            if (centerM2 == null) return;
+          } else {
+            centerM2 = resolveAreaForCard(null, reportArea);
+          }
+
+          const cacheKey = analysisCardCacheKey(aptKey, centerM2);
+          const card = await fetchApartmentCardSnapshot(aptKey, centerM2);
+          if (card) cardUpdates[cacheKey] = card;
+          if (!pyeongActive) centerUpdates[aptKey] = centerM2;
+        }),
+      );
+
+      if (cancelled) return;
+      if (Object.keys(centerUpdates).length > 0) {
+        setAptAreaCenterM2((prev) => ({ ...prev, ...centerUpdates }));
+      }
+      if (Object.keys(cardUpdates).length > 0) {
+        setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchFilteredAnalyses, discoverFilters, selectedCategory]);
+
+  const mapAnalysesSource = useMemo(() => {
+    if (selectedCategory === '아파트') return listAnalysesForDisplay;
+    return filteredAnalyses;
+  }, [selectedCategory, filteredAnalyses, listAnalysesForDisplay]);
+
   const mapProperties = useMemo(() => {
     if (activePanel === 'ranking') {
-      // 카테고리별 마커 색상: apartment=분홍, land=보라, building=초록
       const rankCategoryForMarker = (searchParams.get('rankingType') || 'apartment') as string;
       const rankMarkers = rankingProperties.filter(a => a.lat && a.lng).map(a => ({
         id: a.reportId,
@@ -358,133 +856,39 @@ function HomePageContent() {
       return [...rankMarkers, ...gosiMarkers];
     }
     if (activePanel === 'analyze' || activePanel === 'compare') {
-      // 🕵️ 분석 모드 및 지역 브리핑 모드일 때는 타임라인 매물 마커들을 지도에 표시하지 않습니다.
       return [];
     }
-    return filteredAnalyses
+    return mapAnalysesSource
       .filter(a => a.lat != null && a.lng != null)
       .map(a => {
         const riskScore = parseFloat(a.propertyGrade?.riskScore || '0');
+        /** 타임라인과 동일: 점수 없으면 0.svg+00. 상세는 latestReportId/report id 기준 */
+        const pendingAi = riskScore <= 0;
+        const cardKey = cardKeyForAnalysis(a);
+        const useDiscoverCard =
+          useApartmentDiscoverFeed && isApartmentAnalysis(a) && cardKey;
+        const card = useDiscoverCard ? aptCardCache[cardKey] : undefined;
+        const priceHint =
+          discoverFilters.dealMode === 'jeonse' && card?.avgJeonseDepositMan != null && card.avgJeonseDepositMan > 0
+            ? ` · 전세 ${(card.avgJeonseDepositMan / 10000).toFixed(1)}억`
+            : card?.avgPrice1m != null && card.avgPrice1m > 0
+              ? ` · ${(card.avgPrice1m / 10000).toFixed(1)}억`
+              : a.avgPrice1m != null && a.avgPrice1m > 0
+                ? ` · ${(a.avgPrice1m / 10000).toFixed(1)}억`
+                : '';
+        const titleSuffix = priceHint;
         return {
           id: a.id,
           address: a.location?.address || '주소 없음',
-          propertyTitle: a.propertyTitle,
+          propertyTitle: `${a.propertyTitle || ''}${titleSuffix}`,
           category: a.category,
           riskScore,
-          pendingAi: riskScore <= 0,
+          pendingAi,
           lat: a.lat,
           lng: a.lng,
         };
       });
-  }, [filteredAnalyses, activePanel, rankingProperties, rankingGosiPoints, searchParams]);
-
-  const selectedMapProperty = useMemo(() => {
-    // 분석 패널에서 위치 선택 시 해당 위치로 지도 이동
-    if (activePanel === 'analyze' && analyzeLocation) {
-      return {
-        id: '__analyze_pin__',
-        address: analyzeLocation.address,
-        propertyTitle: analyzeLocation.address,
-        category: 'pin',
-        riskScore: 0,
-        lat: analyzeLocation.lat,
-        lng: analyzeLocation.lng,
-      };
-    }
-    // 랭킹 조회 후 특정 아파트가 선택된 경우
-    if (activePanel === 'ranking' && selectedRankingApt) {
-      return {
-        id: selectedRankingApt.reportId,
-        address: selectedRankingApt.address || '주소 없음',
-        propertyTitle: selectedRankingApt.bldNm,
-        category: searchParams.get('rankingType') || 'apartment',
-        riskScore: 0,
-        lat: selectedRankingApt.lat,
-        lng: selectedRankingApt.lng,
-        rank: selectedRankingApt.rank,
-      };
-    }
-    if (!selectedProperty) return null;
-    const riskScore = parseFloat(selectedProperty.propertyGrade?.riskScore || '0');
-    return {
-      id: selectedProperty.id,
-      address: selectedProperty.location?.address || '주소 없음',
-      propertyTitle: selectedProperty.propertyTitle,
-      category: selectedProperty.category,
-      riskScore,
-      pendingAi: riskScore <= 0,
-      lat: selectedProperty.lat,
-      lng: selectedProperty.lng,
-    };
-  }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
-
-  const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
-  const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
-  const [listSearchQuery, setListSearchQuery] = useState('');
-  const [listSearchResults, setListSearchResults] = useState<any[]>([]);
-  const ignoreSearchRef = useRef(false);
-
-  useEffect(() => {
-    if (ignoreSearchRef.current) {
-      ignoreSearchRef.current = false;
-      return;
-    }
-
-    const query = listSearchQuery.trim();
-    if (!query || query.length < 2) {
-      setListSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      if (typeof window !== 'undefined' && window.kakao?.maps?.services) {
-        const { kakao } = window;
-        const geocoder = new kakao.maps.services.Geocoder();
-
-        // 1. 주소 검색 시도
-        geocoder.addressSearch(query, (result: any, status: any) => {
-          if (status === kakao.maps.services.Status.OK && result.length > 0) {
-            setListSearchResults(result.slice(0, 5).map((p: any) => ({
-              place_name: p.address_name || p.road_address?.address_name,
-              address_name: p.address_name,
-              road_address_name: p.road_address?.address_name || '',
-              x: p.x,
-              y: p.y
-            })));
-          } else {
-            // 2. 주소 검색 실패 시 키워드/장소 검색
-            const ps = new kakao.maps.services.Places();
-            ps.keywordSearch(query, (data: any, status: any) => {
-              if (status === kakao.maps.services.Status.OK) {
-                setListSearchResults(data.slice(0, 5).map((p: any) => ({
-                  place_name: p.place_name,
-                  address_name: p.address_name,
-                  road_address_name: p.road_address_name,
-                  x: p.x,
-                  y: p.y
-                })));
-              } else {
-                setListSearchResults([]);
-              }
-            });
-          }
-        });
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [listSearchQuery]);
-
-  const searchFilteredAnalyses = useMemo(() => {
-    const q = listSearchQuery.trim().toLowerCase();
-    if (!q) return filteredAnalyses;
-    return filteredAnalyses.filter(a =>
-      (a.propertyTitle || '').toLowerCase().includes(q) ||
-      (a.location?.name || '').toLowerCase().includes(q) ||
-      (a.location?.address || '').toLowerCase().includes(q) ||
-      (a.detectiveNote || '').toLowerCase().includes(q)
-    );
-  }, [filteredAnalyses, listSearchQuery]);
+  }, [mapAnalysesSource, activePanel, rankingProperties, rankingGosiPoints, searchParams, selectedCategory, aptCardCache, discoverFilters, cardKeyForAnalysis]);
 
   const handleListSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -492,7 +896,7 @@ function HomePageContent() {
     if (!query) return;
 
     // 1. 먼저 현재 필터링된 최근 분석 리스트에서 매칭되는 항목이 있는지 확인
-    const localMatch = searchFilteredAnalyses.find(a => a.lat && a.lng);
+    const localMatch = listAnalysesForDisplay.find(a => a.lat && a.lng);
     if (localMatch && localMatch.lat && localMatch.lng) {
       setMapCenter({ lat: localMatch.lat, lng: localMatch.lng });
       setSelectedProperty(localMatch);
@@ -562,13 +966,20 @@ function HomePageContent() {
 
           {/* 모바일 뷰 토글 */}
           {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare') && (
-            <div className="lg:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
-              <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                지도
-              </button>
-              <button onClick={() => setShowMobileMap(false)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                {activePanel === 'analyze' ? '매물분석' : '목록'}
-              </button>
+            <div className="lg:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-[61] flex flex-col items-center gap-2.5 pointer-events-none pb-[env(safe-area-inset-bottom,0px)]">
+              {!showMobileMap && (
+                <div className="pointer-events-auto">
+                  <ApartmentCompareBasketBar anchor="inline" />
+                </div>
+              )}
+              <div className="pointer-events-auto flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
+                <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  지도
+                </button>
+                <button onClick={() => setShowMobileMap(false)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                  {activePanel === 'analyze' ? '매물분석' : '목록'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -624,6 +1035,31 @@ function HomePageContent() {
             <div className={`flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 pb-24 ${showMobileMap ? 'hidden lg:block' : 'block'}`}>
               <div className="flex flex-col gap-3 mb-4">
                 <h2 className="text-sm font-bold text-slate-800">최근 분석</h2>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                    {CATEGORIES.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => { setSelectedCategory(cat); setDisplayCount(isMobile ? 15 : 20); }}
+                        className={`shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold border transition-all ${selectedCategory === cat ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/15' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700'}`}
+                      >
+                        {CATEGORY_LABELS[cat]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedCategory === '아파트' && (
+                  <ApartmentDiscoverToolbar
+                    filters={discoverFilters}
+                    onOpenSheet={(section) => {
+                      setDiscoverSheetSection(section ?? null);
+                      setDiscoverSheetOpen(true);
+                    }}
+                  />
+                )}
 
                 <form onSubmit={handleListSearchSubmit} className="w-full relative">
                   <div className={PANEL_INPUT_WRAP}>
@@ -691,21 +1127,6 @@ function HomePageContent() {
                     </div>
                   )}
                 </form>
-
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                    {CATEGORIES.map(cat => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => { setSelectedCategory(cat); setDisplayCount(isMobile ? 15 : 20); }}
-                        className={`shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold border transition-all ${selectedCategory === cat ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/15' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700'}`}
-                      >
-                        {CATEGORY_LABELS[cat]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               {loading ? (
@@ -726,7 +1147,7 @@ function HomePageContent() {
                     RETRY
                   </button>
                 </div>
-              ) : searchFilteredAnalyses.length === 0 ? (
+              ) : listAnalysesForDisplay.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm">
                   <p className="text-slate-800 font-bold mono text-sm mb-1">
                     {listSearchQuery ? '검색 결과 없음' : '매물 없음'}
@@ -734,39 +1155,50 @@ function HomePageContent() {
                   <p className="text-slate-500 font-medium text-xs">
                     {listSearchQuery ? '조건에 맞는 분석 내역이 없습니다.' : '지도 영역 내 매물이 없습니다.'}
                   </p>
+                  {selectedCategory === '아파트'
+                    && !listSearchQuery
+                    && hasStrictDataFilters(discoverFilters) && (
+                    <ul className="mt-3 mx-auto max-w-xs text-left text-[10px] text-amber-800/90 space-y-1 px-3">
+                      {apartmentDiscoverFilterHints(discoverFilters).map((hint) => (
+                        <li key={hint} className="leading-relaxed">
+                          · {hint}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {searchFilteredAnalyses.slice(0, displayCount).map(analysis => {
+                  {listAnalysesForDisplay.slice(0, displayCount).map(analysis => {
+                    const { data, aptDisplay } = buildPropertyCardBundle(analysis);
                     return (
                       <PropertyCard
                         key={analysis.id}
-                        data={{
-                          id: analysis.id,
-                          bldNm: analysis.bldNm || undefined,
-                          propertyTitle: analysis.propertyTitle,
-                          location: analysis.location,
-                          category: analysis.category,
-                          detectiveNote: analysis.detectiveNote,
-                          propertyGrade: analysis.propertyGrade,
-                          likes: analysis.likes,
-                          createdAt: analysis.createdAt,
-                          riseRate6m: analysis.riseRate6m,
-                          avgPrice1m: analysis.avgPrice1m,
-                          minArea: analysis.minArea,
-                          maxArea: analysis.maxArea,
-                          exclusiveArea: analysis.exclusiveArea,
-                          area: analysis.area,
-                        }}
+                        data={data}
+                        apartmentDisplay={aptDisplay}
                         selected={selectedProperty?.id === analysis.id}
+                        inCompareBasket={compareBasketKeys.has(compareItemKey({
+                          masterId: analysis.masterId ?? (analysis.aptSeq && !String(analysis.aptSeq).includes('-') ? analysis.aptSeq : undefined),
+                          rtmsAptSeq: analysis.rtmsAptSeq ?? (analysis.aptSeq?.includes('-') ? analysis.aptSeq : undefined),
+                          exclusiveAreaM2: analysis.exclusiveArea ?? analysis.area,
+                        }))}
+                        onAddToCompare={() => handleAddApartmentToCompare(analysis)}
                         currentUid={user?.uid}
                         onLikeToggle={(id, e) => toggleLike(e, id)}
-                        onClick={() => navigateToDetail(analysis.id, analysis.aptSeq, analysis.pnu, analysis.category)}
+                        onClick={() => navigateToDetail(
+                          analysis.id,
+                          analysis.aptSeq,
+                          analysis.pnu,
+                          analysis.category,
+                          analysis.hasReport,
+                          analysis.bldNm || analysis.propertyTitle,
+                          analysis.latestReportId ?? analysis.id,
+                        )}
                       />
                     );
                   })}
 
-                  {displayCount < searchFilteredAnalyses.length && (
+                  {displayCount < listAnalysesForDisplay.length && (
                     <div className="flex flex-col items-center mt-6 gap-2">
                       <button onClick={() => setDisplayCount(p => p + (isMobile ? 15 : 20))}
                         className="bg-white border border-slate-200 text-slate-600 font-bold px-8 py-2.5 rounded-2xl text-[13px] flex items-center gap-2 hover:bg-slate-50 hover:border-emerald-200 transition-all shadow-sm active:scale-95">
@@ -775,7 +1207,7 @@ function HomePageContent() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
-                      <span className="text-[10px] font-medium text-slate-400">{displayCount} / {searchFilteredAnalyses.length}</span>
+                      <span className="text-[10px] font-medium text-slate-400">{displayCount} / {listAnalysesForDisplay.length}</span>
                     </div>
                   )}
                 </div>
@@ -844,7 +1276,7 @@ function HomePageContent() {
                       }
                       return;
                     }
-                    const analysis = analyses.find(a => a.id === property.id);
+                    const analysis = analyses.find((a) => a.id === property.id);
                     if (analysis) setSelectedProperty(analysis);
                   }}
                   onBoundsChanged={bounds => setMapBounds(bounds)}
@@ -857,38 +1289,45 @@ function HomePageContent() {
                 />
               )}
 
-              {/* 선택 매물 팝업 — 일반 */}
-              {(selectedProperty && activePanel !== 'ranking') && (
-                <div className="absolute bottom-24 lg:bottom-6 left-4 right-4 lg:left-6 lg:right-6 z-30 bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-emerald-200 cursor-pointer hover:bg-emerald-50/30 transition-all hover:scale-[1.01]"
-                  onClick={() => navigateToDetail(selectedProperty.id, selectedProperty.aptSeq, selectedProperty.pnu, selectedProperty.category)}>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm text-slate-800 flex items-center gap-1.5 mb-0.5">
-                        <span className="text-emerald-700 text-xs">●</span>선택된 매물
-                      </h4>
-                      <p className="text-sm text-slate-700 font-semibold truncate">{selectedProperty.propertyTitle}</p>
-                      <p className="text-xs text-slate-500 truncate">{selectedProperty.location?.name}</p>
-                    </div>
-                    {selectedProperty.propertyGrade?.riskScore != null && (() => {
-                      const raw = selectedProperty.propertyGrade.riskScore;
-                      const n = parseFloat(raw);
-                      const display = !n || n <= 0 ? '준비' : raw;
-                      const scoreColors = getScoreColors(n > 0 ? n : 0);
-                      return (
-                        <span
-                          className="text-xs font-bold px-2 py-1 rounded-lg shrink-0 border border-white/30 shadow-sm"
-                          style={{ backgroundColor: scoreColors.bg, color: scoreColors.text }}
-                        >
-                          {display}
-                        </span>
-                      );
-                    })()}
+              {/* 지도 하단: 비교함 → 선택 매물 카드 (위에서 아래 순) */}
+              {activePanel !== 'ranking' && (
+                <div className="absolute bottom-24 lg:bottom-6 left-4 right-4 lg:left-6 lg:right-6 z-30 flex flex-col items-center gap-2 pointer-events-none">
+                  <div className="pointer-events-auto">
+                    <ApartmentCompareBasketBar anchor="inline" />
                   </div>
-                  {selectedProperty.detectiveNote && (
-                    <div className="p-2 bg-emerald-50/50 border border-emerald-100/50 rounded-lg">
-                      <p className="text-xs text-emerald-800 font-semibold line-clamp-2">{selectedProperty.detectiveNote}</p>
-                    </div>
-                  )}
+                  {selectedProperty && (() => {
+                    const { data, aptDisplay } = buildPropertyCardBundle(selectedProperty);
+                    return (
+                      <div className="w-full pointer-events-auto shadow-xl rounded-2xl">
+                        <PropertyCard
+                          data={data}
+                          apartmentDisplay={aptDisplay}
+                          selected
+                          inCompareBasket={compareBasketKeys.has(compareItemKey({
+                            masterId: selectedProperty.masterId ?? (selectedProperty.aptSeq && !String(selectedProperty.aptSeq).includes('-') ? selectedProperty.aptSeq : undefined),
+                            rtmsAptSeq: selectedProperty.rtmsAptSeq ?? (selectedProperty.aptSeq?.includes('-') ? selectedProperty.aptSeq : undefined),
+                            exclusiveAreaM2: selectedProperty.exclusiveArea ?? selectedProperty.area,
+                          }))}
+                          onAddToCompare={
+                            isApartmentAnalysis(selectedProperty)
+                              ? () => handleAddApartmentToCompare(selectedProperty)
+                              : undefined
+                          }
+                          currentUid={user?.uid}
+                          onLikeToggle={(id, e) => toggleLike(e, id)}
+                          onClick={() => navigateToDetail(
+                            selectedProperty.id,
+                            selectedProperty.aptSeq,
+                            selectedProperty.pnu,
+                            selectedProperty.category,
+                            selectedProperty.hasReport,
+                            selectedProperty.bldNm || selectedProperty.propertyTitle,
+                            selectedProperty.latestReportId ?? selectedProperty.id,
+                          )}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1070,6 +1509,33 @@ function HomePageContent() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {(activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') && (
+        <ApartmentCompareBasketBars />
+      )}
+      <ApartmentDiscoverFilterSheet
+        open={discoverSheetOpen}
+        scrollSection={discoverSheetSection}
+        filters={discoverFilters}
+        onClose={() => {
+          setDiscoverSheetOpen(false);
+          setDiscoverSheetSection(null);
+        }}
+        onApply={(f) => {
+          setDiscoverFilters(f);
+          saveApartmentDiscoverFilters(f);
+        }}
+      />
+      <ApartmentAreaPickModal
+        pending={comparePickPending}
+        onClose={() => setComparePickPending(null)}
+        onAdded={showCompareToast}
+        onError={showCompareToast}
+      />
+      {compareToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl shadow-lg border border-white/10">
+          {compareToast}
         </div>
       )}
     </div>

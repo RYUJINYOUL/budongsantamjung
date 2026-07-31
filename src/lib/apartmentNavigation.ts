@@ -1,4 +1,6 @@
-/** 아파트 report → 단지 페이지 URL (수집 완료 후 auto-redirect) */
+import { makeAnalyzeSlug } from './slug';
+
+/** 아파트 report → AI 상세 URL (MiniHub 제거) */
 export function buildApartmentPageUrl(report: {
     id?: string | number;
     apt_seq?: string | number | null;
@@ -10,26 +12,13 @@ export function buildApartmentPageUrl(report: {
     const reportId = String(report.id ?? reportIdFallback ?? '');
     if (!reportId) return null;
 
-    const qs = new URLSearchParams({ reportId });
-    if (report.pnu) qs.set('pnu', report.pnu);
-
-    if (report.apt_seq) {
-        return `/apartment/${report.apt_seq}?${qs.toString()}`;
-    }
-    if (report.pnu) {
-        return `/apartment/pnu?${qs.toString()}`;
-    }
-    return null;
+    return `/analyze/${makeAnalyzeSlug(reportId)}`;
 }
 
 export function shouldRedirectToApartmentPage(
-    report: { category?: string | null; ai_analysis_status?: string | null } | null | undefined,
-    hasRawData: boolean,
-    embeddedInApartment: boolean,
+    _report: { category?: string | null; ai_analysis_status?: string | null } | null | undefined,
+    _hasRawData: boolean,
+    _embeddedInApartment: boolean,
 ): boolean {
-    if (embeddedInApartment) return false;
-    if (!report || report.category !== 'apartment') return false;
-    if (!hasRawData) return false;
-    if (report.ai_analysis_status === 'failed') return false;
-    return true;
+    return false;
 }

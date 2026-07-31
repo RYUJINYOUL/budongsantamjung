@@ -1,7 +1,18 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, X, Eye, Map, RefreshCw } from 'lucide-react';
+import { centerFromKakaoBounds } from '../lib/kakaoMapBounds';
+
+export type ApartmentCompareMapMarker = {
+    lat: number;
+    lng: number;
+    label: string;
+    /** 비교함·표 순서 1~4 */
+    index?: number;
+    subtitle?: string;
+    isWorkplace?: boolean;
+};
 
 interface ComparableMapProps {
     mapData: any; // ai.analysisMetadata
@@ -13,6 +24,12 @@ interface ComparableMapProps {
     onToggleFullscreen?: () => void;
     draggable?: boolean; // 모바일 스크롤 트랩 방지를 위한 드래그 활성화 여부
     isCollapsed?: boolean; // 상위 컴포넌트의 접힘 상태
+    /** target + comparables 전체가 보이도록 bounds 맞춤 */
+    fitAllMarkers?: boolean;
+    /** 아파트 단지 비교 — 전원 번호 마커 + 마커별 로드뷰 */
+    apartmentCompareMarkers?: ApartmentCompareMapMarker[];
+    /** compare 등 상단 UI와 겹칠 때 컨트롤 위치 */
+    controlsPosition?: 'bottom-right' | 'top-right';
 }
 
 export default function ComparableMap({
@@ -24,32 +41,75 @@ export default function ComparableMap({
     isFullscreen = false,
     onToggleFullscreen,
     draggable = true, // 기본값은 드래그 허용
-    isCollapsed = false
+    isCollapsed = false,
+    fitAllMarkers = false,
+    apartmentCompareMarkers,
+    controlsPosition = 'bottom-right',
 }: ComparableMapProps) {
+    const isApartmentCompare = (apartmentCompareMarkers?.length ?? 0) > 0;
+    const compareMarkersKey = apartmentCompareMarkers
+        ?.map((m) => `${m.lat},${m.lng},${m.index ?? 'w'},${m.label}`)
+        .join('|') ?? '';
+
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const roadviewContainerRef = useRef<HTMLDivElement>(null);
+    const mapRef = useRef<any>(null);
     const [map, setMap] = useState<any>(null);
     const [roadview, setRoadview] = useState<any>(null);
     const [isRoadview, setIsRoadview] = useState(false);
     const [roadviewError, setRoadviewError] = useState<string | null>(null);
     const [selectedComp, setSelectedComp] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [mapReady, setMapReady] = useState(false);
+    const [mapInitializing, setMapInitializing] = useState(true);
+    const [roadviewLoading, setRoadviewLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [mapRetryTick, setMapRetryTick] = useState(0);
+    const [roadviewFocus, setRoadviewFocus] = useState<{ lat: number; lng: number; label: string } | null>(null);
+
+    const openRoadviewAt = useCallback((lat: number, lng: number, label: string) => {
+        setRoadviewFocus({ lat, lng, label });
+        setRoadviewError(null);
+        setIsRoadview(true);
+    }, []);
 
     const handleRetryMap = useCallback(() => {
         setLoadError(null);
-        setIsLoading(true);
+        setMapInitializing(true);
+        setMapReady(false);
         setMap(null);
         setMapRetryTick((tick) => tick + 1);
     }, []);
+
+    const fitApartmentCompareBounds = useCallback((kakaoMap: any) => {
+        const kakao = (window as any).kakao;
+        if (!kakao?.maps || !apartmentCompareMarkers?.length) return;
+        const bounds = new kakao.maps.LatLngBounds();
+        apartmentCompareMarkers.forEach((m) => {
+            bounds.extend(new kakao.maps.LatLng(m.lat, m.lng));
+        });
+        if (apartmentCompareMarkers.length <= 1) {
+            const m = apartmentCompareMarkers[0];
+            kakaoMap.setCenter(new kakao.maps.LatLng(m.lat, m.lng));
+            kakaoMap.setLevel(5);
+        } else {
+            kakaoMap.setBounds(bounds);
+        }
+    }, [apartmentCompareMarkers]);
 
     // 로드뷰 마커 및 오버레이 인스턴스 보관 레퍼런스
     const rvMarkerRef = useRef<any>(null);
     const rvOverlayRef = useRef<any>(null);
 
     const target = mapData?.target || {};
-    const comparables = customComparables || (Array.isArray(mapData?.comparables) ? mapData.comparables : []);
+    const comparables = useMemo(
+        () => customComparables || (Array.isArray(mapData?.comparables) ? mapData.comparables : []),
+        [customComparables, mapData?.comparables],
+    );
+    const comparablesKey = useMemo(
+        () => comparables.map((c: any) => `${c.lat},${c.lng}`).join('|'),
+        [comparables],
+    );
+    const targetLatKey = target?.lat != null ? `${target.lat},${target.lng}` : '';
 
     const directTargetArea = mapData?.targetArea !== undefined && mapData?.targetArea !== null
         ? parseFloat(mapData.targetArea.toString())
@@ -117,6 +177,11 @@ export default function ComparableMap({
         };
     };
 
+    const setSelectedCompRef = useRef(setSelectedComp);
+    useEffect(() => {
+        setSelectedCompRef.current = setSelectedComp;
+    }, [setSelectedComp]);
+
     // 지도 초기화 이펙트
     useEffect(() => {
         let isMounted = true;
@@ -126,10 +191,17 @@ export default function ComparableMap({
             if (!mapContainerRef.current) return;
 
             try {
+                setMapInitializing(true);
+                setMapReady(false);
                 const kakao = (window as any).kakao;
                 if (!kakao || !kakao.maps) {
                     throw new Error('Kakao Maps API not loaded');
                 }
+
+                if (mapRef.current) {
+                    mapRef.current = null;
+                }
+                mapContainerRef.current.innerHTML = '';
 
                 // Default coordinates (Seoul City Hall)
                 let lat = 37.5665;
@@ -138,7 +210,10 @@ export default function ComparableMap({
                 const targetLat = parseFloat(target.lat);
                 const targetLng = parseFloat(target.lng);
 
-                if (!isNaN(targetLat) && !isNaN(targetLng)) {
+                if (isApartmentCompare && apartmentCompareMarkers![0]) {
+                    lat = apartmentCompareMarkers![0].lat;
+                    lng = apartmentCompareMarkers![0].lng;
+                } else if (!isNaN(targetLat) && !isNaN(targetLng)) {
                     lat = targetLat;
                     lng = targetLng;
                 }
@@ -150,7 +225,58 @@ export default function ComparableMap({
                 };
 
                 const kakaoMap = new kakao.maps.Map(mapContainerRef.current, options);
+                kakaoMap.setZoomable(true);
 
+                const addCompareApartmentMarkers = () => {
+                    if (!apartmentCompareMarkers) return;
+                    apartmentCompareMarkers.forEach((m) => {
+                        const contentEl = document.createElement('div');
+                        contentEl.style.cursor = 'pointer';
+                        if (m.isWorkplace) {
+                            contentEl.innerHTML = `
+                            <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #818cf8; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                                    <span style="color: #fff; font-size: 11px; font-weight: 900;">직</span>
+                                </div>
+                                <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #fff; margin-top: -1px;"></div>
+                            </div>
+                        `;
+                        } else {
+                            const num = m.index ?? '?';
+                            contentEl.innerHTML = `
+                            <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
+                                <div style="width: 34px; height: 34px; border-radius: 50%; background-color: #34d399; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(52,211,153,0.45);">
+                                    <span style="color: #0f172a; font-size: 13px; font-weight: 900;">${num}</span>
+                                </div>
+                                <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #fff; margin-top: -1px;"></div>
+                            </div>
+                        `;
+                        }
+                        contentEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            setSelectedCompRef.current({
+                                compareApartment: true,
+                                lat: m.lat,
+                                lng: m.lng,
+                                label: m.label,
+                                index: m.index,
+                                subtitle: m.subtitle,
+                                isWorkplace: m.isWorkplace,
+                            });
+                        });
+                        const overlay = new kakao.maps.CustomOverlay({
+                            position: new kakao.maps.LatLng(m.lat, m.lng),
+                            content: contentEl,
+                            yAnchor: 1.0,
+                            zIndex: m.isWorkplace ? 18 : 20,
+                        });
+                        overlay.setMap(kakaoMap);
+                    });
+                };
+
+                if (isApartmentCompare) {
+                    addCompareApartmentMarkers();
+                } else {
                 // Render Target Marker
                 if (!isNaN(targetLat) && !isNaN(targetLng)) {
                     const targetContent = `
@@ -216,18 +342,60 @@ export default function ComparableMap({
                         compOverlay.setMap(kakaoMap);
                     }
                 });
+                }
 
                 // Map Click Listener
                 kakao.maps.event.addListener(kakaoMap, 'click', () => {
                     setSelectedComp(null);
                 });
 
+                if (fitAllMarkers || isApartmentCompare) {
+                    const bounds = new kakao.maps.LatLngBounds();
+                    let hasPoint = false;
+                    let pointCount = 0;
+                    if (isApartmentCompare && apartmentCompareMarkers) {
+                        apartmentCompareMarkers.forEach((m) => {
+                            bounds.extend(new kakao.maps.LatLng(m.lat, m.lng));
+                            hasPoint = true;
+                            pointCount += 1;
+                        });
+                    } else {
+                        if (!isNaN(targetLat) && !isNaN(targetLng)) {
+                            bounds.extend(new kakao.maps.LatLng(targetLat, targetLng));
+                            hasPoint = true;
+                            pointCount += 1;
+                        }
+                        comparables.forEach((c: any) => {
+                            const cLat = parseFloat(c.lat);
+                            const cLng = parseFloat(c.lng);
+                            if (!isNaN(cLat) && !isNaN(cLng)) {
+                                bounds.extend(new kakao.maps.LatLng(cLat, cLng));
+                                hasPoint = true;
+                                pointCount += 1;
+                            }
+                        });
+                    }
+                    if (hasPoint) {
+                        if (pointCount <= 1) {
+                            kakaoMap.setCenter(
+                                centerFromKakaoBounds(bounds, kakao.maps.LatLng),
+                            );
+                            kakaoMap.setLevel(5);
+                        } else {
+                            kakaoMap.setBounds(bounds);
+                        }
+                    }
+                }
+
                 setMap(kakaoMap);
-                setIsLoading(false);
+                mapRef.current = kakaoMap;
+                setMapReady(true);
+                setMapInitializing(false);
             } catch (err: any) {
                 console.error('Map init error:', err);
                 setLoadError('지도를 초기화하는 중 오류가 발생했습니다.');
-                setIsLoading(false);
+                setMapInitializing(false);
+                setMapReady(false);
             }
         };
 
@@ -267,7 +435,8 @@ export default function ComparableMap({
             script.onerror = () => {
                 if (isMounted) {
                     setLoadError('카카오 지도 스크립트를 로드하는데 실패했습니다.');
-                    setIsLoading(false);
+                    setMapInitializing(false);
+                    setMapReady(false);
                 }
             };
             document.head.appendChild(script);
@@ -278,29 +447,38 @@ export default function ComparableMap({
         return () => {
             isMounted = false;
         };
-    }, [mapData, target, comparables, mapRetryTick]);
+    }, [mapRetryTick, draggable, fitAllMarkers, compareMarkersKey, isApartmentCompare, comparablesKey, targetLatKey, apartmentCompareMarkers]);
 
     // 드래그 기능 동적 변경 감지 이펙트
     useEffect(() => {
         if (!map) return;
+        mapRef.current = map;
         map.setDraggable(draggable);
     }, [draggable, map]);
 
     // 전체화면 및 맵 리사이즈 처리 이펙트
     useEffect(() => {
         if (!map) return;
-        
+
         const timer = setTimeout(() => {
             map.relayout();
+            if (isApartmentCompare && apartmentCompareMarkers?.length) {
+                fitApartmentCompareBounds(map);
+                return;
+            }
             const targetLat = parseFloat(target.lat);
             const targetLng = parseFloat(target.lng);
             if (!isNaN(targetLat) && !isNaN(targetLng)) {
                 map.setCenter(new (window as any).kakao.maps.LatLng(targetLat, targetLng));
             }
-        }, 360); // 부모 컴포넌트의 접기/펼치기 트랜지션 애니메이션 완료(350ms) 후 크기 조정을 위해 360ms 딜레이를 줍니다.
+        }, 360);
 
         return () => clearTimeout(timer);
-    }, [isFullscreen, map, target.lat, target.lng, isCollapsed]);
+    }, [isFullscreen, map, target.lat, target.lng, isCollapsed, isApartmentCompare, apartmentCompareMarkers, fitApartmentCompareBounds]);
+
+    const roadviewLabel = roadviewFocus?.label
+        ?? (selectedComp?.compareApartment ? selectedComp.label : null)
+        ?? '분석 대상지';
 
     // 로드뷰 이니셜라이징 및 로드 이펙트
     useEffect(() => {
@@ -309,14 +487,31 @@ export default function ComparableMap({
         const kakao = (window as any).kakao;
         if (!kakao || !kakao.maps) return;
 
-        const targetLat = parseFloat(target.lat);
-        const targetLng = parseFloat(target.lng);
-        if (isNaN(targetLat) || isNaN(targetLng)) {
-            setRoadviewError('대상지 좌표 정보가 부족하여 로드뷰를 열 수 없습니다.');
+        let rvLat = NaN;
+        let rvLng = NaN;
+
+        if (roadviewFocus) {
+            rvLat = roadviewFocus.lat;
+            rvLng = roadviewFocus.lng;
+        } else if (selectedComp?.compareApartment && selectedComp.lat != null && selectedComp.lng != null) {
+            rvLat = Number(selectedComp.lat);
+            rvLng = Number(selectedComp.lng);
+        } else if (isApartmentCompare && apartmentCompareMarkers?.length) {
+            const m = apartmentCompareMarkers.find((x) => !x.isWorkplace) ?? apartmentCompareMarkers[0];
+            rvLat = m.lat;
+            rvLng = m.lng;
+        } else {
+            rvLat = parseFloat(target.lat);
+            rvLng = parseFloat(target.lng);
+        }
+
+        if (isNaN(rvLat) || isNaN(rvLng)) {
+            setRoadviewError('좌표 정보가 부족하여 로드뷰를 열 수 없습니다.');
             return;
         }
 
-        const position = new kakao.maps.LatLng(targetLat, targetLng);
+        const position = new kakao.maps.LatLng(rvLat, rvLng);
+        const rvLabel = roadviewFocus?.label ?? selectedComp?.label ?? '선택 지점';
         let rvInstance = roadview;
 
         if (!rvInstance) {
@@ -331,20 +526,19 @@ export default function ComparableMap({
         }
 
         const roadviewClient = new kakao.maps.RoadviewClient();
-        setIsLoading(true);
+        setRoadviewLoading(true);
         setRoadviewError(null);
 
         roadviewClient.getNearestPanoId(position, 100, (panoId: any) => {
             if (panoId === null) {
                 setRoadviewError('이 위치 주변 100m 이내의 로드뷰 데이터를 찾을 수 없습니다.');
-                setIsLoading(false);
-                // 2.5초 뒤 자동으로 지도 모드 복원
-                const timer = setTimeout(() => {
+                setRoadviewLoading(false);
+                setTimeout(() => {
                     setIsRoadview(false);
                     setRoadviewError(null);
                 }, 2500);
-                return () => clearTimeout(timer);
-            } else {
+                return;
+            }
                 // 기존 로드뷰 마커 및 오버레이 제거
                 if (rvMarkerRef.current) rvMarkerRef.current.setMap(null);
                 if (rvOverlayRef.current) rvOverlayRef.current.setMap(null);
@@ -375,7 +569,7 @@ export default function ComparableMap({
                                 white-space: nowrap;
                                 text-align: center;
                             ">
-                                분석 대상지
+                                ${rvLabel.replace(/</g, '&lt;')}
                             </div>
                         `,
                         map: rvInstance,
@@ -390,8 +584,7 @@ export default function ComparableMap({
                 // init 리스너 선등록 후 PanoId 세팅
                 kakao.maps.event.addListener(rvInstance, 'init', onRvInit);
                 rvInstance.setPanoId(panoId, position);
-                setIsLoading(false);
-            }
+                setRoadviewLoading(false);
         });
 
         // 클린업 함수
@@ -405,24 +598,34 @@ export default function ComparableMap({
                 rvOverlayRef.current = null;
             }
         };
-    }, [isRoadview, target.lat, target.lng, roadview]);
+    }, [isRoadview, roadviewFocus, selectedComp, target.lat, target.lng, roadview, compareMarkersKey, isApartmentCompare, apartmentCompareMarkers]);
+
+    useEffect(() => {
+        if (!isRoadview) setRoadviewLoading(false);
+    }, [isRoadview]);
 
     // 커스텀 줌 컨트롤 핸들러
     const zoomIn = () => {
-        if (map) {
-            map.setLevel(map.getLevel() - 1, { animate: true });
+        const kakaoMap = mapRef.current;
+        if (kakaoMap) {
+            kakaoMap.setLevel(kakaoMap.getLevel() - 1, { animate: true });
         }
     };
 
-    // 커스텀 줌 컨트롤 핸들러
     const zoomOut = () => {
-        if (map) {
-            map.setLevel(map.getLevel() + 1, { animate: true });
+        const kakaoMap = mapRef.current;
+        if (kakaoMap) {
+            kakaoMap.setLevel(kakaoMap.getLevel() + 1, { animate: true });
         }
     };
+
+    const controlsPosClass =
+        controlsPosition === 'top-right'
+            ? 'top-14 right-3 sm:top-16 sm:right-4'
+            : 'bottom-4 right-4';
 
     return (
-        <div className="relative w-full h-full bg-slate-900">
+        <div className={`relative w-full h-full bg-slate-900 ${className}`}>
             {/* 지도 뷰 */}
             <div ref={mapContainerRef} className={`w-full h-full ${isRoadview ? 'hidden' : 'block'}`} />
 
@@ -430,9 +633,9 @@ export default function ComparableMap({
             <div ref={roadviewContainerRef} className={`w-full h-full bg-black ${isRoadview ? 'block' : 'hidden'}`} />
 
             {/* 로드뷰 안내 가이드 배너 */}
-            {isRoadview && !roadviewError && !isLoading && (
+            {isRoadview && !roadviewError && !roadviewLoading && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-black/75 border border-white/10 backdrop-blur-md rounded-full shadow-lg text-[10px] sm:text-xs font-semibold text-white/95 pointer-events-none flex items-center gap-1.5 whitespace-nowrap animate-in fade-in slide-in-from-top-1.5 duration-300 max-w-[90vw]">
-                    화면을 360도 돌려서 <span className="text-sky-400 font-extrabold">'분석 대상지'</span> 마커를 확인하세요
+                    화면을 360° 돌려 <span className="text-sky-400 font-extrabold truncate max-w-[140px] sm:max-w-[200px]">{roadviewLabel}</span> 확인
                 </div>
             )}
 
@@ -455,8 +658,8 @@ export default function ComparableMap({
             )}
 
             {/* 커스텀 확대/축소, 전체화면, 로드뷰 버튼 툴바 */}
-            {!isLoading && !loadError && (
-                <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-1.5">
+            {mapReady && !loadError && (
+                <div className={`absolute ${controlsPosClass} z-[45] flex flex-col gap-1.5 pointer-events-auto`}>
                     {onToggleFullscreen && (
                         <button
                             onClick={onToggleFullscreen}
@@ -478,8 +681,25 @@ export default function ComparableMap({
                     {/* 로드뷰 전환 버튼 */}
                     <button
                         onClick={() => {
-                            setIsRoadview(!isRoadview);
+                            if (isRoadview) {
+                                setIsRoadview(false);
+                                setRoadviewError(null);
+                                setRoadviewLoading(false);
+                                return;
+                            }
+                            if (isApartmentCompare && apartmentCompareMarkers?.length) {
+                                const sel = selectedComp?.compareApartment ? selectedComp : null;
+                                const m = sel
+                                    ? { lat: sel.lat, lng: sel.lng, label: sel.label as string }
+                                    : (() => {
+                                        const first = apartmentCompareMarkers.find((x) => !x.isWorkplace) ?? apartmentCompareMarkers[0];
+                                        return { lat: first.lat, lng: first.lng, label: first.label };
+                                    })();
+                                openRoadviewAt(m.lat, m.lng, m.label);
+                                return;
+                            }
                             setRoadviewError(null);
+                            setIsRoadview(true);
                         }}
                         className={`w-8 h-8 rounded-lg border flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg ${
                             isRoadview 
@@ -513,12 +733,20 @@ export default function ComparableMap({
                 </div>
             )}
 
-            {isLoading && (
-                <div className="absolute inset-0 bg-slate-950/80 flex flex-col items-center justify-center gap-3">
+            {mapInitializing && !isRoadview && (
+                <div className="absolute inset-0 z-[25] bg-slate-950/80 flex flex-col items-center justify-center gap-3 pointer-events-none">
                     <div className="w-8 h-8 border-4 border-emerald-500/20 border-t-emerald-400 rounded-full animate-spin"></div>
-                    <span className="text-xs text-white/50">{isRoadview ? '로드뷰를 불러오는 중...' : '지도를 로드 중입니다...'}</span>
+                    <span className="text-xs text-white/50">지도를 로드 중입니다...</span>
                 </div>
             )}
+
+            {roadviewLoading && isRoadview && (
+                <div className="absolute inset-0 z-[25] bg-slate-950/80 flex flex-col items-center justify-center gap-3 pointer-events-none">
+                    <div className="w-8 h-8 border-4 border-sky-500/20 border-t-sky-400 rounded-full animate-spin"></div>
+                    <span className="text-xs text-white/50">로드뷰를 불러오는 중...</span>
+                </div>
+            )}
+
 
             {loadError && (
                 <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
@@ -539,9 +767,9 @@ export default function ComparableMap({
             {/* Selected Info Card Overlay */}
             {selectedComp && (() => {
                 const isTarget = !!selectedComp.isTarget;
-                const m = isTarget ? null : getCompMetrics(selectedComp);
+                const m = isTarget || selectedComp.compareApartment ? null : getCompMetrics(selectedComp);
                 return (
-                    <div className="absolute bottom-4 left-4 right-4 z-10 bg-white/95 backdrop-blur-md border border-emerald-500/20 rounded-2xl p-4 shadow-2xl text-slate-800 animate-in slide-in-from-bottom duration-250">
+                    <div className={`absolute bottom-4 left-4 z-[40] pointer-events-auto max-w-[min(100%,20rem)] sm:max-w-sm bg-white border border-emerald-200 rounded-2xl p-4 shadow-2xl text-slate-900 animate-in slide-in-from-bottom duration-250 ${controlsPosition === 'bottom-right' && !isApartmentCompare ? 'right-4 max-w-none' : ''}`}>
                         <button
                             onClick={() => setSelectedComp(null)}
                             className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
@@ -549,7 +777,25 @@ export default function ComparableMap({
                             <X className="w-4 h-4" />
                         </button>
 
-                        {isTarget ? (
+                        {selectedComp.compareApartment ? (
+                            <div className="pr-8 text-slate-900">
+                                <span className="inline-block px-2 py-0.5 bg-emerald-100 border border-emerald-200 text-emerald-800 rounded text-[10px] font-extrabold mb-1.5 uppercase tracking-wide">
+                                    {selectedComp.isWorkplace ? '직장 · 목적지' : `${selectedComp.index}번 후보 단지`}
+                                </span>
+                                <h4 className="text-sm font-black text-slate-900">{selectedComp.label || '단지'}</h4>
+                                {selectedComp.subtitle ? (
+                                    <p className="text-xs text-slate-600 font-semibold mt-1">{selectedComp.subtitle}</p>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => openRoadviewAt(selectedComp.lat, selectedComp.lng, selectedComp.label)}
+                                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-extrabold transition-all active:scale-95"
+                                >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    360° 거리뷰
+                                </button>
+                            </div>
+                        ) : isTarget ? (
                             <div>
                                 <span className="inline-block px-2 py-0.5 bg-sky-50 border border-sky-100 text-sky-600 rounded text-[10px] font-extrabold mb-1.5 uppercase tracking-wide">분석 대상지</span>
                                 <h4 className="text-sm font-black text-slate-900 truncate pr-6">{selectedComp.address}</h4>

@@ -1,7 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { parseRailwayCoord, RAILWAY_MAP_STYLE } from '../lib/railwayCoords';
+import {
+  INFRA_MAP_STYLE,
+  InfrastructureProject,
+  isStationCodeName,
+  parseInfraCoord,
+  toKakaoPath,
+} from '../lib/infrastructureMap';
 
 declare global {
   interface Window {
@@ -27,7 +33,8 @@ const ZONE_COLORS: Record<string, { fill: string; stroke: string }> = {
   zone_scheduled_maintenance: { fill: '#FBBF24', stroke: '#D97706' }, // 정비예정 (연주황)
   zone_tourist: { fill: '#EC4899', stroke: '#BE185D' }, // 관광특구 (분홍)
   zone_industrial_complex: { fill: '#64748B', stroke: '#334155' }, // 산업단지 (슬레이트)
-  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E' } // 택지개발 (틸)
+  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E' }, // 택지개발 (틸)
+  zone_public_housing: { fill: '#6366F1', stroke: '#4338CA' } // 공공주택 (인디고)
 };
 
 // 폴리곤의 중심 좌표 구하기 (라벨 오버레이 위치용)
@@ -78,8 +85,9 @@ export default function InteractiveGosiMap({
 
   const loadedSigCds = useRef<Set<string>>(new Set());
   const polygonsRef = useRef<any[]>([]);
-  const railwayLinesRef = useRef<any[]>([]);
-  const railwayStationsRef = useRef<any[]>([]);
+  const infraLinesRef = useRef<any[]>([]);
+  const infraPointsRef = useRef<any[]>([]);
+  const infraFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const loadKakaoScript = () => {
@@ -114,9 +122,13 @@ export default function InteractiveGosiMap({
       setMap(kakaoMap);
       setIsLoading(false);
 
-      fetchRailwayData(kakaoMap);
+      fetchInfrastructureData(kakaoMap);
 
-      window.kakao.maps.event.addListener(kakaoMap, 'idle', () => handleMapIdle(kakaoMap));
+      window.kakao.maps.event.addListener(kakaoMap, 'idle', () => {
+        handleMapIdle(kakaoMap);
+        if (infraFetchTimerRef.current) clearTimeout(infraFetchTimerRef.current);
+        infraFetchTimerRef.current = setTimeout(() => fetchInfrastructureData(kakaoMap), 450);
+      });
       handleMapIdle(kakaoMap);
     };
 
@@ -356,118 +368,87 @@ export default function InteractiveGosiMap({
 
 
 
-  const fetchRailwayData = async (kakaoMap: any) => {
-    try {
-      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+  const renderInfrastructure = (kakaoMap: any, items: InfrastructureProject[]) => {
+    infraLinesRef.current.forEach((o) => o.setMap?.(null));
+    infraPointsRef.current.forEach((o) => o.setMap?.(null));
+    infraLinesRef.current = [];
+    infraPointsRef.current = [];
 
-      const [projRes, statRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/railway/projects`),
-        fetch(`${BACKEND_URL}/api/railway/stations`)
-      ]);
+    items.forEach((item) => {
+      if (item.category !== 'railway' && item.category !== 'road') return;
+      const style = INFRA_MAP_STYLE[item.category];
+      let longestPath: any[] = [];
 
-      if (!projRes.ok || !statRes.ok) return;
-
-      const projJson = await projRes.json();
-      const statJson = await statRes.json();
-
-      const projects = projJson.data || [];
-      const stations = statJson.data || [];
-
-      const projectsMap = new Map<number, any>(projects.map((p: any) => [p.id, p]));
-
-      const stationsByProject: Record<number, any[]> = {};
-      stations.forEach((station: any) => {
-        const pId = station.project_id;
-        if (!stationsByProject[pId]) {
-          stationsByProject[pId] = [];
-        }
-        stationsByProject[pId].push(station);
-      });
-
-      Object.entries(stationsByProject).forEach(([projectIdStr, projStations]) => {
-        const projectId = parseInt(projectIdStr, 10);
-        const project = projectsMap.get(projectId);
-        const lineName = project?.line_name || '';
-
-        const { lineColor, lineWeight, lineOpacity } = RAILWAY_MAP_STYLE;
-
-        const linePath = projStations
-          .sort((a, b) => a.station_order - b.station_order)
-          .map((s: any) => parseRailwayCoord(s))
-          .filter(Boolean)
-          .map((c) => new window.kakao.maps.LatLng(c!.lat, c!.lng));
-
-        if (linePath.length >= 2) {
+      for (const pl of item.polylines || []) {
+        const path = toKakaoPath(window.kakao, pl.coordinates || []);
+        if (path.length >= 2) {
+          if (path.length > longestPath.length) longestPath = path;
           const polyline = new window.kakao.maps.Polyline({
-            path: linePath,
-            strokeWeight: lineWeight,
-            strokeColor: lineColor,
-            strokeOpacity: lineOpacity,
-            strokeStyle: 'solid'
+            path,
+            strokeWeight: style.lineWeight,
+            strokeColor: style.lineColor,
+            strokeOpacity: style.lineOpacity,
+            strokeStyle: 'solid',
           });
           polyline.setMap(kakaoMap);
-          railwayLinesRef.current.push(polyline);
-
-          const midIdx = Math.floor(linePath.length / 2);
-          const lineLabelEl = document.createElement('div');
-          lineLabelEl.style.cssText = `
-            font-size: 10px;
-            font-weight: 800;
-            color: ${lineColor};
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid ${lineColor}55;
-            padding: 1px 5px;
-            border-radius: 4px;
-            white-space: nowrap;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          `;
-          lineLabelEl.textContent = lineName;
-
-          const lineLabel = new window.kakao.maps.CustomOverlay({
-            position: linePath[midIdx],
-            content: lineLabelEl,
-            yAnchor: 1.5,
-            zIndex: 1
-          });
-          lineLabel.setMap(kakaoMap);
-          railwayLinesRef.current.push(lineLabel);
+          infraLinesRef.current.push(polyline);
         }
-      });
+      }
 
-      stations.forEach((station: any) => {
-        const coord = parseRailwayCoord(station);
-        if (!coord) return;
-
-        const position = new window.kakao.maps.LatLng(coord.lat, coord.lng);
-        const stationEl = document.createElement('div');
-        stationEl.className = 'railway-station-tag';
-        stationEl.style.cssText = `
-          padding: 3px 8px;
-          background: ${RAILWAY_MAP_STYLE.stationBg};
-          border: none;
-          border-radius: 4px;
-          font-size: 10.5px;
-          font-weight: 700;
-          color: ${RAILWAY_MAP_STYLE.stationColor};
-          box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-          white-space: nowrap;
-          transform: translate(-50%, -50%);
+      if (longestPath.length >= 2) {
+        const midIdx = Math.floor(longestPath.length / 2);
+        const lineLabelEl = document.createElement('div');
+        lineLabelEl.style.cssText = `
+          font-size: 10px; font-weight: 800; color: ${style.lineColor};
+          background: rgba(255,255,255,0.92); padding: 1px 5px; border-radius: 4px; white-space: nowrap;
         `;
-        stationEl.textContent = station.station_name;
+        lineLabelEl.textContent = item.name;
+        const lineLabel = new window.kakao.maps.CustomOverlay({
+          position: longestPath[midIdx],
+          content: lineLabelEl,
+          yAnchor: 1.5,
+        });
+        lineLabel.setMap(kakaoMap);
+        infraLinesRef.current.push(lineLabel);
+      }
 
+      (item.points || []).forEach((pt) => {
+        const coord = parseInfraCoord(pt.lat, pt.lng);
+        if (!coord || isStationCodeName(pt.name)) return;
+        const el = document.createElement('div');
+        el.style.cssText = `padding:3px 8px;background:${style.pointBg};color:${style.pointColor};font-size:9px;font-weight:700;border-radius:4px;white-space:nowrap;`;
+        el.textContent = pt.name || '';
         const overlay = new window.kakao.maps.CustomOverlay({
-          position,
-          content: stationEl,
+          position: new window.kakao.maps.LatLng(coord.lat, coord.lng),
+          content: el,
           xAnchor: 0.5,
           yAnchor: 0.5,
-          zIndex: 3
         });
         overlay.setMap(kakaoMap);
-        railwayStationsRef.current.push(overlay);
+        infraPointsRef.current.push(overlay);
       });
+    });
+  };
 
+  const fetchInfrastructureData = async (kakaoMap: any) => {
+    try {
+      const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+      const bounds = kakaoMap.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const params = new URLSearchParams({
+        swLat: String(sw.getLat()),
+        swLng: String(sw.getLng()),
+        neLat: String(ne.getLat()),
+        neLng: String(ne.getLng()),
+        category: 'railway,road',
+      });
+      const res = await fetch(`${BACKEND_URL}/api/infrastructure/lines?${params}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      renderInfrastructure(kakaoMap, json.data || []);
     } catch (err) {
-      console.error('Railway fetch error:', err);
+      console.error('Infrastructure fetch error:', err);
     }
   };
 
@@ -536,7 +517,8 @@ export default function InteractiveGosiMap({
                selectedFeature.properties.layer === 'zone_scheduled_maintenance' ? '정비예정구역' :
                selectedFeature.properties.layer === 'zone_tourist' ? '관광특구' :
                selectedFeature.properties.layer === 'zone_industrial_complex' ? '산업단지' :
-               selectedFeature.properties.layer === 'zone_housing_land' ? '택지개발지구' : 
+               selectedFeature.properties.layer === 'zone_housing_land' ? '택지개발지구' :
+               selectedFeature.properties.layer === 'zone_public_housing' ? '공공주택지구' :
                selectedFeature.properties.layer}
             </span>
             <span>·</span>
@@ -608,7 +590,7 @@ export default function InteractiveGosiMap({
                         </span>
                       </div>
                       <p className="text-[12px] text-slate-200 font-medium leading-snug line-clamp-2 mb-1.5">
-                        {history.zone_name || '명칭 미확인'}
+                        {history.gosi_title || history.zone_name || '명칭 미확인'}
                       </p>
                       {history.url && (
                         <a 
@@ -660,7 +642,8 @@ export default function InteractiveGosiMap({
                           key === 'zone_scheduled_maintenance' ? '정비예정' :
                             key === 'zone_tourist' ? '관광특구' :
                               key === 'zone_industrial_complex' ? '산업단지' :
-                                key === 'zone_housing_land' ? '택지개발' : key}
+                                key === 'zone_housing_land' ? '택지개발' :
+                                key === 'zone_public_housing' ? '공공주택' : key}
             </span>
           </div>
         ))}

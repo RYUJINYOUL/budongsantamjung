@@ -573,14 +573,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           const hub = await resolveRes.json();
           if (Number(hub.reportCount) > 0 && hub.latestReportId) {
             const reportId = hub.latestCompletedReportId || hub.latestReportId;
-            if (hub.aptSeq) {
-              router.push(`/apartment/${hub.aptSeq}?reportId=${reportId}`);
-              return;
-            }
-            if (resolvedPnu) {
-              router.push(`/apartment/pnu?pnu=${encodeURIComponent(resolvedPnu)}&reportId=${reportId}`);
-              return;
-            }
+            router.push(`/analyze/${makeAnalyzeSlug(reportId)}`);
+            return;
           }
         }
       } catch {

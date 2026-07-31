@@ -537,7 +537,16 @@ export default function ComparePanel({ onShowResult, hideHeader = false }: Compa
             </div>
             
             <h2 className={PAGE_SUBHEADER_TITLE}>지역 브리핑</h2>
-            <p className={PANEL_SECTION_DESC}>지역별 분석 데이터를 선택하여 비교해보세요</p>
+            <p className={PANEL_SECTION_DESC}>
+              지역별 분석 데이터를 선택하여 비교해보세요 ·{' '}
+              <button
+                type="button"
+                className="text-emerald-600 font-bold hover:underline"
+                onClick={() => router.push('/compare/apartments')}
+              >
+                아파트 단지 비교
+              </button>
+            </p>
           </div>
         )}
 

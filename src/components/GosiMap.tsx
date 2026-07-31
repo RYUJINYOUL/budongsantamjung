@@ -1,7 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { parseRailwayCoord, RAILWAY_MAP_STYLE } from '../lib/railwayCoords';
+import InfraRouteMiniMap from './InfraRouteMiniMap';
+import {
+  INFRA_CATEGORY_LABEL,
+  INFRA_FOCUS_LEVEL,
+  INFRA_MAP_STYLE,
+  INFRA_OVERVIEW_MAX_LEVEL,
+  InfrastructureProject,
+  getInfraLongestPath,
+  getInfraStations,
+  getInfraTitle,
+  isStationCodeName,
+  parseInfraCoord,
+  toKakaoPath,
+} from '../lib/infrastructureMap';
 
 declare global {
   interface Window {
@@ -33,7 +46,8 @@ const ZONE_COLORS: Record<string, { fill: string; stroke: string, label: string 
   zone_scheduled_maintenance: { fill: '#FBBF24', stroke: '#D97706', label: '정비예정' },
   zone_tourist: { fill: '#EC4899', stroke: '#BE185D', label: '관광특구' },
   zone_industrial_complex: { fill: '#64748B', stroke: '#334155', label: '산업단지' },
-  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E', label: '택지개발' }
+  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E', label: '택지개발' },
+  zone_public_housing: { fill: '#6366F1', stroke: '#4338CA', label: '공공주택' }
 };
 
 const getPolygonCenter = (paths: any[]): any => {
@@ -61,7 +75,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
 
   // 공간 데이터 관련 상태
   const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
-    railway: true, // 철도망은 기본 활성화
+    railway: true,
+    road: true,
     zone_urban_development: true,
     zone_innovation: true,
     zone_redevelopment: true,
@@ -72,6 +87,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     zone_tourist: true,
     zone_industrial_complex: true,
     zone_housing_land: true,
+    zone_public_housing: true,
   });
   const [isFetching, setIsFetching] = useState(false);
   const [zoneDataVersion, setZoneDataVersion] = useState(0);
@@ -80,8 +96,12 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
   const zoneDataCache = useRef<Record<string, any>>({});
 
   const shpPolygonsRef = useRef<any[]>([]);
-  const railwayLinesRef = useRef<any[]>([]);
-  const railwayStationsRef = useRef<any[]>([]);
+  const infraLinesRef = useRef<{ overlay: any; layerKey: string }[]>([]);
+  const infraPointsRef = useRef<{ overlay: any; layerKey: string }[]>([]);
+  const infraDataCache = useRef<InfrastructureProject[]>([]);
+  const infraFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeLayersRef = useRef(activeLayers);
+  activeLayersRef.current = activeLayers;
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || '';
 
   // 인터랙티브 피처 (구역 상세, 미매칭 건, 이력) 관련 상태 및 Ref 추가
@@ -91,8 +111,19 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
   const [gosiHistory, setGosiHistory] = useState<any[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [unmatchedGosiList, setUnmatchedGosiList] = useState<any[]>([]);
+  const [selectedInfra, setSelectedInfra] = useState<InfrastructureProject | null>(null);
+  const [selectedInfraStation, setSelectedInfraStation] = useState<string>('전체');
+  const [infraLocationName, setInfraLocationName] = useState<string>('');
+  const [infraGosiHistory, setInfraGosiHistory] = useState<any[]>([]);
+  const [infraGosiMeta, setInfraGosiMeta] = useState<any>(null);
+  const [isInfraGosiExpanded, setIsInfraGosiExpanded] = useState(true);
+  const [isInfraGosiLoading, setIsInfraGosiLoading] = useState(false);
 
   const unmatchedOverlaysRef = useRef<any[]>([]);
+  const selectedInfraRef = useRef<InfrastructureProject | null>(null);
+  selectedInfraRef.current = selectedInfra;
+  const selectedInfraStationRef = useRef<string>('전체');
+  selectedInfraStationRef.current = selectedInfraStation;
 
   useEffect(() => {
     return () => {
@@ -128,11 +159,18 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
         };
 
         const kakaoMap = new window.kakao.maps.Map(mapContainer.current, options);
-        // kakaoMap.addOverlayMapTypeId(window.kakao.maps.MapTypeId.USE_DISTRICT);
         setMap(kakaoMap);
 
-        // 철도망 데이터 초기 로드
-        fetchRailwayData(kakaoMap);
+        fetchInfrastructureData(kakaoMap);
+        window.kakao.maps.event.addListener(kakaoMap, 'idle', () => {
+          if (infraFetchTimerRef.current) clearTimeout(infraFetchTimerRef.current);
+          infraFetchTimerRef.current = setTimeout(() => fetchInfrastructureData(kakaoMap), 450);
+        });
+        window.kakao.maps.event.addListener(kakaoMap, 'click', () => {
+          setSelectedInfra(null);
+          setSelectedInfraStation('전체');
+          setInfraLocationName('');
+        });
 
         // 지도 이동 시 현재 시군구 파악 후 데이터 패칭 (sigCd가 고정으로 주어진 상세페이지에서는 패칭하지 않음)
         if (!sigCd) {
@@ -468,6 +506,127 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     return d;
   };
 
+  const resolveInfraLocation = (lat: number, lng: number) => {
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    geocoder.coord2RegionCode(lng, lat, (result: any, status: any) => {
+      if (status === window.kakao.maps.services.Status.OK && result[0]) {
+        const addr = result[0];
+        setInfraLocationName(`${addr.region_1depth_name} ${addr.region_2depth_name} ${addr.region_3depth_name || ''}`.trim());
+      }
+    });
+  };
+
+  const selectInfraProject = (
+    kakaoMap: any,
+    item: InfrastructureProject,
+    stationName?: string,
+    clickLatLng?: any,
+  ) => {
+    setSelectedFeature(null);
+    setSelectedInfra(item);
+    setSelectedInfraStation(stationName || '전체');
+    setIsHistoryExpanded(false);
+    setGosiHistory([]);
+
+    const stations = getInfraStations(item);
+    let targetLat: number | null = null;
+    let targetLng: number | null = null;
+
+    if (stationName && stationName !== '전체') {
+      const station = stations.find((s) => s.name === stationName);
+      const coord = station ? parseInfraCoord(station.lat, station.lng) : null;
+      if (coord) {
+        targetLat = coord.lat;
+        targetLng = coord.lng;
+        kakaoMap.setCenter(new window.kakao.maps.LatLng(coord.lat, coord.lng));
+        kakaoMap.setLevel(INFRA_FOCUS_LEVEL);
+      }
+    } else if (clickLatLng) {
+      targetLat = clickLatLng.getLat();
+      targetLng = clickLatLng.getLng();
+      kakaoMap.setCenter(clickLatLng);
+      kakaoMap.setLevel(INFRA_FOCUS_LEVEL);
+    } else if (stationName === '전체') {
+      if (stations.length > 0) {
+        const mid = stations[Math.floor(stations.length / 2)];
+        const coord = parseInfraCoord(mid.lat, mid.lng);
+        if (coord) {
+          targetLat = coord.lat;
+          targetLng = coord.lng;
+          kakaoMap.setCenter(new window.kakao.maps.LatLng(coord.lat, coord.lng));
+          if (kakaoMap.getLevel() > INFRA_OVERVIEW_MAX_LEVEL) {
+            kakaoMap.setLevel(INFRA_OVERVIEW_MAX_LEVEL);
+          }
+        }
+      }
+    } else {
+      const path = getInfraLongestPath(window.kakao, item);
+      if (path.length > 0) {
+        const mid = path[Math.floor(path.length / 2)];
+        targetLat = mid.getLat();
+        targetLng = mid.getLng();
+        kakaoMap.setCenter(mid);
+        kakaoMap.setLevel(INFRA_FOCUS_LEVEL);
+      } else if (stations.length > 0) {
+        const coord = parseInfraCoord(stations[0].lat, stations[0].lng);
+        if (coord) {
+          targetLat = coord.lat;
+          targetLng = coord.lng;
+          kakaoMap.setCenter(new window.kakao.maps.LatLng(coord.lat, coord.lng));
+          kakaoMap.setLevel(INFRA_FOCUS_LEVEL);
+        }
+      }
+    }
+
+    if (targetLat != null && targetLng != null) {
+      resolveInfraLocation(targetLat, targetLng);
+    } else {
+      setInfraLocationName('');
+    }
+
+    renderInfrastructure(kakaoMap, infraDataCache.current, activeLayersRef.current);
+  };
+
+  const handleInfraStationTab = (stationName: string) => {
+    if (!map || !selectedInfra) return;
+    selectInfraProject(map, selectedInfra, stationName);
+  };
+
+  useEffect(() => {
+    if (!selectedInfra) {
+      setInfraGosiHistory([]);
+      setInfraGosiMeta(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsInfraGosiLoading(true);
+    const stationParam = selectedInfraStation !== '전체' ? `?station=${encodeURIComponent(selectedInfraStation)}` : '';
+    fetch(`${BACKEND_URL}/api/infrastructure/${selectedInfra.id}/gosi-history${stationParam}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        if (json.success && json.data) {
+          setInfraGosiHistory(json.data.history || []);
+          setInfraGosiMeta(json.data.meta || null);
+        } else {
+          setInfraGosiHistory([]);
+          setInfraGosiMeta(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInfraGosiHistory([]);
+          setInfraGosiMeta(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsInfraGosiLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedInfra, selectedInfraStation, BACKEND_URL]);
+
   const drawZones = (kakaoMap: any) => {
     if (!kakaoMap || !window.kakao?.maps) return;
 
@@ -506,6 +665,9 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             window.kakao.maps.event.addListener(polygon, 'mouseover', () => polygon.setOptions({ fillOpacity: 0.4 }));
             window.kakao.maps.event.addListener(polygon, 'mouseout', () => polygon.setOptions({ fillOpacity: 0.15 }));
             window.kakao.maps.event.addListener(polygon, 'click', () => {
+              setSelectedInfra(null);
+              setSelectedInfraStation('전체');
+              setInfraLocationName('');
               setSelectedFeature(feature);
               setSelectedSigunguName('');
               setIsHistoryExpanded(false);
@@ -527,7 +689,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             polygon.setMap(kakaoMap);
             shpPolygonsRef.current.push(polygon);
 
-            const zoneName = feature.properties.name;
+            const zoneName = feature.properties.alias || feature.properties.name;
             if (zoneName) {
               const centerLatLng = getPolygonCenter(path);
               const labelEl = document.createElement('div');
@@ -563,107 +725,195 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     });
   };
 
-  const fetchRailwayData = async (kakaoMap: any) => {
-    try {
-      const [projRes, statRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/railway/projects`),
-        fetch(`${BACKEND_URL}/api/railway/stations`)
-      ]);
+  const clearInfrastructureOverlays = () => {
+    infraLinesRef.current.forEach((item) => item.overlay.setMap(null));
+    infraPointsRef.current.forEach((item) => item.overlay.setMap(null));
+    infraLinesRef.current = [];
+    infraPointsRef.current = [];
+  };
 
-      if (!projRes.ok || !statRes.ok) return;
+  const renderInfrastructure = (kakaoMap: any, items: InfrastructureProject[], layers: Record<string, boolean>) => {
+    clearInfrastructureOverlays();
+    const highlightedId = selectedInfraRef.current?.id;
 
-      const projJson = await projRes.json();
-      const statJson = await statRes.json();
+    items.forEach((item) => {
+      const layerKey = item.category;
+      if (layerKey !== 'railway' && layerKey !== 'road') return;
+      if (!layers[layerKey]) return;
 
-      const projects = projJson.data || [];
-      const stations = statJson.data || [];
+      const style = INFRA_MAP_STYLE[layerKey];
+      const isHighlighted = highlightedId === item.id;
+      const lineWeight = isHighlighted ? style.lineWeight + 2 : style.lineWeight;
+      const lineOpacity = isHighlighted ? 1 : style.lineOpacity;
+      let longestPath: any[] = [];
 
-      const projectsMap = new Map<number, any>(projects.map((p: any) => [p.id, p]));
-      const stationsByProject: Record<number, any[]> = {};
+      const bindInfraClick = (overlay: any, latLng?: any) => {
+        window.kakao.maps.event.addListener(overlay, 'click', (mouseEvent: any) => {
+          if (mouseEvent?.stopPropagation) mouseEvent.stopPropagation();
+          selectInfraProject(kakaoMap, item, undefined, latLng || mouseEvent?.latLng);
+        });
+        window.kakao.maps.event.addListener(overlay, 'mouseover', () => {
+          overlay.setOptions({ strokeWeight: lineWeight + 2, strokeOpacity: 1 });
+        });
+        window.kakao.maps.event.addListener(overlay, 'mouseout', () => {
+          overlay.setOptions({ strokeWeight: lineWeight, strokeOpacity: lineOpacity });
+        });
+      };
 
-      stations.forEach((s: any) => {
-        if (!stationsByProject[s.project_id]) stationsByProject[s.project_id] = [];
-        stationsByProject[s.project_id].push(s);
-      });
+      for (const pl of item.polylines || []) {
+        const path = toKakaoPath(window.kakao, pl.coordinates || []);
+        if (path.length >= 2) {
+          if (path.length > longestPath.length) longestPath = path;
 
-      Object.entries(stationsByProject).forEach(([projectIdStr, projStations]) => {
-        const projectId = parseInt(projectIdStr, 10);
-        const project = projectsMap.get(projectId);
-        const lineName = project?.line_name || '';
+          const hitPolyline = new window.kakao.maps.Polyline({
+            path,
+            strokeWeight: 14,
+            strokeColor: style.lineColor,
+            strokeOpacity: 0.01,
+            strokeStyle: 'solid',
+          });
+          hitPolyline.setZIndex(layerKey === 'railway' ? 4 : 3);
+          bindInfraClick(hitPolyline);
+          hitPolyline.setMap(kakaoMap);
+          infraLinesRef.current.push({ overlay: hitPolyline, layerKey });
 
-        const { lineColor, lineWeight, lineOpacity } = RAILWAY_MAP_STYLE;
+          const polyline = new window.kakao.maps.Polyline({
+            path,
+            strokeWeight: lineWeight,
+            strokeColor: style.lineColor,
+            strokeOpacity: lineOpacity,
+            strokeStyle: 'solid',
+          });
+          polyline.setZIndex(layerKey === 'railway' ? 2 : 1);
+          polyline.setMap(kakaoMap);
+          infraLinesRef.current.push({ overlay: polyline, layerKey });
+        }
+      }
 
-        const linePath = projStations
-          .sort((a, b) => a.station_order - b.station_order)
-          .map((s: any) => parseRailwayCoord(s))
+      if (longestPath.length === 0 && (item.points?.length || 0) >= 2) {
+        const path = (item.points || [])
+          .map((p) => parseInfraCoord(p.lat, p.lng))
           .filter(Boolean)
           .map((c) => new window.kakao.maps.LatLng(c!.lat, c!.lng));
+        if (path.length >= 2) {
+          longestPath = path;
+          const hitPolyline = new window.kakao.maps.Polyline({
+            path,
+            strokeWeight: 14,
+            strokeColor: style.lineColor,
+            strokeOpacity: 0.01,
+            strokeStyle: 'solid',
+          });
+          hitPolyline.setZIndex(3);
+          bindInfraClick(hitPolyline);
+          hitPolyline.setMap(kakaoMap);
+          infraLinesRef.current.push({ overlay: hitPolyline, layerKey });
 
-        if (linePath.length >= 2) {
           const polyline = new window.kakao.maps.Polyline({
-            path: linePath, strokeWeight: lineWeight, strokeColor: lineColor, strokeOpacity: lineOpacity, strokeStyle: 'solid'
+            path,
+            strokeWeight: lineWeight,
+            strokeColor: style.lineColor,
+            strokeOpacity: lineOpacity * 0.7,
+            strokeStyle: 'shortdash',
           });
           polyline.setZIndex(1);
           polyline.setMap(kakaoMap);
-          railwayLinesRef.current.push({ overlay: polyline, type: 'line' });
-
-          const midIdx = Math.floor(linePath.length / 2);
-          const lineLabelEl = document.createElement('div');
-          lineLabelEl.style.cssText = `
-            font-size: 10px; font-weight: 800; color: ${lineColor}; background: rgba(255, 255, 255, 0.9);
-            border: 1px solid ${lineColor}55; padding: 1px 5px; border-radius: 4px; white-space: nowrap;
-          `;
-          lineLabelEl.textContent = lineName;
-
-          const lineLabel = new window.kakao.maps.CustomOverlay({
-            position: linePath[midIdx], content: lineLabelEl, yAnchor: 1.5, zIndex: 1
-          });
-          lineLabel.setMap(kakaoMap);
-          railwayLinesRef.current.push({ overlay: lineLabel, type: 'label' });
+          infraLinesRef.current.push({ overlay: polyline, layerKey });
         }
-      });
+      }
 
-      stations.forEach((station: any) => {
-        const coord = parseRailwayCoord(station);
-        if (!coord) return;
-
-        const position = new window.kakao.maps.LatLng(coord.lat, coord.lng);
-        const stationEl = document.createElement('div');
-        stationEl.style.cssText = `
-          padding: 3px 8px; background: ${RAILWAY_MAP_STYLE.stationBg}; border: none; border-radius: 4px;
-          font-size: 9px; font-weight: 700; color: ${RAILWAY_MAP_STYLE.stationColor}; white-space: nowrap;
-          transform: translate(-50%, -50%); box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      if (longestPath.length >= 2) {
+        const midIdx = Math.floor(longestPath.length / 2);
+        const lineLabelEl = document.createElement('div');
+        lineLabelEl.style.cssText = `
+          font-size: 11px; font-weight: 800; color: ${style.lineColor}; background: rgba(255, 255, 255, 0.95);
+          border: 1.5px solid ${style.lineColor}; padding: 2px 8px; border-radius: 6px; white-space: nowrap;
+          cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.15);
         `;
-        stationEl.textContent = station.station_name;
+        lineLabelEl.textContent = item.name;
+        lineLabelEl.onclick = (e) => {
+          e.stopPropagation();
+          selectInfraProject(kakaoMap, item);
+        };
+        const lineLabel = new window.kakao.maps.CustomOverlay({
+          position: longestPath[midIdx],
+          content: lineLabelEl,
+          yAnchor: 1.5,
+          zIndex: 5,
+        });
+        lineLabel.setMap(kakaoMap);
+        infraLinesRef.current.push({ overlay: lineLabel, layerKey });
+      }
+
+      (item.points || []).forEach((pt) => {
+        const coord = parseInfraCoord(pt.lat, pt.lng);
+        if (!coord || isStationCodeName(pt.name)) return;
+
+        const stationEl = document.createElement('div');
+        const isActiveStation = isHighlighted && pt.name === selectedInfraStationRef.current;
+        stationEl.style.cssText = `
+          padding: 4px 10px; background: ${isActiveStation ? style.lineColor : style.pointBg}; border: 2px solid ${style.lineColor};
+          border-radius: 999px; font-size: 10px; font-weight: 800; color: ${isActiveStation ? '#fff' : style.pointColor};
+          white-space: nowrap; transform: translate(-50%, -50%); box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+          cursor: pointer;
+        `;
+        stationEl.textContent = pt.name || '';
+        stationEl.onclick = (e) => {
+          e.stopPropagation();
+          selectInfraProject(kakaoMap, item, pt.name || undefined);
+        };
 
         const overlay = new window.kakao.maps.CustomOverlay({
-          position, content: stationEl, xAnchor: 0.5, yAnchor: 0.5, zIndex: 3
+          position: new window.kakao.maps.LatLng(coord.lat, coord.lng),
+          content: stationEl,
+          xAnchor: 0.5,
+          yAnchor: 0.5,
+          zIndex: 6,
         });
         overlay.setMap(kakaoMap);
-        railwayStationsRef.current.push({ overlay, type: 'station' });
+        infraPointsRef.current.push({ overlay, layerKey });
+      });
+    });
+  };
+
+  const fetchInfrastructureData = async (kakaoMap: any) => {
+    try {
+      const bounds = kakaoMap.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const params = new URLSearchParams({
+        swLat: String(sw.getLat()),
+        swLng: String(sw.getLng()),
+        neLat: String(ne.getLat()),
+        neLng: String(ne.getLng()),
+        category: 'railway,road',
       });
 
-      // 초기 렌더링 시 가시성 설정
-      updateRailwayVisibility(activeLayers['railway']);
+      const res = await fetch(`${BACKEND_URL}/api/infrastructure/lines?${params}`);
+      if (!res.ok) return;
+
+      const json = await res.json();
+      const items: InfrastructureProject[] = json.data || [];
+      infraDataCache.current = items;
+      renderInfrastructure(kakaoMap, items, activeLayersRef.current);
     } catch (err) {
-      console.error('Railway fetch error:', err);
+      console.error('Infrastructure fetch error:', err);
     }
   };
 
-  const updateRailwayVisibility = (isVisible: boolean) => {
+  const updateInfrastructureVisibility = (layers: Record<string, boolean>) => {
     if (!map) return;
-    railwayLinesRef.current.forEach(item => item.overlay.setMap(isVisible ? map : null));
-    railwayStationsRef.current.forEach(item => item.overlay.setMap(isVisible ? map : null));
+    renderInfrastructure(map, infraDataCache.current, layers);
   };
 
   // activeLayers 또는 zone 데이터가 바뀔 때마다 다시 그리기
   useEffect(() => {
     if (map) {
       drawZones(map);
-      updateRailwayVisibility(!!activeLayers['railway']);
+      updateInfrastructureVisibility(activeLayers);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLayers, map, zoneDataVersion]);
+  }, [activeLayers, map, zoneDataVersion, selectedInfra, selectedInfraStation]);
 
   // 지도가 커지거나 작아질 때(크게보기) 카카오맵 리사이즈 트리거
   useEffect(() => {
@@ -693,6 +943,139 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
       }`}>
       <div ref={mapContainer} className="w-full h-full" />
 
+      {/* 철도·도로 노선 클릭 시 상세 패널 */}
+      {selectedInfra && (
+        <div className="absolute top-14 left-3 right-3 sm:left-auto sm:right-3 z-20 w-auto sm:w-[320px] max-h-[calc(100%-5rem)] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-900 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex justify-between items-start mb-2 gap-2">
+            <h3 className="font-black text-[15px] text-slate-900 break-keep leading-snug">
+              {getInfraTitle(selectedInfra, selectedInfraStation)}
+            </h3>
+            <button
+              onClick={() => {
+                setSelectedInfra(null);
+                setSelectedInfraStation('전체');
+                setInfraLocationName('');
+                if (map) renderInfrastructure(map, infraDataCache.current, activeLayersRef.current);
+              }}
+              className="text-slate-400 hover:text-slate-700 p-0.5 rounded shrink-0"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="text-[10px] text-slate-500 mb-3 flex items-center gap-1.5 font-bold">
+            <span className={`px-2 py-0.5 rounded-md border ${
+              selectedInfra.category === 'railway'
+                ? 'bg-teal-50 text-teal-700 border-teal-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
+              {INFRA_CATEGORY_LABEL[selectedInfra.category as 'railway' | 'road']}
+            </span>
+            {infraLocationName && <span className="truncate">· {infraLocationName}</span>}
+          </div>
+
+          {getInfraStations(selectedInfra).length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 no-scrollbar">
+              {['전체', ...getInfraStations(selectedInfra).map((s) => s.name!).filter(Boolean)].map((tab) => {
+                const isActive = selectedInfraStation === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => handleInfraStationTab(tab)}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
+                      isActive
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-indigo-300'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mb-3">
+            <InfraRouteMiniMap item={selectedInfra} selectedStation={selectedInfraStation} />
+          </div>
+
+          {getInfraStations(selectedInfra).length > 0 && (
+            <div className="text-[11px] text-slate-500 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100 mb-3">
+              <span className="font-bold text-slate-700">경유 역·지점</span>
+              <span className="mx-1">·</span>
+              {getInfraStations(selectedInfra).map((s) => s.name).join(' → ')}
+            </div>
+          )}
+
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsInfraGosiExpanded((v) => !v)}
+              className="w-full flex items-center justify-between text-[11px] font-bold text-indigo-700 py-1"
+            >
+              <span className="flex items-center gap-1.5">
+                <span>📋</span>
+                관보 · 고시 이력
+              </span>
+              <svg className={`w-3.5 h-3.5 transition-transform ${isInfraGosiExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {isInfraGosiExpanded && (
+              <div className="mt-2 space-y-1.5 max-h-[160px] overflow-y-auto">
+                {isInfraGosiLoading ? (
+                  <div className="text-center py-4 text-[10px] text-slate-400 font-semibold">고시 조회 중...</div>
+                ) : infraGosiHistory.length === 0 ? (
+                  <div className="text-center py-3 text-[10px] text-slate-500 bg-slate-50 rounded-xl border border-slate-100 font-semibold">
+                    {infraGosiMeta?.gov_notice_no
+                      ? `관련 고시: ${infraGosiMeta.gov_notice_no}`
+                      : '등록된 관보·고시 이력이 없습니다.'}
+                  </div>
+                ) : (
+                  infraGosiHistory.map((history, idx) => (
+                    <div key={history.id || idx} className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 hover:border-indigo-200 transition-colors">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[9px] font-bold text-indigo-600 shrink-0">
+                          {history.gosi_date ? new Date(history.gosi_date).toLocaleDateString('ko-KR') : '-'}
+                        </span>
+                        <span className="text-[8px] text-slate-400 font-bold uppercase truncate">
+                          {history.source === 'gwanbo' ? '전자관보' : '고시'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-800 font-bold leading-snug line-clamp-2 mb-1.5">
+                        {history.title}
+                      </p>
+                      {history.url && (
+                        <a
+                          href={history.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[9px] text-indigo-600 hover:underline font-bold"
+                        >
+                          {history.source === 'gwanbo' ? '관보 원문 보기' : '고시 원문 보기'}
+                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 pt-2 border-t border-slate-100 text-[9px] text-slate-400 flex justify-between">
+            <span>출처</span>
+            <span>국토교통부 · 전자관보</span>
+          </div>
+        </div>
+      )}
+
       {/* 구역 클릭 시 정보 카드 + 고시 이력 UI */}
       {selectedFeature && (
         <div className="absolute top-14 right-3 z-20 w-[290px] bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl p-4 text-white animate-in fade-in slide-in-from-top-2 duration-200">
@@ -721,7 +1104,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
                selectedFeature.properties.layer === 'zone_scheduled_maintenance' ? '정비예정구역' :
                selectedFeature.properties.layer === 'zone_tourist' ? '관광특구' :
                selectedFeature.properties.layer === 'zone_industrial_complex' ? '산업단지' :
-               selectedFeature.properties.layer === 'zone_housing_land' ? '택지개발지구' : 
+               selectedFeature.properties.layer === 'zone_housing_land' ? '택지개발지구' :
+               selectedFeature.properties.layer === 'zone_public_housing' ? '공공주택지구' :
                selectedFeature.properties.layer}
             </span>
             <span>·</span>
@@ -793,7 +1177,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-200 font-bold leading-snug line-clamp-2 mb-1.5">
-                        {history.zone_name || '명칭 미확인'}
+                        {history.gosi_title || history.zone_name || '명칭 미확인'}
                       </p>
                       {history.url && (
                         <a 
@@ -870,6 +1254,15 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500"
           />
           <span className="text-[11px] font-bold text-slate-700">철도망 (GTX 등)</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-1 rounded-md transition-colors">
+          <input
+            type="checkbox"
+            checked={!!activeLayers['road']}
+            onChange={() => toggleLayer('road')}
+            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500"
+          />
+          <span className="text-[11px] font-bold text-slate-700">도로망 (고속도로)</span>
         </label>
         <div className="h-px bg-slate-100 my-0.5" />
 

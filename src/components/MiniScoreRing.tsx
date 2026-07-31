@@ -7,13 +7,16 @@ interface MiniScoreRingProps {
     score: number;
     max?: number;
     color?: string;
-    size?: 'sm' | 'md' | 'lg';
+    size?: 'sm' | 'md' | 'lg' | 'xl';
+    /** 링 중앙 표시 (미지정 시 score 숫자) */
+    centerText?: string;
 }
 
 const SIZE_CONFIG = {
     sm: { box: 40, radius: 15, stroke: 3.5, font: 'text-[10px]', label: false },
     md: { box: 68, radius: 26, stroke: 5, font: 'text-sm', label: true },
     lg: { box: 72, radius: 28, stroke: 5, font: 'text-sm', label: true },
+    xl: { box: 88, radius: 34, stroke: 6, font: 'text-xs', label: true },
 } as const;
 
 export default function MiniScoreRing({
@@ -22,12 +25,14 @@ export default function MiniScoreRing({
     max = 100,
     color = '#0EA5E9',
     size = 'md',
+    centerText,
 }: MiniScoreRingProps) {
     const cfg = SIZE_CONFIG[size];
     const pct = Math.min(Math.max((score / max) * 100, 0), 100);
     const circumference = cfg.radius * Math.PI * 2;
     const dashOffset = circumference - (circumference * pct) / 100;
     const viewBox = cfg.box;
+    const displayCenter = centerText ?? String(Math.round(score));
 
     return (
         <div className={`flex flex-col items-center gap-2 text-center ${label ? '' : 'gap-0'}`}>
@@ -57,12 +62,14 @@ export default function MiniScoreRing({
                         style={{ filter: `drop-shadow(0 0 4px ${color}66)` }}
                     />
                 </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <span className={`${cfg.font} font-bold text-white`}>{score}</span>
+                <div className="absolute inset-0 flex items-center justify-center px-1">
+                    <span className={`${cfg.font} font-bold text-white leading-none tabular-nums`}>
+                        {displayCenter}
+                    </span>
                 </div>
             </div>
             {label && cfg.label && (
-                <span className="text-[10px] text-white/45 font-medium leading-tight line-clamp-2 max-w-[72px]">
+                <span className="text-[10px] text-white/45 font-medium leading-tight line-clamp-2 max-w-[80px]">
                     {label}
                 </span>
             )}
@@ -72,10 +79,18 @@ export default function MiniScoreRing({
 
 interface AmenityOverviewGaugeProps {
     score: number;
+    label?: string;
+    showTier?: boolean;
+    accentColor?: string;
 }
 
-export function AmenityOverviewGauge({ score }: AmenityOverviewGaugeProps) {
-    const activeColor = '#0EA5E9';
+export function AmenityOverviewGauge({
+    score,
+    label = '생활권 점수',
+    showTier = true,
+    accentColor = '#0EA5E9',
+}: AmenityOverviewGaugeProps) {
+    const activeColor = accentColor;
     const [displayScore, setDisplayScore] = React.useState(0);
 
     React.useEffect(() => {
@@ -130,9 +145,10 @@ export function AmenityOverviewGauge({ score }: AmenityOverviewGaugeProps) {
                     >
                         {displayScore}
                     </span>
-                    <span className="text-[9px] font-bold text-white/55 tracking-[0.2em] mt-1">생활권 점수</span>
+                    <span className="text-[9px] font-bold text-white/55 tracking-[0.2em] mt-1">{label}</span>
                 </div>
             </div>
+            {showTier && (
             <span
                 className="text-[11px] font-bold px-2.5 py-1 rounded-full border"
                 style={{
@@ -143,6 +159,7 @@ export function AmenityOverviewGauge({ score }: AmenityOverviewGaugeProps) {
             >
                 {tierLabel}
             </span>
+            )}
         </div>
     );
 }
