@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import InfraRouteMiniMap from './InfraRouteMiniMap';
+import { kakaoMapsSdkUrl } from '../lib/loadKakaoMapsSdk';
 import {
   INFRA_CATEGORY_LABEL,
   INFRA_FOCUS_LEVEL,
@@ -196,7 +197,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
       if (!isScriptLoading) {
         isScriptLoading = true;
         const script = document.createElement('script');
-        script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY}&libraries=services,clusterer&autoload=false`;
+        script.src = kakaoMapsSdkUrl(process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY || '');
         script.onload = () => {
           isScriptLoaded = true;
           scriptCallbacks.forEach(cb => cb());
@@ -220,6 +221,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     if (overlaysRef.current) {
       if (overlaysRef.current.clusterer) {
         overlaysRef.current.clusterer.clear();
+      } else if (overlaysRef.current.markers) {
+        overlaysRef.current.markers.forEach((m: any) => m.setMap(null));
       }
       if (overlaysRef.current.items) {
         overlaysRef.current.items.forEach((ov: any) => ov.setMap(null));
@@ -240,25 +243,30 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
 
     let activeTooltip: HTMLElement | null = null;
 
-    // 클러스터러 생성 (숫자 표시)
-    const clusterer = new window.kakao.maps.MarkerClusterer({
-      map: map,
-      averageCenter: true,
-      minLevel: 3, // 이 레벨 이상일 때 클러스터링 (숫자로 묶임)
-      disableClickZoom: false, // 클릭 시 줌인 됨
-      styles: [{
-        width: '36px', height: '36px',
-        background: 'rgba(15, 118, 110, 0.9)', // teal-700
-        color: '#fff',
-        textAlign: 'center',
-        fontWeight: 'bold',
-        lineHeight: '36px',
-        borderRadius: '50%',
-        border: '3px solid rgba(255, 255, 255, 0.8)',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-        fontSize: '14px'
-      }]
-    });
+    const MarkerClustererCtor = window.kakao.maps.MarkerClusterer;
+    const canCluster = typeof MarkerClustererCtor === 'function';
+    let clusterer: any = null;
+
+    if (canCluster) {
+      clusterer = new MarkerClustererCtor({
+        map: map,
+        averageCenter: true,
+        minLevel: 3,
+        disableClickZoom: false,
+        styles: [{
+          width: '36px', height: '36px',
+          background: 'rgba(15, 118, 110, 0.9)',
+          color: '#fff',
+          textAlign: 'center',
+          fontWeight: 'bold',
+          lineHeight: '36px',
+          borderRadius: '50%',
+          border: '3px solid rgba(255, 255, 255, 0.8)',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+          fontSize: '14px',
+        }],
+      });
+    }
 
     markers.forEach((marker, idx) => {
       if (!marker.lat || !marker.lng) return;
@@ -323,11 +331,15 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
       }
     });
 
-    // 클러스터러에 마커 추가
-    clusterer.addMarkers(kakaoMarkers);
+    // 클러스터러 또는 개별 마커 표시
+    if (clusterer) {
+      clusterer.addMarkers(kakaoMarkers);
+    } else {
+      kakaoMarkers.forEach((m) => m.setMap(map));
+    }
 
     // 정리용으로 저장
-    overlaysRef.current = { clusterer, items: customOverlays };
+    overlaysRef.current = { clusterer, items: customOverlays, markers: kakaoMarkers };
 
     if (hasValidPoints) {
       // 마커가 잘 보이도록 패딩 적용하여 bounds 설정
@@ -689,7 +701,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             polygon.setMap(kakaoMap);
             shpPolygonsRef.current.push(polygon);
 
-            const zoneName = feature.properties.alias || feature.properties.name;
+            const zoneName = feature.properties.displayName || feature.properties.alias || feature.properties.name;
             if (zoneName) {
               const centerLatLng = getPolygonCenter(path);
               const labelEl = document.createElement('div');
@@ -1081,7 +1093,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
         <div className="absolute top-14 right-3 z-20 w-[290px] bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl p-4 text-white animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex justify-between items-start mb-2">
             <h3 className="font-bold text-[13px] text-white break-keep pr-4 leading-snug">
-              {selectedFeature.properties.alias || '명칭 미확인'}
+              {selectedFeature.properties.displayName || selectedFeature.properties.alias || selectedFeature.properties.name || '명칭 미확인'}
             </h3>
             <button 
               onClick={() => setSelectedFeature(null)}

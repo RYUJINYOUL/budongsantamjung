@@ -1,4 +1,5 @@
 import MiniScoreRing from '../components/MiniScoreRing';
+import { isCompareScoringCoverageSufficient } from './apartmentCompareCoverage';
 import { formatScore, type CompareScoringItem } from './apartmentCompareScoring';
 
 /** compare 표 헤더 — 단지명 6자 */
@@ -27,7 +28,7 @@ const MOMENTUM_COLORS: Record<MomentumPartKey, string> = {
 };
 
 const COMPOSITE_AXES = [
-  { key: 'upside', label: '상승', color: '#fb923c' },
+  { key: 'upside', label: '투자종합', color: '#fb923c' },
   { key: 'livability', label: '실거주', color: '#0EA5E9' },
   { key: 'risk', label: '리스크', color: '#fbbf24' },
 ] as const;
@@ -98,6 +99,7 @@ function formatSubscorePoints(subscore: number | null | undefined, excluded?: bo
 function buildMetricRings(row: CompareScoringItem): MetricRing[] {
   const parts = row.momentumBreakdown?.parts ?? [];
   const byKey = new Map(parts.map((p) => [p.key, p]));
+  const coverageOk = isCompareScoringCoverageSufficient(row);
 
   const momentumRings: MetricRing[] = MOMENTUM_KEYS.map((key) => {
     const part = byKey.get(key);
@@ -118,7 +120,8 @@ function buildMetricRings(row: CompareScoringItem): MetricRing[] {
         : key === 'livability'
           ? row.composite?.livabilityScore
           : row.composite?.riskScore;
-    const score = raw != null && !Number.isNaN(raw) ? Math.round(raw) : null;
+    const hideForCoverage = !coverageOk && (key === 'upside' || key === 'livability');
+    const score = !hideForCoverage && raw != null && !Number.isNaN(raw) ? Math.round(raw) : null;
     return {
       key,
       label,
@@ -131,8 +134,8 @@ function buildMetricRings(row: CompareScoringItem): MetricRing[] {
   return [...momentumRings, ...compositeRings];
 }
 
-function buildTotalRing(total: number | null | undefined): MetricRing {
-  const score = total != null && !Number.isNaN(total) ? Math.round(total) : null;
+function buildTotalRing(total: number | null | undefined, coverageOk: boolean): MetricRing {
+  const score = coverageOk && total != null && !Number.isNaN(total) ? Math.round(total) : null;
   return {
     key: 'total',
     label: '종합 점수',
@@ -181,6 +184,7 @@ export function buildCompareMetricCards(items: CompareScoringItem[]): {
     key: item.masterId || item.rtmsAptSeq || String(i),
     complexName: item.complexName || '단지',
     total: item.momentumBreakdown?.total ?? item.axes?.momentum,
+    coverageOk: isCompareScoringCoverageSufficient(item),
     ringByKey: new Map(buildMetricRings(item).map((r) => [r.key, r])),
   }));
 
@@ -197,7 +201,7 @@ export function buildCompareMetricCards(items: CompareScoringItem[]): {
     entries: aptRows.map((apt) => ({
       aptKey: apt.key,
       complexName: apt.complexName,
-      ring: buildTotalRing(apt.total),
+      ring: buildTotalRing(apt.total, apt.coverageOk),
     })),
   };
 
@@ -220,8 +224,9 @@ export function buildCompareMetricCards(items: CompareScoringItem[]): {
   const anyMissingLongTerm = items.some(
     (item) => item.momentumBreakdown && item.momentumBreakdown.hasLongTermData === false,
   );
+  const anyLowCoverage = items.some((item) => !isCompareScoringCoverageSufficient(item));
 
-  return { metricCards, hasAnyScore, anyMissingLongTerm };
+  return { metricCards, hasAnyScore, anyMissingLongTerm, anyLowCoverage };
 }
 
 function CompareMetricBreakdownCard({
@@ -271,7 +276,7 @@ export function CompareScoreOverviewSection({
   items: CompareScoringItem[];
   onOpenCards?: () => void;
 }) {
-  const { metricCards, hasAnyScore, anyMissingLongTerm } = buildCompareMetricCards(items);
+  const { metricCards, hasAnyScore, anyMissingLongTerm, anyLowCoverage } = buildCompareMetricCards(items);
   if (!items.length || !hasAnyScore) return null;
 
   return (
@@ -299,6 +304,12 @@ export function CompareScoreOverviewSection({
           <CompareMetricBreakdownCard key={metric.key} metric={metric} entries={entries} />
         ))}
       </div>
+
+      {anyLowCoverage && (
+        <p className="text-[10px] text-amber-400/90 font-semibold leading-relaxed">
+          데이터 커버리지 50% 미만 단지는 모멘텀·투자종합·실거주 종합점수를 표시하지 않습니다.
+        </p>
+      )}
 
       {anyMissingLongTerm && (
         <p className="text-[10px] text-amber-400/90 font-semibold leading-relaxed">

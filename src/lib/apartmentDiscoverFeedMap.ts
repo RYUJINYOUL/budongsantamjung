@@ -31,6 +31,8 @@ export type DiscoverMappedAnalysis = {
   aptSeq?: string;
   rtmsAptSeq?: string;
   masterId?: string;
+  r114PropId?: string | null;
+  householdCount?: number | null;
   avgPrice1m?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
@@ -60,6 +62,8 @@ export function mapDiscoverItemsToFeed(
       aptSeq: item.aptSeq,
       rtmsAptSeq: item.rtmsAptSeq ?? item.aptSeq,
       masterId: item.masterId ?? undefined,
+      r114PropId: item.r114PropId ?? undefined,
+      householdCount: item.card?.hardware?.householdCount ?? null,
       avgPrice1m: item.avgPrice1m ?? item.card?.avgPrice1m ?? null,
       exclusiveArea: centerM2,
       area: centerM2,

@@ -9,6 +9,8 @@ export interface ActiveAiAnalysis {
     startedAt: number;
     currentStep?: number;
     status?: ActiveAiAnalysisStatus;
+    /** 재분석: 소스 report는 completed 상태라 폴링하면 조기 완료로 오판 */
+    suppressPoll?: boolean;
 }
 
 const STORAGE_KEY = 'active_ai_analyses';
@@ -67,9 +69,11 @@ export function completeActiveAiAnalysis(previousId: string, finalId?: string) {
     const resolvedId = finalId ? String(finalId) : item.id;
     if (finalId && String(finalId) !== String(previousId)) {
         list.splice(idx, 1);
-        list.push({ ...item, id: resolvedId, status: 'completed' });
+        const { suppressPoll: _omit, ...rest } = item;
+        list.push({ ...rest, id: resolvedId, status: 'completed' });
     } else {
-        list[idx] = { ...item, status: 'completed' };
+        const { suppressPoll: _omit, ...rest } = item;
+        list[idx] = { ...rest, status: 'completed' };
     }
     writeActiveAiAnalyses(list);
 }

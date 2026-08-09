@@ -1,3 +1,5 @@
+import { formatInfraDistanceLabel } from './infraDisplay';
+
 export interface OutlookKeyword {
     label: string;
     line: string;
@@ -7,7 +9,8 @@ interface NearbyInfraItem {
     name?: string;
     displayTitle?: string;
     distanceM?: number;
-    walkMin?: number;
+    walkMin?: number | null;
+    distanceMode?: 'walk' | 'straight';
 }
 
 interface NearbyInfraBundle {
@@ -280,9 +283,14 @@ function transportLine(
     const infraItems = nearbyInfrastructure?.items || [];
     if (infraItems.length) {
         const nearest = infraItems[0]!;
+        const distLabel = formatInfraDistanceLabel({
+            distanceM: nearest.distanceM ?? 0,
+            walkMin: nearest.walkMin,
+            distanceMode: nearest.distanceMode,
+        });
         return {
             label: '교통 · 인프라',
-            line: `${nearest.displayTitle || nearest.name} ${nearest.distanceM}m · ${nearest.walkMin}분`,
+            line: `${nearest.displayTitle || nearest.name} ${distLabel}`,
         };
     }
 

@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 
 import DetectiveSummaryView from '../../../components/DetectiveSummaryView';
+import InvestmentInsightPanel from '../../../components/investment/InvestmentInsightPanel';
 import NearbyInfrastructurePanel from '../../../components/NearbyInfrastructurePanel';
 import ShortsFrameView from '../../../components/ShortsFrameView';
 import AmenitiesView from '../../../components/AmenitiesView';
@@ -59,7 +60,7 @@ import {
     shouldRedirectToApartmentPage,
 } from '../../../lib/apartmentNavigation';
 import { areasMatch, resolveDefaultQuarterlyArea } from '../../../lib/apartmentTenYearStory';
-import { parseAnalyzeSlug } from '../../../lib/slug';
+import { parseAnalyzeSlug, makeAnalyzeSlug } from '../../../lib/slug';
 import {
     buildTenYearHistoryCopyText,
     buildTenYearOutlookKeywordsCopyText,
@@ -68,6 +69,7 @@ import { AI_ANALYSIS_STEPS } from '../../../lib/aiAnalysisSteps';
 import {
     completeActiveAiAnalysis,
     dismissActiveAiAnalysis,
+    failActiveAiAnalysis,
     readActiveAiAnalyses,
     registerActiveAiAnalysis,
     updateActiveAiAnalysis,
@@ -1746,7 +1748,9 @@ const renderVolumeXAxisTick = (props: any) => {
 function isAiAnalysisCompleted(data: any): boolean {
     if (!data) return false;
     const status = data.report?.ai_analysis_status || data.ai_analysis_status;
-    return status === 'completed';
+    if (status === 'completed') return true;
+    const rec = data.analysis?.recommendations;
+    return typeof rec === 'string' && rec.length > 20;
 }
 
 /** 아파트 AI 분석 가능 여부 (실거래·10년 통계 없으면 false) */
@@ -1952,6 +1956,7 @@ export default function AnalysisDetailPage({
     const [aiStep, setAiStep] = useState(0);
     const [aiElapsed, setAiElapsed] = useState(0);
     const [historyModalReport, setHistoryModalReport] = useState<EmbeddedApartmentReport | null>(null);
+    const [apartmentSiblingReports, setApartmentSiblingReports] = useState<EmbeddedApartmentReport[]>([]);
 
     // AI 분석 제보용 입력 상태 (카테고리별 필드 — DetectiveSummaryView / Flutter ai_analysis_modal 기준)
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
@@ -2148,6 +2153,14 @@ export default function AnalysisDetailPage({
         return cat === 'apartment' || cat === '아파트';
     }, [report?.category, analysisData?.category]);
 
+    const isInvestmentCategory = useMemo(() => {
+        const cat = String(report?.category || analysisData?.category || '').toLowerCase().trim();
+        return cat === 'apartment' || cat === '아파트'
+            || cat === 'land' || cat === '토지'
+            || cat === 'building' || cat === '건물' || cat === '빌딩'
+            || cat === 'store' || cat === '상가' || cat === '상업용' || cat === '상업' || cat === 'shop' || cat === 'commercial';
+    }, [report?.category, analysisData?.category]);
+
     const tenYearOutlookContext = useMemo(() => ({
         marketIndicators: rawData?.marketIndicators || mergedData?.marketIndicators,
         housingSupply: rawData?.housingSupply || mergedData?.housingSupply,
@@ -2160,7 +2173,11 @@ export default function AnalysisDetailPage({
         dynamicNews: rawData?.dynamicNews || mergedData?.dynamicNews,
         amenities: rawData?.nearbyData?.amenities || mergedData?.nearbyData?.amenities,
         spatialFacilities: rawData?.nearbyData?.spatialFacilities || mergedData?.nearbyData?.spatialFacilities || [],
-        nearbyInfrastructure: rawData?.nearbyData?.nearbyInfrastructure || mergedData?.nearbyData?.nearbyInfrastructure || null,
+        nearbyInfrastructure: rawData?.investmentContext?.nearbyInfrastructure
+            || rawData?.nearbyData?.nearbyInfrastructure
+            || mergedData?.investmentContext?.nearbyInfrastructure
+            || mergedData?.nearbyData?.nearbyInfrastructure
+            || null,
     }), [rawData, mergedData]);
 
     const tenYearStoryChart = useMemo(() => {
@@ -2439,6 +2456,48 @@ export default function AnalysisDetailPage({
         return () => unsubscribe();
     }, []);
 
+    /** 아파트 단지 — 동일 groupKey AI 완료 분석 목록 */
+    const refetchApartmentSiblingReports = useCallback(async () => {
+        const rep = analysisData?.report;
+        const cat = String(rep?.category || '').toLowerCase();
+        if (cat !== 'apartment' && cat !== '아파트') {
+            setApartmentSiblingReports([]);
+            return;
+        }
+        const groupKey = rep?.group_key
+            || (rep?.apt_seq ? `apt:${rep.apt_seq}` : rep?.pnu ? `pnu:${rep.pnu}` : null);
+        if (!groupKey) {
+            setApartmentSiblingReports([]);
+            return;
+        }
+
+        try {
+            const headers: Record<string, string> = {};
+            if (user) {
+                headers.Authorization = `Bearer ${await user.getIdToken()}`;
+            }
+            const res = await fetch(
+                `/api/land/detective/apartment-groups/${encodeURIComponent(groupKey)}/reports?aiCompletedOnly=1`,
+                { headers },
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            setApartmentSiblingReports(data.reports || []);
+        } catch {
+            setApartmentSiblingReports([]);
+        }
+    }, [
+        analysisData?.report?.group_key,
+        analysisData?.report?.apt_seq,
+        analysisData?.report?.pnu,
+        analysisData?.report?.category,
+        user,
+    ]);
+
+    useEffect(() => {
+        void refetchApartmentSiblingReports();
+    }, [refetchApartmentSiblingReports]);
+
     useEffect(() => {
         if (analysisData && user) {
             // 백엔드에서 전달해주는 isLiked 값을 우선 사용
@@ -2493,10 +2552,11 @@ export default function AnalysisDetailPage({
             return;
         }
 
-        router.replace(`/analyze/${reportId}`);
+        router.replace(`/analyze/${makeAnalyzeSlug(reportId, analysisData?.report?.bld_nm)}`);
     }, [
         analysisData?.report?.apt_seq,
         analysisData?.report?.pnu,
+        analysisData?.report?.bld_nm,
         embeddedInApartment,
         id,
         onEmbeddedReportSelect,
@@ -2679,14 +2739,28 @@ export default function AnalysisDetailPage({
     };
 
     const runAiAnalysis = async () => {
-        if (!id || !user) return;
+        if (!id || !user || !analysisData) return;
 
         const reportIdStr = String(Array.isArray(id) ? id[0] : id);
+        const isRevision = isAiAnalysisCompleted(analysisData);
+        const apiPath = isRevision
+            ? '/api/land/detective/analyze-ai-revision'
+            : '/api/land/detective/analyze-ai-only';
 
         setIsInputModalOpen(false);
-        setIsAiAnalyzing(true);
-        setAiStep(0);
-        setAiElapsed(0);
+
+        let timer: ReturnType<typeof setInterval> | undefined;
+        let stepTimer: ReturnType<typeof setInterval> | undefined;
+
+        if (!isRevision) {
+            setIsAiAnalyzing(true);
+            setAiStep(0);
+            setAiElapsed(0);
+            timer = setInterval(() => setAiElapsed(prev => prev + 1), 1000);
+            stepTimer = setInterval(() => {
+                setAiStep(prev => (prev < AI_ANALYSIS_STEPS.length - 1 ? prev + 1 : prev));
+            }, 5000);
+        }
 
         registerActiveAiAnalysis({
             id: reportIdStr,
@@ -2694,23 +2768,19 @@ export default function AnalysisDetailPage({
             category: analysisData?.report?.category || 'apartment',
             startedAt: Date.now(),
             currentStep: 0,
+            ...(isRevision ? { suppressPoll: true } : {}),
         });
-
-        const timer = setInterval(() => setAiElapsed(prev => prev + 1), 1000);
-        const stepTimer = setInterval(() => {
-            setAiStep(prev => (prev < AI_ANALYSIS_STEPS.length - 1 ? prev + 1 : prev));
-        }, 5000);
 
         try {
             const idToken = await user.getIdToken();
-            const formData = buildAiAnalysisFormData(id as string, aiInput);
+            const formData = buildAiAnalysisFormData(reportIdStr, aiInput);
 
-            const response = await fetch(`/api/land/detective/analyze-ai-only`, {
+            const response = await fetch(apiPath, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${idToken}`
+                    Authorization: `Bearer ${idToken}`,
                 },
-                body: formData
+                body: formData,
             });
 
             if (!response.ok) {
@@ -2726,6 +2796,12 @@ export default function AnalysisDetailPage({
                         message: errorMessage,
                         reportId: errData.reportId != null ? String(errData.reportId) : undefined,
                     });
+                    return;
+                }
+
+                if (errorCode === 'ANALYSIS_IN_PROGRESS') {
+                    dismissActiveAiAnalysis(reportIdStr);
+                    alert(errorMessage || '이미 AI 분석이 진행 중입니다. 잠시 후 다시 시도해 주세요.');
                     return;
                 }
 
@@ -2748,18 +2824,20 @@ export default function AnalysisDetailPage({
             } else {
                 await fetchAnalysis();
             }
+            await refetchApartmentSiblingReports();
             await fetchPaymentAndUsageStatus();
             setActiveTab('ai_report');
             setShareToast('AI 탐정의 판독이 완료되었습니다! 🕵️');
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            dismissActiveAiAnalysis(reportIdStr);
-            alert(err.message);
-            setError(err.message);
+            failActiveAiAnalysis(reportIdStr);
+            const message = err instanceof Error ? err.message : 'AI 분석 요청 실패';
+            alert(message);
+            setError(message);
         } finally {
-            clearInterval(timer);
-            clearInterval(stepTimer);
-            setIsAiAnalyzing(false);
+            if (timer) clearInterval(timer);
+            if (stepTimer) clearInterval(stepTimer);
+            if (!isRevision) setIsAiAnalyzing(false);
         }
     };
 
@@ -3258,8 +3336,18 @@ export default function AnalysisDetailPage({
 
     const aiAnalysisStatus = report?.ai_analysis_status || analysisData?.ai_analysis_status || '';
     const aiTradeDataAvailable = isApartmentAiTradeDataAvailable(analysisData);
+    const isAiCompleted = isAiAnalysisCompleted(analysisData);
+    const aiStale = !!(report?.aiStale || analysisData?.report?.aiStale);
+    const aiHistoryReports = embeddedApartmentReports.length > 0
+        ? embeddedApartmentReports
+        : apartmentSiblingReports;
+    const showApartmentAiHistory = isApartment && (embeddedInApartment || aiHistoryReports.length > 0);
+    const aptHistoryName = embeddedAptName !== '아파트 단지'
+        ? embeddedAptName
+        : (report?.bld_nm || report?.bldNm || '아파트 단지');
     const showAiBottomBar =
         aiAnalysisStatus !== 'completed' &&
+        !isAiCompleted &&
         aiTradeDataAvailable &&
         !isAiAnalyzing &&
         !isInputModalOpen &&
@@ -3434,6 +3522,18 @@ export default function AnalysisDetailPage({
                             >
                                 <img src="/high/AI.png" alt="" className="w-4 h-4 object-contain shrink-0" />
                                 <span className="hidden sm:inline">AI 분석</span>
+                            </button>
+                        )}
+                        {!embeddedInApartment && isAiCompleted && aiTradeDataAvailable && (
+                            <button
+                                type="button"
+                                onClick={handleAiAnalysisClick}
+                                disabled={isCheckingAccess}
+                                title={aiStale ? '공공데이터 갱신됨 — AI 재분석' : 'AI 재분석'}
+                                className="h-9 flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg font-semibold text-xs whitespace-nowrap shrink-0 transition-all bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white shadow-md shadow-emerald-500/20 active:scale-[0.98] overflow-hidden"
+                            >
+                                <img src="/high/AI.png" alt="" className="w-4 h-4 object-contain shrink-0" />
+                                <span className="hidden sm:inline">AI 재분석</span>
                             </button>
                         )}
                         {/* <button
@@ -3627,6 +3727,7 @@ export default function AnalysisDetailPage({
                             if (lower === 'apartment' || lower === '아파트') {
                                 baseTabs = [
                                     { id: 'report', label: '탐정 요약' },
+                                    { id: 'investment', label: '호재·투자점수' },
                                     { id: 'ten_year_story', label: '10년스토리' },
                                     { id: 'school', label: '학군' },
                                     { id: 'r_one', label: '부동산원' },
@@ -3644,6 +3745,7 @@ export default function AnalysisDetailPage({
                             } else if (lower === 'store' || lower === '상가' || lower === '상업용' || lower === '상업' || lower === 'shop' || lower === 'commercial') {
                                 baseTabs = [
                                     { id: 'report', label: '탐정 요약' },
+                                    { id: 'investment', label: '호재·투자점수' },
                                     { id: 'r_one', label: '부동산원' },
                                     { id: 'market', label: '실거래가' },
                                     { id: 'additional_info', label: '조례·동향·공급' },
@@ -3660,6 +3762,7 @@ export default function AnalysisDetailPage({
                             } else {
                                 baseTabs = [
                                     { id: 'report', label: '탐정 요약' },
+                                    { id: 'investment', label: '호재·투자점수' },
                                     { id: 'land', label: '토지 이음' },
                                     { id: 'building', label: '건축물대장' },
                                     { id: 'r_one', label: '부동산원' },
@@ -3712,6 +3815,18 @@ export default function AnalysisDetailPage({
                                 rawData={mergedData}
                                 category={report?.category || analysisData?.category}
                             />
+                        </motion.div>
+                    )}
+                    {activeTab === 'investment' && isInvestmentCategory && (
+                        <motion.div
+                            key="investment"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="space-y-8"
+                        >
+                            <h3 className="text-2xl font-black text-white">호재 · 투자점수</h3>
+                            <InvestmentInsightPanel rawData={rawData || mergedData} />
                         </motion.div>
                     )}
                     {activeTab === 'ten_year_story' && isApartmentCategory && (
@@ -3894,36 +4009,36 @@ export default function AnalysisDetailPage({
                             exit={{ opacity: 0, y: -10 }}
                             className="space-y-8"
                         >
-                            {embeddedInApartment && (
+                            {showApartmentAiHistory && (
                                 <section className="rounded-[24px] border border-white/[0.08] bg-[#0f172a]/60 p-4 sm:p-5">
                                     <div className="flex items-center justify-between gap-3 mb-4">
                                         <div>
                                             <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">AI 분석 이력</p>
-                                            <h2 className="text-sm sm:text-base font-black text-white mt-1">{embeddedAptName}</h2>
+                                            <h2 className="text-sm sm:text-base font-black text-white mt-1">{aptHistoryName}</h2>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <span className="text-[11px] font-bold text-slate-400">
-                                                {embeddedApartmentReports.length}건
+                                                {aiHistoryReports.length}건
                                             </span>
                                             {aiTradeDataAvailable && (
                                                 <button
                                                     type="button"
-                                                    onClick={handleNewApartmentAnalysis}
+                                                    onClick={embeddedInApartment ? handleNewApartmentAnalysis : handleAiAnalysisClick}
                                                     className="h-8 inline-flex items-center gap-1.5 px-2.5 sm:px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold transition-all shadow-md shadow-emerald-500/20 active:scale-[0.98]"
                                                 >
                                                     <img src="/high/AI.png" alt="" className="w-4 h-4 object-contain shrink-0" />
-                                                    <span>AI 분석</span>
+                                                    <span>{isAiCompleted ? 'AI 재분석' : 'AI 분석'}</span>
                                                 </button>
                                             )}
                                         </div>
                                     </div>
-                                    {embeddedApartmentReports.length === 0 ? (
+                                    {aiHistoryReports.length === 0 ? (
                                         <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
                                             <p className="text-sm text-slate-400 mb-3">AI 완료된 분석이 없습니다.</p>
                                             {aiTradeDataAvailable ? (
                                                 <button
                                                     type="button"
-                                                    onClick={handleNewApartmentAnalysis}
+                                                    onClick={embeddedInApartment ? handleNewApartmentAnalysis : handleAiAnalysisClick}
                                                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold transition-all"
                                                 >
                                                     <Sparkles className="w-4 h-4" />
@@ -3935,8 +4050,8 @@ export default function AnalysisDetailPage({
                                         </div>
                                     ) : (
                                     <div className="space-y-2">
-                                        {embeddedApartmentReports.map((item) => {
-                                            const selected = item.id === embeddedSelectedReportId;
+                                        {aiHistoryReports.map((item) => {
+                                            const selected = item.id === String(id) || item.id === embeddedSelectedReportId;
                                             const areaLabel = item.area != null ? `${item.area}㎡` : '면적 미입력';
                                             const dateLabel = formatEmbeddedReportDate(item.createdAt);
                                             return (
@@ -3970,6 +4085,11 @@ export default function AnalysisDetailPage({
                                     </div>
                                     )}
                                 </section>
+                            )}
+                            {isAiCompleted && aiStale && (
+                                <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90 font-medium">
+                                    공공데이터가 갱신되어 저장된 AI 분석이 이전 버전일 수 있습니다. 「AI 재분석」으로 최신 데이터를 반영하세요.
+                                </div>
                             )}
                             <AiReportView
                                 ai={reportData || {}}
@@ -5752,7 +5872,8 @@ export default function AnalysisDetailPage({
                         return (
                             <motion.div key="regulatory" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
                                 <NearbyInfrastructurePanel
-                                    data={rawData?.nearbyData?.nearbyInfrastructure}
+                                    data={rawData?.investmentContext?.nearbyInfrastructure
+                                        || rawData?.nearbyData?.nearbyInfrastructure}
                                     variant="dark"
                                 />
                                 <h3 className="text-2xl font-black">개발 호재 및 인허가 현황</h3>
@@ -6661,7 +6782,7 @@ export default function AnalysisDetailPage({
                                 {recentAnalysisBlocked.message}
                             </p>
                             <p className="mt-2 text-center text-xs leading-relaxed text-slate-500">
-                                동일 단지·동일 평형은 7일 이내 AI 분석을 다시 실행할 수 없습니다.
+                                동일 단지는 7일 이내 AI 분석·재분석을 다시 실행할 수 없습니다.
                             </p>
                             <div className="mt-6 space-y-2.5">
                                 {recentAnalysisBlocked.reportId && (
@@ -6806,8 +6927,13 @@ export default function AnalysisDetailPage({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            onEmbeddedReportSelect?.(historyModalReport.id);
+                                            const targetId = historyModalReport.id;
                                             setHistoryModalReport(null);
+                                            if (onEmbeddedReportSelect) {
+                                                onEmbeddedReportSelect(targetId);
+                                                return;
+                                            }
+                                            navigateToExistingReport(targetId);
                                         }}
                                         className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-lg shadow-emerald-500/10 transition-colors"
                                     >

@@ -12,6 +12,8 @@ export type ApartmentDiscoverItem = {
   lat: number | null;
   lng: number | null;
   propertyTitle: string;
+  /** r114 SSOT — Lite 패널 진입 키 */
+  r114PropId?: string | null;
   /** 도로명·지번 주소 (있으면 카드 부제목에 사용) */
   address?: string | null;
   locationName?: string | null;

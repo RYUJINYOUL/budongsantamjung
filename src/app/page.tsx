@@ -54,6 +54,14 @@ import {
   PAGE_HEADER_TITLE,
   PAGE_STICKY_HEADER,
 } from '../components/analyzePanelFormStyles';
+import R114LiteFloatingPanel from '../components/R114LiteFloatingPanel';
+import { fetchR114LiteComplex } from '../lib/r114LiteApi';
+import { buildLiteCardDisplay } from '../lib/r114LiteCardDisplay';
+import {
+  fetchR114LiteDiscover,
+  mapR114LiteDiscoverToFeedItem,
+  mergeDiscoverWithR114Lite,
+} from '../lib/fetchR114LiteDiscover';
 
 interface Analysis {
   id: string;
@@ -80,6 +88,16 @@ interface Analysis {
   maxArea?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
+  /** Lite 단지 (discover merge · r114 SSOT) */
+  r114PropId?: string | null;
+  liteBadge?: boolean;
+  householdCount?: number | null;
+  tradeSparse?: boolean;
+  saleCount6m?: number;
+  jeonseRiseRate6m?: number | null;
+  avgJeonseDeposit1m?: number | null;
+  wolseRiseRate6m?: number | null;
+  avgWolseMonthlyRent1m?: number | null;
 }
 
 function analysisCardCacheKey(
@@ -98,6 +116,8 @@ function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activePanel = searchParams.get('panel'); // 'analyze' | null
+  const litePanelPropId = searchParams.get('lite');
+  const litePanelReportId = searchParams.get('liteReport');
 
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,6 +131,8 @@ function HomePageContent() {
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasTimelineLoadedRef = useRef(false);
+  /** URL lat/lng → mapCenter 1회만 (lite 닫을 때 stale 서울 좌표 재적용 방지) */
+  const appliedUrlGeoRef = useRef<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   // 분석 패널에서 선택한 위치 → 지도 이동 + 마커 표시
@@ -148,6 +170,101 @@ function HomePageContent() {
     useServerApartmentDiscoverForCategory(selectedCategory);
   const apartmentTabDiscover =
     USE_SERVER_APARTMENT_DISCOVER && selectedCategory === '아파트';
+
+  const analyzeDeepLinkKey = [
+    searchParams.get('masterId'),
+    searchParams.get('rtmsAptSeq'),
+    searchParams.get('r114PropId'),
+    searchParams.get('lat'),
+    searchParams.get('lng'),
+    searchParams.get('address'),
+    searchParams.get('category'),
+    searchParams.get('placeName'),
+  ].join('|');
+
+  const analyzeDeepLinkBase = useMemo(() => {
+    if (activePanel !== 'analyze') return null;
+    const masterId = searchParams.get('masterId');
+    const rtmsAptSeq = searchParams.get('rtmsAptSeq');
+    if (!masterId && !rtmsAptSeq) return null;
+    const latStr = searchParams.get('lat');
+    const lngStr = searchParams.get('lng');
+    const address = searchParams.get('address');
+    if (!latStr || !lngStr || !address) return null;
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return {
+      category: searchParams.get('category') || 'apartment',
+      address,
+      lat,
+      lng,
+      masterId: masterId || undefined,
+      rtmsAptSeq: rtmsAptSeq || undefined,
+      placeName: searchParams.get('placeName') || undefined,
+    };
+  }, [activePanel, analyzeDeepLinkKey, searchParams]);
+
+  const [analyzePrefillStamp, setAnalyzePrefillStamp] = useState(0);
+  const [r114AnalyzePrefill, setR114AnalyzePrefill] = useState<{
+    timestamp: number;
+    category: string;
+    address: string;
+    lat: number;
+    lng: number;
+    r114PropId: string;
+    placeName?: string;
+    rtmsAptSeq?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!analyzeDeepLinkBase) return;
+    setAnalyzePrefillStamp(Date.now());
+    setAnalyzeLocation({
+      lat: analyzeDeepLinkBase.lat,
+      lng: analyzeDeepLinkBase.lng,
+      address: analyzeDeepLinkBase.address,
+    });
+    setMapCenter({ lat: analyzeDeepLinkBase.lat, lng: analyzeDeepLinkBase.lng });
+  }, [analyzeDeepLinkKey, analyzeDeepLinkBase]);
+
+  useEffect(() => {
+    if (activePanel !== 'analyze') {
+      setR114AnalyzePrefill(null);
+      return;
+    }
+    const r114PropId = searchParams.get('r114PropId')?.trim();
+    if (!r114PropId) {
+      setR114AnalyzePrefill(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchR114LiteComplex(r114PropId).then((res) => {
+      if (cancelled || !res.success || !res.data?.complex) return;
+      const c = res.data.complex;
+      if (c.lat == null || c.lng == null) return;
+      const address = (c.address || [c.city, c.gu, c.dong].filter(Boolean).join(' ')).trim();
+      const prefill = {
+        timestamp: Date.now(),
+        category: 'apartment',
+        address: address || c.title,
+        lat: c.lat,
+        lng: c.lng,
+        r114PropId,
+        placeName: c.title,
+        rtmsAptSeq: c.rtmsAptSeq || undefined,
+      };
+      setR114AnalyzePrefill(prefill);
+      setAnalyzeLocation({ lat: c.lat, lng: c.lng, address: prefill.address });
+      setMapCenter({ lat: c.lat, lng: c.lng });
+    });
+    return () => { cancelled = true; };
+  }, [activePanel, searchParams]);
+
+  const analyzePanelPrefill = r114AnalyzePrefill
+    ?? (analyzeDeepLinkBase && analyzePrefillStamp
+      ? { ...analyzeDeepLinkBase, timestamp: analyzePrefillStamp }
+      : null);
 
   const [compareToast, setCompareToast] = useState<string | null>(null);
   const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
@@ -247,7 +364,13 @@ function HomePageContent() {
       setShowMobileMap(true);
     }
 
-    if (lat && lng) setMapCenter({ lat: parseFloat(lat), lng: parseFloat(lng) });
+    if (lat && lng) {
+      const geoKey = `${lat},${lng}`;
+      if (appliedUrlGeoRef.current !== geoKey) {
+        appliedUrlGeoRef.current = geoKey;
+        setMapCenter({ lat: parseFloat(lat), lng: parseFloat(lng) });
+      }
+    }
     if (category) setSelectedCategory(category);
   }, [searchParams]);
 
@@ -279,16 +402,25 @@ function HomePageContent() {
       const useAllTabMerge = USE_SERVER_APARTMENT_DISCOVER && category === 'all';
 
       if (useDiscoverOnly) {
-        const { items } = await fetchApartmentDiscover(
-          discoverFiltersRef.current,
-          { lat, lng, radiusKm: radius },
-          { headers, signal: abortController.signal },
-        );
+        const geo = { lat, lng, radiusKm: radius };
+        const fetchInit = { headers, signal: abortController.signal };
+        const [{ items }, liteResult] = await Promise.all([
+          fetchApartmentDiscover(
+            discoverFiltersRef.current,
+            geo,
+            fetchInit,
+          ),
+          fetchR114LiteDiscover(geo, fetchInit, {
+            limit: 50,
+            filters: discoverFiltersRef.current,
+          }),
+        ]);
         const { list, cardUpdates } = mapDiscoverItemsToFeed(items, analysisCardCacheKey);
         if (Object.keys(cardUpdates).length > 0) {
           setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
         }
-        setAnalyses(list as Analysis[]);
+        const liteList = liteResult.items.map(mapR114LiteDiscoverToFeedItem) as Analysis[];
+        setAnalyses(mergeDiscoverWithR114Lite(list as Analysis[], liteList));
         hasTimelineLoadedRef.current = true;
         return;
       }
@@ -300,17 +432,20 @@ function HomePageContent() {
           lng: String(lng),
           radius: String(radius),
         });
-        const [timelineRes, discoverResult] = await Promise.all([
-          fetch(`/api/land/detective/timeline?${timelineParams}`, {
-            headers,
-            signal: abortController.signal,
-          }),
+        const geo = { lat, lng, radiusKm: radius };
+        const fetchInit = { headers, signal: abortController.signal };
+        const [timelineRes, discoverResult, liteResult] = await Promise.all([
+          fetch(`/api/land/detective/timeline?${timelineParams}`, fetchInit),
           fetchApartmentDiscover(
             discoverFiltersRef.current,
-            { lat, lng, radiusKm: radius },
-            { headers, signal: abortController.signal },
+            geo,
+            fetchInit,
             { analyzedOnly: true },
           ),
+          fetchR114LiteDiscover(geo, fetchInit, {
+            limit: 50,
+            filters: discoverFiltersRef.current,
+          }),
         ]);
         if (!timelineRes.ok) throw new Error('데이터를 불러오는데 실패했습니다');
         const timelineData = await timelineRes.json();
@@ -328,7 +463,9 @@ function HomePageContent() {
         if (Object.keys(cardUpdates).length > 0) {
           setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
         }
-        setAnalyses([...nonAptTimeline, ...(aptList as Analysis[])]);
+        const liteList = liteResult.items.map(mapR114LiteDiscoverToFeedItem) as Analysis[];
+        const aptMerged = mergeDiscoverWithR114Lite(aptList as Analysis[], liteList);
+        setAnalyses([...nonAptTimeline, ...aptMerged]);
         hasTimelineLoadedRef.current = true;
         return;
       }
@@ -452,29 +589,53 @@ function HomePageContent() {
     return params;
   }, [showMobileMap, mapPosition, mapCenter, mapBounds, selectedCategory]);
 
-  const navigateToDetail = (
-    analysisId: string,
-    aptSeq?: string | null,
-    pnu?: string | null,
-    category?: string,
-    _hasReport?: boolean,
-    slugTitle?: string | null,
-    latestReportId?: string | null,
+  const openLitePanel = useCallback((
+    r114PropId: string,
+    coords?: { lat: number; lng: number } | null,
+    options?: { latestReportId?: string | null; propertyTitle?: string | null },
   ) => {
-    const isApartment = category === '아파트' || category === 'apartment';
-    const returnQs = buildDiscoverReturnParams().toString();
-
-    if (isApartment && _hasReport === false) return;
-
-    if (isApartment && (aptSeq || pnu)) {
-      const reportId = latestReportId || analysisId;
-      const slug = makeAnalyzeSlug(reportId, slugTitle);
-      router.push(`/analyze/${slug}?return=${encodeURIComponent(returnQs)}`);
-      return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('lite', r114PropId);
+    if (options?.latestReportId) {
+      params.set('liteReport', String(options.latestReportId));
+    } else {
+      params.delete('liteReport');
     }
+    if (coords?.lat != null && coords?.lng != null) {
+      params.set('lat', String(coords.lat));
+      params.set('lng', String(coords.lng));
+      appliedUrlGeoRef.current = `${coords.lat},${coords.lng}`;
+      setMapCenter({ lat: coords.lat, lng: coords.lng });
+    }
+    router.replace(`/?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
-    router.push(`/analyze/${analysisId}?return=${encodeURIComponent(returnQs)}`);
-  };
+  const closeLitePanel = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('lite');
+    params.delete('liteReport');
+    const geo = mapPosition?.lat != null && mapPosition?.lng != null
+      ? { lat: mapPosition.lat, lng: mapPosition.lng }
+      : mapCenter;
+    if (geo) {
+      params.set('lat', String(geo.lat));
+      params.set('lng', String(geo.lng));
+      appliedUrlGeoRef.current = `${geo.lat},${geo.lng}`;
+    }
+    const qs = params.toString();
+    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
+  }, [router, searchParams, mapPosition, mapCenter]);
+
+  const handleLiteAnalyze = useCallback((r114PropId: string) => {
+    closeLitePanel();
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('panel', 'analyze');
+    params.set('category', 'apartment');
+    params.set('r114PropId', r114PropId);
+    params.delete('lite');
+    params.delete('liteReport');
+    router.push(`/?${params.toString()}`);
+  }, [closeLitePanel, router, searchParams]);
 
   const handleAddApartmentToCompare = useCallback((analysis: Analysis) => {
     const areaRaw = analysis.exclusiveArea ?? analysis.area;
@@ -484,10 +645,79 @@ function HomePageContent() {
     setComparePickPending({
       masterId: masterId ? String(masterId) : undefined,
       rtmsAptSeq: rtms ? String(rtms) : undefined,
+      r114PropId: analysis.r114PropId ? String(analysis.r114PropId) : undefined,
       complexName: analysis.bldNm || analysis.propertyTitle || undefined,
       suggestedAreaM2: Number.isFinite(exclusiveAreaM2) ? exclusiveAreaM2 : null,
     });
   }, []);
+
+  useEffect(() => {
+    if (!litePanelPropId) return;
+    let cancelled = false;
+    void fetchR114LiteComplex(litePanelPropId).then((res) => {
+      if (cancelled || !res.success || !res.data?.complex) return;
+      const { lat, lng } = res.data.complex;
+      if (lat != null && lng != null) {
+        setMapCenter({ lat, lng });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [litePanelPropId]);
+
+  const navigateFromAnalysis = useCallback((analysis: Analysis) => {
+    const isApartment = isApartmentAnalysis(analysis);
+    const returnQs = buildDiscoverReturnParams().toString();
+    const coords = analysis.lat != null && analysis.lng != null
+      ? { lat: analysis.lat, lng: analysis.lng }
+      : null;
+
+    /** 아파트 — r114_prop_id 있으면 Lite 패널 (분석완료·미분석 공통) */
+    if (isApartment && analysis.r114PropId) {
+      const reportId = analysis.latestReportId
+        ?? (analysis.hasReport !== false && !String(analysis.id).startsWith('lite-')
+          ? analysis.id
+          : undefined);
+      openLitePanel(analysis.r114PropId, coords, {
+        latestReportId: reportId,
+        propertyTitle: analysis.bldNm || analysis.propertyTitle,
+      });
+      return;
+    }
+
+    if (isApartment && analysis.hasReport === false) {
+      const params = new URLSearchParams();
+      params.set('panel', 'analyze');
+      params.set('category', 'apartment');
+      const masterId = analysis.masterId
+        || (analysis.aptSeq && !String(analysis.aptSeq).includes('-') ? analysis.aptSeq : null);
+      const rtmsAptSeq = analysis.rtmsAptSeq
+        || (analysis.aptSeq?.includes('-') ? analysis.aptSeq : null);
+      if (masterId) params.set('masterId', String(masterId));
+      if (rtmsAptSeq) params.set('rtmsAptSeq', String(rtmsAptSeq));
+      if (analysis.lat != null) params.set('lat', String(analysis.lat));
+      if (analysis.lng != null) params.set('lng', String(analysis.lng));
+      const addr = aptAddressById[analysis.id]
+        || analysis.location?.address
+        || analysis.location?.name
+        || '';
+      if (addr) params.set('address', addr);
+      const placeName = analysis.bldNm || analysis.propertyTitle;
+      if (placeName) params.set('placeName', placeName);
+      router.push(`/?${params.toString()}`);
+      return;
+    }
+
+    const aptSeq = analysis.aptSeq;
+    const pnu = analysis.pnu;
+    if (isApartment && (aptSeq || pnu)) {
+      const reportId = analysis.latestReportId || analysis.id;
+      const slug = makeAnalyzeSlug(reportId, analysis.bldNm || analysis.propertyTitle);
+      router.push(`/analyze/${slug}?return=${encodeURIComponent(returnQs)}`);
+      return;
+    }
+
+    router.push(`/analyze/${analysis.id}?return=${encodeURIComponent(returnQs)}`);
+  }, [router, buildDiscoverReturnParams, aptAddressById, openLitePanel]);
 
   const showCompareToast = useCallback((message: string) => {
     setCompareToast(message);
@@ -631,15 +861,26 @@ function HomePageContent() {
       const cardKey = cardKeyForAnalysis(analysis);
       const cardSnap = cardKey ? aptCardCache[cardKey] : undefined;
       const centerM2 = getAptCenterM2(analysis);
-      const areaLocked = isPyeongFilterActive(discoverFilters);
-      const aptDisplay =
+      const isLiteFeedItem = Boolean(analysis.id?.startsWith('lite-') || analysis.liteBadge);
+      const areaLocked = isPyeongFilterActive(discoverFilters) && !isLiteFeedItem;
+      let aptDisplay =
         useApartmentDiscoverFeed && isApartmentAnalysis(analysis)
-          ? buildApartmentCardDisplay(
+          ? isLiteFeedItem
+            ? buildLiteCardDisplay(discoverFilters.dealMode, {
+                riseRate6m: analysis.riseRate6m,
+                avgPrice1m: analysis.avgPrice1m,
+                area: analysis.exclusiveArea ?? analysis.area ?? null,
+                jeonseRiseRate6m: analysis.jeonseRiseRate6m,
+                avgJeonseDeposit1m: analysis.avgJeonseDeposit1m,
+                wolseRiseRate6m: analysis.wolseRiseRate6m,
+                avgWolseMonthlyRent1m: analysis.avgWolseMonthlyRent1m,
+              })
+            : buildApartmentCardDisplay(
               discoverFilters.dealMode,
               cardSnap,
               {
-                riseRate6m: analysis.riseRate6m,
-                avgPrice1m: analysis.avgPrice1m,
+                riseRate6m: cardSnap?.riseRate6m ?? analysis.riseRate6m,
+                avgPrice1m: cardSnap?.avgPrice1m ?? analysis.avgPrice1m,
                 area: resolveAreaForCard(
                   typeof centerM2 === 'number' ? centerM2 : null,
                   analysis.exclusiveArea ?? analysis.area ?? null,
@@ -672,6 +913,8 @@ function HomePageContent() {
           aptSeq: analysis.aptSeq,
           rtmsAptSeq: analysis.rtmsAptSeq,
           hasReport: analysis.hasReport,
+          latestReportId: analysis.latestReportId ?? null,
+          r114PropId: analysis.r114PropId ?? undefined,
         },
       };
     },
@@ -690,6 +933,12 @@ function HomePageContent() {
     if (selectedCategory === '아파트') {
       if (apartmentTabDiscover) {
         list = sortApartmentDiscoverList(list, discoverFilters, (a) => {
+          if (a.id?.startsWith('lite-')) {
+            return {
+              riseRate6m: a.riseRate6m ?? null,
+              tradeCount6m: a.saleCount6m ?? 0,
+            };
+          }
           const centerM2 = a.exclusiveArea ?? a.area ?? null;
           if (!a.aptSeq || centerM2 == null) return undefined;
           return aptCardCache[analysisCardCacheKey(String(a.aptSeq), centerM2)];
@@ -989,6 +1238,7 @@ function HomePageContent() {
           {activePanel === 'analyze' ? (
             <div className={`relative flex-1 min-h-0 ${activePanel === 'analyze' ? 'flex flex-col' : (showMobileMap ? 'hidden lg:flex lg:flex-col' : 'flex flex-col')}`}>
               <AnalyzePanel
+                urlPrefill={analyzePanelPrefill}
                 onLocationSelect={(lat, lng, address, polygon) => {
                   setAnalyzeLocation({ lat, lng, address });
                   setMapCenter({ lat, lng });
@@ -1180,20 +1430,13 @@ function HomePageContent() {
                         inCompareBasket={compareBasketKeys.has(compareItemKey({
                           masterId: analysis.masterId ?? (analysis.aptSeq && !String(analysis.aptSeq).includes('-') ? analysis.aptSeq : undefined),
                           rtmsAptSeq: analysis.rtmsAptSeq ?? (analysis.aptSeq?.includes('-') ? analysis.aptSeq : undefined),
+                          r114PropId: analysis.r114PropId,
                           exclusiveAreaM2: analysis.exclusiveArea ?? analysis.area,
                         }))}
                         onAddToCompare={() => handleAddApartmentToCompare(analysis)}
                         currentUid={user?.uid}
                         onLikeToggle={(id, e) => toggleLike(e, id)}
-                        onClick={() => navigateToDetail(
-                          analysis.id,
-                          analysis.aptSeq,
-                          analysis.pnu,
-                          analysis.category,
-                          analysis.hasReport,
-                          analysis.bldNm || analysis.propertyTitle,
-                          analysis.latestReportId ?? analysis.id,
-                        )}
+                        onClick={() => navigateFromAnalysis(analysis)}
                       />
                     );
                   })}
@@ -1220,6 +1463,18 @@ function HomePageContent() {
         <div className={`w-full bg-gradient-to-br from-slate-50 to-slate-100 border-l border-slate-200/50 flex-1 lg:flex-none relative flex-col min-w-0 ${(activePanel === 'compare' && showCompareResult) ? 'flex' : (activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') ? 'hidden lg:flex' : (showMobileMap ? 'flex' : 'hidden lg:flex')}`}>
           <div className="h-full flex flex-col w-full">
             <div className="flex-1 relative">
+
+              {/* Lite 단지 플로팅 패널 — 지도 위에 떠 있음 (사이드바·지도 레이아웃 유지) */}
+              {litePanelPropId && activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
+                <R114LiteFloatingPanel
+                  r114PropId={litePanelPropId}
+                  initialDealMode={discoverFilters.dealMode}
+                  latestReportId={litePanelReportId}
+                  reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
+                  onClose={closeLitePanel}
+                  onAnalyzeClick={handleLiteAnalyze}
+                />
+              )}
 
               {/* 상급지 비교 결과 오버레이 — 지도 위에 전체를 덮음 (항상 마운트, hidden으로 가시성 제어) */}
               {activePanel === 'compare' && (
@@ -1306,6 +1561,7 @@ function HomePageContent() {
                           inCompareBasket={compareBasketKeys.has(compareItemKey({
                             masterId: selectedProperty.masterId ?? (selectedProperty.aptSeq && !String(selectedProperty.aptSeq).includes('-') ? selectedProperty.aptSeq : undefined),
                             rtmsAptSeq: selectedProperty.rtmsAptSeq ?? (selectedProperty.aptSeq?.includes('-') ? selectedProperty.aptSeq : undefined),
+                            r114PropId: selectedProperty.r114PropId,
                             exclusiveAreaM2: selectedProperty.exclusiveArea ?? selectedProperty.area,
                           }))}
                           onAddToCompare={
@@ -1315,15 +1571,7 @@ function HomePageContent() {
                           }
                           currentUid={user?.uid}
                           onLikeToggle={(id, e) => toggleLike(e, id)}
-                          onClick={() => navigateToDetail(
-                            selectedProperty.id,
-                            selectedProperty.aptSeq,
-                            selectedProperty.pnu,
-                            selectedProperty.category,
-                            selectedProperty.hasReport,
-                            selectedProperty.bldNm || selectedProperty.propertyTitle,
-                            selectedProperty.latestReportId ?? selectedProperty.id,
-                          )}
+                          onClick={() => navigateFromAnalysis(selectedProperty)}
                         />
                       </div>
                     );

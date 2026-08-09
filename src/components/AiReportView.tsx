@@ -2750,8 +2750,9 @@ export default function AiReportView({
     // 🛠️ [입력한 상세 정보 Section]
     // ──────────────────────────────────────────
     const renderUserDetailedInfoSection = () => {
-        const txType = findDeepValue(mergedData, 'transactionType') || findDeepValue(mergedData, 'transaction_type');
+        const txTypeRaw = findDeepValue(mergedData, 'transactionType') || findDeepValue(mergedData, 'transaction_type');
         const priceVal = findDeepValue(mergedData, 'price') || findDeepValue(mergedData, 'sale_price');
+        const txType = txTypeRaw || '매매';
         const deposit = findDeepValue(mergedData, 'deposit');
         const monthlyRent = findDeepValue(mergedData, 'monthlyRent') || findDeepValue(mergedData, 'monthly_rent');
         const floor = findDeepValue(mergedData, 'floor');
@@ -2772,17 +2773,18 @@ export default function AiReportView({
         };
 
         const getPriceText = () => {
-            if (!txType) return '미입력';
             if (txType === '매매') {
                 return priceVal ? `${formatVal(priceVal)}` : '미입력';
-            } else if (txType === '전세') {
+            }
+            if (txType === '전세') {
                 return deposit ? `보증금 ${formatVal(deposit)}` : '보증금 미입력';
-            } else if (txType === '월세') {
+            }
+            if (txType === '월세') {
                 const depText = deposit ? `보증금 ${formatVal(deposit)}` : '보증금 -';
                 const rentText = monthlyRent ? `월세 ${formatVal(monthlyRent)}` : '월세 -';
                 return `${depText} / ${rentText}`;
             }
-            return '미입력';
+            return priceVal ? `${formatVal(priceVal)}` : '미입력';
         };
 
         const buildingTitleArr = mergedData?.vitals?.building?.title ?? mergedData?.rawData?.vitals?.building?.title;
@@ -2792,7 +2794,11 @@ export default function AiReportView({
 
         const detailsList = [];
         if (bldNm) detailsList.push({ label: '건축물명', value: bldNm, icon: Building2 });
-        detailsList.push({ label: '거래 유형', value: txType?.toString() || '미입력', icon: ArrowRightLeft });
+        detailsList.push({
+            label: '거래 유형',
+            value: txTypeRaw?.toString() || (priceVal ? '매매' : '미입력'),
+            icon: ArrowRightLeft,
+        });
         detailsList.push({ label: '가격 정보', value: getPriceText(), icon: DollarSign });
 
         const floorText = floor ? `${floor}층` : '-층';
@@ -2890,22 +2896,35 @@ export default function AiReportView({
 
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
-            const totalRate = hosaeAdj.totalRate ? (hosaeAdj.totalRate * 100).toFixed(1) : '0';
             return (
                 <div className="flex flex-col gap-2 mt-1">
                     {hosaeAdj.details.map((detail, i) => {
                         const hasLink = !!detail.url;
+                        const distPart = detail.dist_label
+                            || (detail.distance_m != null
+                                ? (detail.distance_m >= 1000 ? `${(detail.distance_m / 1000).toFixed(1)}km` : `${detail.distance_m}m`)
+                                : '');
+                        const walkPart = detail.walk_min ? ` · ${detail.walk_min}분` : '';
                         return (
                             <div key={i} className="p-2.5 bg-white/5 border border-white/5 rounded-xl flex flex-col gap-1.5">
-                                <div className="flex items-center gap-2">
-                                    <span className="px-1.5 py-0.5 bg-[#10b981]/15 text-[#10b981] rounded text-[9px] font-bold">
-                                        {detail.certaintyLabel || '감지'}
-                                    </span>
-                                    <span className="text-white text-[11px] font-bold">{detail.label} {detail.ratePercent}</span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {detail.tier_label && (
+                                        <span className="px-1.5 py-0.5 bg-white/10 text-white/60 rounded text-[9px] font-bold">
+                                            {detail.tier_label}
+                                        </span>
+                                    )}
+                                    <span className="text-white text-[11px] font-bold">{detail.title}</span>
+                                    {detail.progress_score != null && (
+                                        <span className="text-[#10b981] text-[10px] font-bold ml-auto">
+                                            전망점수 {detail.progress_score}
+                                        </span>
+                                    )}
                                 </div>
-                                {detail.title && (
+                                {(distPart || detail.label) && (
                                     <div className="flex justify-between items-center gap-2">
-                                        <span className="text-white/30 text-[10px] truncate max-w-[85%]">{detail.title}</span>
+                                        <span className="text-white/40 text-[10px] truncate max-w-[85%]">
+                                            {detail.label}{distPart ? ` · ${distPart}${walkPart}` : ''}
+                                        </span>
                                         {hasLink && (
                                             <a
                                                 href={detail.url}
@@ -2925,9 +2944,12 @@ export default function AiReportView({
                             </div>
                         );
                     })}
-                    <span className="text-[11px] font-bold mt-1" style={{ color: LEDGER_ACCENTS.comparables }}>
-                        호재 총합: +{totalRate}%{hosaeAdj.capped ? ' (상한 +10.0% cap 적용)' : ''}
-                    </span>
+                    {hosaeAdj.compositeScore != null && (
+                        <span className="text-[11px] font-bold mt-1" style={{ color: LEDGER_ACCENTS.comparables }}>
+                            종합 전망점수 {hosaeAdj.compositeScore}
+                            <span className="text-white/35 font-medium"> (진행·호재 강도 · 가격·수익률 예측 아님)</span>
+                        </span>
+                    )}
                 </div>
             );
         };
@@ -3000,10 +3022,10 @@ export default function AiReportView({
                 factor: hosaeAdj.applied ? (hosaeAdj.factor || 1.0) : 1.0,
                 desc: hosaeDetails.length > 0
                     ? (hosaeAdj.applied
-                        ? `인근 호재 ${hosaeDetails.length}건 반영`
-                        : '(참고) 단가 보정 미적용')
+                        ? `주변 호재 ${hosaeDetails.length}건 · 종합 전망점수 ${hosaeAdj.compositeScore ?? '-'}`
+                        : `(참고) ${hosaeDetails.length}건 · 단가 보정 미적용`)
                     : (hosaeAdj.reason || '인근 호재 미감지 — 보정 없음'),
-                infoText: "개발 계획, 교통망 신설, 구역 지정 등 인근 지역의 미래 가치 상승 요인(호재)에 따른 가치 상승분을 보정하여 반영합니다.",
+                infoText: "development_events SSOT 전망점수(진행·호재 강도)를 반영합니다. 가격·상승률 예측이 아닌 규칙 기반 참고 보정입니다.",
                 customDescElement: hosaeDetails.length > 0 ? renderHosaeDetails() : undefined
             });
         }

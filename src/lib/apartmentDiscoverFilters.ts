@@ -321,7 +321,7 @@ export function buildApartmentCardDisplay(
   options: { areaLocked: boolean },
 ) {
   const area = card?.exclusiveAreaM2 ?? fallback.area;
-  const areaStr = area != null && area > 0 ? `${Math.round(area)}㎡` : '-';
+  const areaStr = area != null && area > 0 ? `${Number(area).toFixed(2)}㎡` : '-';
   const wolseRow = card?.optional?.rows?.find((r) => r.id === 'wolse_yield');
 
   const priceFromCard = card?.avgPrice1m;
@@ -374,7 +374,7 @@ export function buildApartmentCardDisplay(
     col2Label: '전용면적',
     col2Value:
       area != null && area > 0
-        ? `${Number(area).toFixed(1)}㎡`
+        ? `${Number(area).toFixed(2)}㎡`
         : '-',
     col3Label: '최근 1개월',
     col3Value: priceStr,

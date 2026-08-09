@@ -67,6 +67,11 @@ interface AnalyzePanelProps {
     polygon?: { lat: number; lng: number }[] | null;
     detailInput?: Partial<AnalysisDetailInput>;
     specialNotes?: string;
+    /** discover → analyze deep link */
+    masterId?: string;
+    rtmsAptSeq?: string;
+    placeName?: string;
+    r114PropId?: string;
   } | null;
 }
 
@@ -206,6 +211,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
 
   /** URL 추출(땅야 Q&A 등) → AI 정밀 분석 특이사항 prefill */
   const [pendingSpecialNotes, setPendingSpecialNotes] = useState('');
+  /** discover deep link — apartment_master / RTMS aptSeq */
+  const [prefilledMasterId, setPrefilledMasterId] = useState<string | null>(null);
+  const [prefilledRtmsAptSeq, setPrefilledRtmsAptSeq] = useState<string | null>(null);
+  const [prefilledPlaceName, setPrefilledPlaceName] = useState<string | null>(null);
+  const [prefilledR114PropId, setPrefilledR114PropId] = useState<string | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
@@ -293,6 +303,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       }));
     }
     setPendingSpecialNotes(urlPrefill.specialNotes?.trim() || '');
+    setPrefilledMasterId(urlPrefill.masterId?.trim() || null);
+    setPrefilledRtmsAptSeq(urlPrefill.rtmsAptSeq?.trim() || null);
+    setPrefilledPlaceName(urlPrefill.placeName?.trim() || null);
+    setPrefilledR114PropId(urlPrefill.r114PropId?.trim() || null);
     onLocationSelect?.(
       urlPrefill.lat,
       urlPrefill.lng,
@@ -625,6 +639,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       Object.entries(storeData).forEach(([key, value]) => {
         if (value != null) payload[key] = value;
       });
+      if (prefilledMasterId) payload.masterId = prefilledMasterId;
+      if (prefilledRtmsAptSeq) payload.rtmsAptSeq = prefilledRtmsAptSeq;
+      if (prefilledPlaceName) payload.placeName = prefilledPlaceName;
+      if (prefilledR114PropId) payload.r114PropId = prefilledR114PropId;
 
       const res = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
@@ -715,6 +733,14 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               <p className={PANEL_SECTION_DESC}>주소 검색 또는 지도에서 선택</p>
             </div>
           </div>
+
+          {(prefilledMasterId || prefilledR114PropId) && (
+            <div className="mb-3 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-800 font-semibold leading-relaxed">
+              r114 단지 연결됨
+              {prefilledPlaceName ? ` · ${prefilledPlaceName}` : ''}
+              {prefilledR114PropId ? ` (${prefilledR114PropId})` : prefilledRtmsAptSeq ? ` (${prefilledRtmsAptSeq})` : ''}
+            </div>
+          )}
 
           <div className="relative">
             <div className={PANEL_INPUT_WRAP}>

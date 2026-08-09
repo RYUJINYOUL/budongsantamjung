@@ -430,7 +430,8 @@ export default function DetectiveSummaryView({
     // ──────────────────────────────────────────
     // 📊 입력한 상세 정보 Section 데이터
     // ──────────────────────────────────────────
-    const txType = findValue(rawData, 'transactionType') || findValue(rawData, 'transaction_type');
+    const txTypeRaw = findValue(rawData, 'transactionType') || findValue(rawData, 'transaction_type');
+    const txType = txTypeRaw || '매매';
     const priceVal = findValue(rawData, 'price') || findValue(rawData, 'sale_price') || findValue(rawData, 'deposit');
     const deposit = findValue(rawData, 'deposit');
     const monthlyRent = findValue(rawData, 'monthlyRent') || findValue(rawData, 'monthly_rent');
@@ -472,10 +473,11 @@ export default function DetectiveSummaryView({
     // ──────────────────────────────────────────
     const building = rawData.vitals?.building || {};
     const primaryTitle = (Array.isArray(building.title) && building.title.length > 0) ? building.title[0] : {};
+    const r114 = rawData.r114Complex;
 
-    const totalHouseholds = parseInt(building.totalHouseholds || '0');
-    const totalParking = parseInt(building.totalParking || '0');
-    const totalDongs = parseInt(building.totalDongs || '0');
+    const totalHouseholds = parseInt(String(r114?.household_count || building.totalHouseholds || '0'), 10);
+    const totalParking = parseInt(String(r114?.parking_total || building.totalParking || '0'), 10);
+    const totalDongs = parseInt(String(building.totalDongs || '0'), 10);
 
     const useAprDay = primaryTitle.useAprDay || '';
     const formattedYear = useAprDay && useAprDay.length >= 4 ? `${useAprDay.substring(0, 4)}년` : '-';
@@ -777,7 +779,8 @@ export default function DetectiveSummaryView({
         <div className="space-y-8 pb-12">
             {renderRedevelopmentBadge()}
             <NearbyInfrastructurePanel
-                data={rawData?.nearbyData?.nearbyInfrastructure as NearbyInfrastructureData | undefined}
+                data={(rawData?.investmentContext?.nearbyInfrastructure
+                    || rawData?.nearbyData?.nearbyInfrastructure) as NearbyInfrastructureData | undefined}
                 variant="dark"
             />
             {/* 📊 입력한 상세 정보 Section */}
@@ -964,7 +967,11 @@ export default function DetectiveSummaryView({
 
     function renderUserDetailedInfoSection() {
         const details = [
-            { label: '거래 유형', value: txType || '미입력', icon: ArrowLeftRight },
+            {
+                label: '거래 유형',
+                value: txTypeRaw?.toString() || (priceVal || userPrice > 0 ? '매매' : '미입력'),
+                icon: ArrowLeftRight,
+            },
             { label: '가격 정보', value: getPriceText(), icon: DollarSign },
             { label: '층수 / 면적', value: `${floor ? floor + '층' : '-층'} | 전용 ${area ? parseFloat(area).toFixed(1) + '㎡' : '-㎡'}`, icon: Ruler }
         ];

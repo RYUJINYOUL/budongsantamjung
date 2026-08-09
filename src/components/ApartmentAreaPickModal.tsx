@@ -13,9 +13,12 @@ import {
 } from '../lib/apartmentCompareAreas';
 import { addToCompareBasket, updateCompareBasketItemArea } from '../lib/apartmentCompareBasket';
 
+import { fetchR114LiteAreaOptions } from '../lib/r114LiteApi';
+
 export type ApartmentComparePickPayload = {
   masterId?: string;
   rtmsAptSeq?: string;
+  r114PropId?: string;
   complexName?: string;
   /** 리포트·카드·비교함에 있던 면적 (모달 기본 선택용) */
   suggestedAreaM2?: number | null;
@@ -49,6 +52,34 @@ export default function ApartmentAreaPickModal({
 
   const loadAreas = useCallback(async () => {
     if (!pending) return;
+
+    if (pending.r114PropId) {
+      setLoading(true);
+      setFetchError(null);
+      try {
+        const data = await fetchR114LiteAreaOptions(pending.r114PropId);
+        const list = data.areas || [];
+        setAreas(list);
+        setResolvedMeta({
+          rtmsAptSeq: data.rtmsAptSeq ?? pending.rtmsAptSeq,
+          masterId: pending.masterId,
+          complexName: data.complexName ?? pending.complexName,
+        });
+        if (data.error && list.length === 0) {
+          setFetchError(data.error);
+        } else {
+          setFetchError(null);
+        }
+        setSelectedIdx(pickDefaultAreaIndex(list, pending.suggestedAreaM2));
+      } catch {
+        setFetchError('평형 목록을 불러오지 못했습니다.');
+        setAreas([]);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const aptKey = resolveAptKeyForAreas(pending);
     if (!aptKey) {
       setFetchError('단지 코드가 없어 평형을 조회할 수 없습니다.');
@@ -100,6 +131,7 @@ export default function ApartmentAreaPickModal({
     const meta = {
       masterId: resolvedMeta.masterId || pending.masterId,
       rtmsAptSeq: resolvedMeta.rtmsAptSeq || pending.rtmsAptSeq,
+      r114PropId: pending.r114PropId,
       exclusiveAreaM2,
       complexName: titleName,
     };
@@ -167,7 +199,9 @@ export default function ApartmentAreaPickModal({
               {titleName}
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              최근 6개월 실거래 기준 전용면적
+              {pending?.r114PropId
+                ? '공급 · 전용 · 평형 (전용㎡ 기준 시세)'
+                : '최근 6개월 실거래 기준 전용면적'}
             </p>
           </div>
           <button
@@ -206,7 +240,10 @@ export default function ApartmentAreaPickModal({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-black text-slate-900 text-sm">
-                          {formatAreaLabel(a.exclusiveAreaM2)}
+                          {formatAreaLabel(a.exclusiveAreaM2, {
+                            supplyM2: a.supplyAreaM2,
+                            pyeongApprox: a.pyeongApprox,
+                          })}
                         </span>
                         {selected && (
                           <span className="text-[10px] font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-lg">

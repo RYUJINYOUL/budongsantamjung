@@ -274,11 +274,10 @@ const DIMENSIONS: DimensionBuilder[] = [
   {
     id: 'jeonse',
     title: '버텨요버텨!',
-    scores: (c, scoring) => {
+    scores: (c) => {
       const j = c.jeonseRatePercent;
       if (j != null && !Number.isNaN(j)) return j;
-      const risk = scoring?.composite?.riskScore;
-      return risk != null && !Number.isNaN(risk) ? risk : null;
+      return null;
     },
     higherIsBetter: true,
     summary: (c) => {
@@ -298,11 +297,10 @@ const DIMENSIONS: DimensionBuilder[] = [
   {
     id: 'rise',
     title: '올라요올라!',
-    scores: (c, scoring) => {
+    scores: (c) => {
       const r = c.riseRate6m;
       if (r != null && !Number.isNaN(r)) return r;
-      const m = scoring?.momentumBreakdown?.total ?? scoring?.axes?.momentum;
-      return m != null && !Number.isNaN(m) ? m : null;
+      return null;
     },
     higherIsBetter: true,
     summary: (c) => {
@@ -344,9 +342,9 @@ const DIMENSIONS: DimensionBuilder[] = [
       if (age != null) {
         bits.push(age <= 5 ? `${age}년차 신축` : age <= 15 ? `${age}년차 안정기` : `${age}년차`);
       }
-      if (hh != null && hh >= 500) bits.push('500▲');
+      if (hh != null && hh >= 500) bits.push('500세대↑');
       else if (hh != null) bits.push(`${hh.toLocaleString()}세대`);
-      return bits.length ? `(${bits.join(' / ')})` : '(데이터 오류)';
+      return bits.length ? `(${bits.join(' · ')})` : '(데이터 오류)';
     },
   },
   {
@@ -390,13 +388,11 @@ const DIMENSIONS: DimensionBuilder[] = [
   {
     id: 'timing',
     title: '지금타이밍!',
-    scores: (c, scoring) => {
-      const trade = c.tradeCount6m ?? 0;
-      const rise = c.riseRate6m ?? 0;
-      const total = scoring?.momentumBreakdown?.total ?? scoring?.axes?.momentum;
-      let s = Math.min(trade, 40) * 1.2 + rise * 2;
-      if (total != null) s += total * 0.35;
-      return s;
+    scores: (c) => {
+      const trade = c.tradeCount6m;
+      const rise = c.riseRate6m;
+      if (trade == null || rise == null || Number.isNaN(rise)) return null;
+      return Math.min(trade, 40) * 1.2 + rise * 2;
     },
     higherIsBetter: true,
     summary: (c) => {
@@ -429,7 +425,7 @@ export function buildCompareNarrativeCards(
       entries: columns.map(({ aptKey, complexName, data, scoring }, i) => ({
         aptKey,
         complexName,
-        stars: starsList[i] || (scores[i] == null ? 0 : 2),
+        stars: starsList[i],
         summary: dim.summary(data, scoring),
       })),
     };
@@ -467,7 +463,7 @@ function CompareNarrativeCardView({ card }: { card: CompareNarrativeCard }) {
             </p>
             <StarRating stars={e.stars} />
             <p
-              className="text-[9px] text-white/45 leading-snug line-clamp-3 w-full"
+              className="text-[9px] text-white/45 leading-snug w-full break-keep"
               title={e.summary}
             >
               {e.summary}

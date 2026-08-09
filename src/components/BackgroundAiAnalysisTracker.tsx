@@ -77,6 +77,10 @@ export default function BackgroundAiAnalysisTracker({ embedded = false }: Backgr
                     synced.push(item);
                     continue;
                 }
+                if (item.suppressPoll) {
+                    synced.push(item);
+                    continue;
+                }
 
                 const reportStatus = await checkAiAnalysisStatus(item.id, idToken);
                 if (reportStatus === 'not_found') continue;
@@ -135,6 +139,7 @@ export default function BackgroundAiAnalysisTracker({ embedded = false }: Backgr
             for (let i = 0; i < updatedList.length; i++) {
                 const item = updatedList[i];
                 if (item.status === 'completed' || item.status === 'failed') continue;
+                if (item.suppressPoll) continue;
 
                 const reportStatus = await checkAiAnalysisStatus(item.id, idToken);
                 if (reportStatus === 'error') continue;
@@ -186,9 +191,11 @@ export default function BackgroundAiAnalysisTracker({ embedded = false }: Backgr
         setAnalyses(readActiveAiAnalyses());
     };
 
-    const visibleAnalyses = analyses.filter(
-        (item) => String(item.id) !== String(viewingReportId),
-    );
+    /** 분석 중이면 현재 페이지에서도 작은창 표시; 완료·실패만 동일 reportId면 숨김 */
+    const visibleAnalyses = analyses.filter((item) => {
+        if (item.status === 'analyzing') return true;
+        return String(item.id) !== String(viewingReportId);
+    });
 
     if (!ready || visibleAnalyses.length === 0) return null;
 
@@ -196,7 +203,7 @@ export default function BackgroundAiAnalysisTracker({ embedded = false }: Backgr
         const isCompleted = item.status === 'completed';
         const isFailed = item.status === 'failed';
         const isAnalyzing = !isCompleted && !isFailed;
-        const isWatched = watchedIds.current.has(item.id);
+        const isWatched = watchedIds.current.has(item.id) || !!item.suppressPoll;
 
         const elapsed = item.startedAt
             ? Math.floor((Date.now() - item.startedAt) / 1000)

@@ -45,6 +45,9 @@ export interface PropertyCardData {
   rtmsAptSeq?: string | null;
   /** discover — 리포트 없으면 카드 클릭·자세히 보기 비활성 */
   hasReport?: boolean;
+  latestReportId?: string | null;
+  /** r114 Lite 단지 */
+  r114PropId?: string | null;
 }
 
 export interface PropertyCardProps {
@@ -167,6 +170,7 @@ function formatAvgPrice1m(avgPrice1m?: number | null): string {
 
 function isApartmentAnalysisComplete(data: PropertyCardData): boolean {
   if (data.hasReport === false) return false;
+  if (data.latestReportId) return true;
   const n = parseInt(data.propertyGrade?.riskScore || '0', 10);
   return !Number.isNaN(n) && n > 0;
 }
@@ -214,7 +218,9 @@ export default function PropertyCard({
   const isDark = theme === 'dark';
   const isCompact = size === 'compact';
   const isApartment = data.category === '아파트' || data.category === 'apartment';
-  const discoverClickDisabled = isApartment && data.hasReport === false;
+  const isLiteCard = !!data.r114PropId;
+  const discoverAwaitingCollect = isApartment && data.hasReport === false && !isLiteCard;
+  const discoverClickDisabled = discoverAwaitingCollect && !onClick;
 
   const riskScore = data.propertyGrade?.riskScore;
   const riskLight = getRiskConfig(riskScore);
@@ -253,7 +259,9 @@ export default function PropertyCard({
           isCompact ? 'p-3' : 'p-4',
           selected
             ? 'border-emerald-400 ring-1 ring-emerald-400 shadow-sm'
-            : 'border-slate-100',
+            : isLiteCard
+              ? 'border-violet-200 bg-violet-50/30'
+              : 'border-slate-100',
         ].join(' ')}
       >
         {/* 상단: 제목 + 리스크 */}
@@ -283,10 +291,12 @@ export default function PropertyCard({
                 'text-[10px] px-2 py-0.5 rounded-lg font-bold border',
                 analysisComplete
                   ? 'bg-emerald-50 text-emerald-600 border-emerald-100/50'
-                  : 'bg-slate-50 text-slate-500 border-slate-200/80',
+                  : isLiteCard
+                    ? 'bg-violet-50 text-violet-700 border-violet-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200/80',
               ].join(' ')}
             >
-              {analysisComplete ? '분석완료' : '분석 준비'}
+              {analysisComplete ? '분석완료' : isLiteCard ? 'Lite · 분석 준비' : discoverAwaitingCollect && onClick ? '수집하기' : '분석 준비'}
             </span>
             {analysisComplete && hasRiskScore(riskScore) && (
               <div className="flex items-center gap-1">
@@ -345,8 +355,13 @@ export default function PropertyCard({
               <span className="text-[10px] text-slate-300 font-medium">{formatDate(data.createdAt)}</span>
             )}
             {data.category && (
-              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">
-                {data.category}
+              <span
+                className={[
+                  'text-[10px] px-1.5 py-0.5 rounded font-bold',
+                  isLiteCard ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500',
+                ].join(' ')}
+              >
+                {isLiteCard ? 'Lite' : data.category}
               </span>
             )}
             {onLikeToggle && (

@@ -100,6 +100,7 @@ type CompareItemResult = {
     householdCount?: number | null;
     buildingAgeYears?: number | null;
     parkingPerHousehold?: number | null;
+    parkingTotal?: number | null;
     entranceType?: string | null;
   } | null;
   extended?: {
@@ -174,6 +175,20 @@ function formatCompareLocationLabel(shortAddress: string | null | undefined) {
   return extractAptRegionLabel(raw) || raw;
 }
 
+function formatCompareParking(c: CompareItemResult): string {
+  const hw = c.hardware;
+  if (!hw) return '-';
+  if (hw.parkingTotal != null && hw.parkingTotal > 0) {
+    const total = `${hw.parkingTotal.toLocaleString()}대`;
+    if (hw.parkingPerHousehold != null) {
+      return `${total} (${hw.parkingPerHousehold}대/세대)`;
+    }
+    return total;
+  }
+  if (hw.parkingPerHousehold != null) return `${hw.parkingPerHousehold}대/세대`;
+  return '-';
+}
+
 function parseMaxCommuteMinutes(raw?: string): number | null {
   if (!raw?.trim()) return null;
   const n = parseInt(raw, 10);
@@ -245,7 +260,7 @@ function buildCompareTableRows(
     kind: 'field',
     key: 'parking',
     label: '주차',
-    render: (c) => (c.hardware?.parkingPerHousehold != null ? `${c.hardware.parkingPerHousehold}대/세대` : '-'),
+    render: (c) => formatCompareParking(c),
   });
 
   rows.push({ kind: 'group', key: 'g-price', title: '가격/갭' });

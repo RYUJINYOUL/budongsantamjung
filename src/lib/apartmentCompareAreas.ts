@@ -3,6 +3,12 @@ export type ApartmentAreaOption = {
   tradeCount6m: number;
   /** false = 3y seed-only 등 — 시세·6m 거래 없음 */
   cardStatsAvailable?: boolean;
+  /** r114 Lite — 공급㎡ · 평형 · 평형별 stats */
+  supplyAreaM2?: number | null;
+  supplyAreaMaxM2?: number | null;
+  pyeongApprox?: number | null;
+  riseRate6m?: number | null;
+  avgPrice1m?: number | null;
 };
 
 export const APARTMENT_AREA_NO_SALE_COPY = '최근 6개월 매매 없음';
@@ -12,7 +18,15 @@ export function formatAreaTradeSubtitle(area: ApartmentAreaOption): string {
     area.cardStatsAvailable === true
     || (area.cardStatsAvailable !== false && (area.tradeCount6m ?? 0) > 0);
   if (!hasSale) return APARTMENT_AREA_NO_SALE_COPY;
-  return `최근 6개월 매매 ${area.tradeCount6m}건`;
+  const parts = [`최근 6개월 매매 ${area.tradeCount6m}건`];
+  if (area.riseRate6m != null && Number.isFinite(area.riseRate6m)) {
+    const rate = area.riseRate6m;
+    parts.push(`${rate > 0 ? '+' : ''}${rate.toFixed(2)}%`);
+  }
+  if (area.avgPrice1m != null && area.avgPrice1m > 0) {
+    parts.push(`1mo ${(area.avgPrice1m / 10000).toFixed(1)}억`);
+  }
+  return parts.join(' · ');
 }
 
 export type ApartmentAreasResponse = {
@@ -72,7 +86,16 @@ export function pickDefaultAreaIndex(
   return bestIdx;
 }
 
-export function formatAreaLabel(m2: number): string {
-  const py = m2 / 3.3058;
-  return `${m2.toFixed(1)}㎡ (약 ${py.toFixed(0)}평)`;
+export function formatAreaLabel(m2: number, options?: {
+  supplyM2?: number | null;
+  pyeongApprox?: number | null;
+}): string {
+  const excl = `${m2.toFixed(1)}㎡`;
+  const py = options?.pyeongApprox != null && options.pyeongApprox > 0
+    ? `${options.pyeongApprox}평`
+    : `약 ${(m2 / 3.3058).toFixed(0)}평`;
+  const supply = options?.supplyM2 != null && options.supplyM2 > 0
+    ? ` · 공급 ${options.supplyM2.toFixed(2)}㎡`
+    : '';
+  return `${excl}${supply} (${py})`;
 }

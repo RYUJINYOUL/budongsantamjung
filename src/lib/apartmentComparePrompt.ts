@@ -99,12 +99,12 @@ function buildScoringSection(scoring: CompareScoringPayload | null): string {
     if (partSummary) lines.push(`- 가격 흐름: ${partSummary}`);
     if (axes) {
       lines.push(
-        `- 축 점수: 모멘텀 ${formatScore(axes.momentum)} / 상승 ${formatScore(axes.upside)} / 안정 ${formatScore(axes.stability)} / 촉매 ${formatScore(axes.catalyst)}`,
+        `- 축 점수: 모멘텀 ${formatScore(axes.momentum)} / 투자종합축 ${formatScore(axes.upside)} / 안정 ${formatScore(axes.stability)} / 촉매 ${formatScore(axes.catalyst)}`,
       );
     }
     if (item.composite) {
       lines.push(
-        `- 종합: 상승 ${formatScore(item.composite.upsideScore)} / 실거주 ${formatScore(item.composite.livabilityScore)} / 리스크 ${formatScore(item.composite.riskScore)}`,
+        `- 종합: 투자종합 ${formatScore(item.composite.upsideScore)} / 실거주 ${formatScore(item.composite.livabilityScore)} / 리스크 ${formatScore(item.composite.riskScore)}`,
       );
     }
     if (item.pattern?.label) {

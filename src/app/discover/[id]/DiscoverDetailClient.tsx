@@ -492,25 +492,77 @@ function DiscoverDetailContent() {
   const rankRows = (ranking[rankTab] as any[]) || [];
   const isBatchData = !!(data as any)?.isBatchData; // 배치 데이터: LLM 섹션 숨김
 
-  const gosiMarkers = useMemo(() => {
-    if (!data?.gosi) return [];
+  const gosiDisplayItems = useMemo(() => {
+    const fromGosi = (data?.gosi || []).map((g: any) => ({
+      title: g.title || g.plan_nm || '',
+      gosiDate: g.gosiDate || g.gosi_date || g.plan_wrtg_de || '',
+      summary: g.summary || g.content || '',
+      url: g.url || '',
+      projectType: g.projectType || '개발계획',
+    })).filter((g) => g.title);
 
-    // Create a title to category map
+    if (fromGosi.length > 0) return fromGosi;
+
+    const fromClassified: typeof fromGosi = [];
+    if (data?.classifiedFactors) {
+      Object.values(data.classifiedFactors).forEach((factor: any) => {
+        (factor.items || []).forEach((item: any) => {
+          if (item.title && item.lat != null && item.lng != null) {
+            fromClassified.push({
+              title: item.title,
+              gosiDate: item.gosiDate || item.date || '',
+              summary: '',
+              url: item.url || '',
+              projectType: item.projectType || factor.label || '개발계획',
+            });
+          }
+        });
+      });
+    }
+    return fromClassified;
+  }, [data?.gosi, data?.classifiedFactors]);
+
+  const gosiMarkers = useMemo(() => {
+    if (!data?.gosi?.length && !data?.classifiedFactors) return [];
+
     const titleToCategory: Record<string, string> = {};
     if (data?.classifiedFactors) {
       Object.values(data.classifiedFactors).forEach((factor: any) => {
-        if (factor.items && Array.isArray(factor.items)) {
-          factor.items.forEach((item: any) => {
-            if (item.title) {
-              titleToCategory[item.title] = factor.label || item.projectType;
-            }
-          });
-        }
+        (factor.items || []).forEach((item: any) => {
+          if (item.title) {
+            titleToCategory[item.title] = factor.label || item.projectType;
+          }
+        });
       });
     }
 
+    const seen = new Set<string>();
     const markers: any[] = [];
-    data.gosi.forEach((g: any) => {
+
+    const pushMarker = (entry: {
+      id: string;
+      title: string;
+      shortTitle: string;
+      lat: number;
+      lng: number;
+      address?: string | null;
+    }) => {
+      const key = `${entry.title}|${entry.lat.toFixed(5)}|${entry.lng.toFixed(5)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      markers.push({
+        id: entry.id,
+        address: entry.address || entry.title || '',
+        propertyTitle: entry.shortTitle || '개발 호재',
+        riskScore: 0,
+        lat: entry.lat,
+        lng: entry.lng,
+        category: 'gosi',
+        originalTitle: entry.title,
+      });
+    };
+
+    (data?.gosi || []).forEach((g: any) => {
       let locs = g.locations;
       if ((!locs || locs.length === 0) && g.parsedData?.regions) {
         locs = g.parsedData.regions
@@ -518,7 +570,7 @@ function DiscoverDetailContent() {
           .map((r: any) => ({
             lat: r.lat,
             lng: r.lng,
-            address: r.address || r.name || null
+            address: r.address || r.name || null,
           }));
       }
 
@@ -526,20 +578,35 @@ function DiscoverDetailContent() {
         const shortTitle = titleToCategory[g.title] || '개발 호재';
         locs.forEach((loc: any, idx: number) => {
           if (loc.lat && loc.lng) {
-            markers.push({
+            pushMarker({
               id: `gosi-${g.id || g.title}-${idx}`,
-              address: loc.address || g.title || '',
-              propertyTitle: shortTitle,
-              riskScore: 0,
+              title: g.title,
+              shortTitle,
               lat: Number(loc.lat),
               lng: Number(loc.lng),
-              category: 'gosi',
-              originalTitle: g.title
+              address: loc.address,
             });
           }
         });
       }
     });
+
+    if (data?.classifiedFactors) {
+      Object.entries(data.classifiedFactors).forEach(([catKey, factor]: [string, any]) => {
+        (factor.items || []).forEach((item: any, idx: number) => {
+          if (item.lat != null && item.lng != null && item.title) {
+            pushMarker({
+              id: `classified-${catKey}-${idx}`,
+              title: item.title,
+              shortTitle: factor.label || item.projectType || '개발 호재',
+              lat: Number(item.lat),
+              lng: Number(item.lng),
+            });
+          }
+        });
+      });
+    }
+
     return markers;
   }, [data?.gosi, data?.classifiedFactors]);
 
@@ -708,13 +775,13 @@ function DiscoverDetailContent() {
 
                     {/* 크게보기 모드일 때 지도 하단에 절대 좌표로 배치되는 정보 카드 오버레이 */}
                     {isMapExpanded && selectedGosiTitle && (() => {
-                      const selectedGosi = data?.gosi?.find((g: any) => g.title === selectedGosiTitle);
+                      const selectedGosi = gosiDisplayItems.find((g) => g.title === selectedGosiTitle);
                       if (!selectedGosi) return null;
 
-                      const itemName = selectedGosi.title || selectedGosi.plan_nm || '상세 규제 예정';
-                      const rawDate = selectedGosi.gosiDate || selectedGosi.gosi_date || selectedGosi.plan_wrtg_de || '';
+                      const itemName = selectedGosi.title || '상세 규제 예정';
+                      const rawDate = selectedGosi.gosiDate || '';
                       const formattedDate = formatDate(rawDate);
-                      const summary = selectedGosi.summary || selectedGosi.content || '';
+                      const summary = selectedGosi.summary || '';
                       const url = selectedGosi.url || '';
 
                       return (
@@ -770,17 +837,17 @@ function DiscoverDetailContent() {
                   </div>
 
                   {/* 지도 아래 고시 상세 카드 목록 */}
-                  {data?.gosi && data.gosi.length > 0 && (
+                  {gosiDisplayItems.length > 0 && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black text-slate-500">지도에 표시된 개발 호재 세부 정보 ({data.gosi.length}건)</span>
+                        <span className="text-[11px] font-black text-slate-500">지도에 표시된 개발 호재 세부 정보 ({gosiDisplayItems.length}건)</span>
                       </div>
                       <div className="flex gap-3 overflow-x-auto pb-3 pt-1 no-scrollbar scroll-smooth snap-x snap-mandatory">
-                        {data.gosi.map((g: any, idx: number) => {
-                          const itemName = g.title || g.plan_nm || '상세 규제 예정';
-                          const rawDate = g.gosiDate || g.gosi_date || g.plan_wrtg_de || '';
+                        {gosiDisplayItems.map((g, idx) => {
+                          const itemName = g.title || '상세 규제 예정';
+                          const rawDate = g.gosiDate || '';
                           const formattedDate = formatDate(rawDate);
-                          const summary = g.summary || g.content || '';
+                          const summary = g.summary || '';
                           const url = g.url || '';
                           const isSelected = selectedGosiTitle === g.title;
 

@@ -5,6 +5,7 @@ export type ApartmentCompareBasketItem = {
   key: string;
   masterId?: string;
   rtmsAptSeq?: string;
+  r114PropId?: string;
   exclusiveAreaM2?: number | null;
   complexName?: string;
 };
@@ -21,8 +22,8 @@ export type ApartmentCompareProfile = {
 
 export const APARTMENT_COMPARE_PROFILE_KEY = 'apartment_compare_profile';
 
-function basketKey(item: Pick<ApartmentCompareBasketItem, 'masterId' | 'rtmsAptSeq' | 'exclusiveAreaM2'>) {
-  const id = item.rtmsAptSeq || item.masterId || 'unknown';
+function basketKey(item: Pick<ApartmentCompareBasketItem, 'masterId' | 'rtmsAptSeq' | 'r114PropId' | 'exclusiveAreaM2'>) {
+  const id = item.r114PropId || item.rtmsAptSeq || item.masterId || 'unknown';
   const area = item.exclusiveAreaM2 != null ? String(item.exclusiveAreaM2) : 'default';
   return `${id}:${area}`;
 }
@@ -31,6 +32,7 @@ function basketKey(item: Pick<ApartmentCompareBasketItem, 'masterId' | 'rtmsAptS
 export function compareItemKey(input: {
   masterId?: string | null;
   rtmsAptSeq?: string | null;
+  r114PropId?: string | null;
   exclusiveAreaM2?: number | null;
   area?: number | null;
 }) {
@@ -38,6 +40,7 @@ export function compareItemKey(input: {
   return basketKey({
     masterId: input.masterId || undefined,
     rtmsAptSeq: input.rtmsAptSeq || undefined,
+    r114PropId: input.r114PropId || undefined,
     exclusiveAreaM2,
   });
 }
@@ -82,7 +85,7 @@ export function addToCompareBasket(
   if (current.length >= APARTMENT_COMPARE_MAX) {
     return { ok: false, error: `최대 ${APARTMENT_COMPARE_MAX}개까지 담을 수 있습니다.` };
   }
-  if (!input.masterId && !input.rtmsAptSeq) {
+  if (!input.masterId && !input.rtmsAptSeq && !input.r114PropId) {
     return { ok: false, error: '단지 정보가 없어 비교함에 담을 수 없습니다.' };
   }
   const item: ApartmentCompareBasketItem = { ...input, key };
@@ -106,6 +109,7 @@ export function updateCompareBasketItemArea(
   const merged = {
     masterId: meta.masterId ?? old.masterId,
     rtmsAptSeq: meta.rtmsAptSeq ?? old.rtmsAptSeq,
+    r114PropId: meta.r114PropId ?? old.r114PropId,
     exclusiveAreaM2,
     complexName: meta.complexName ?? old.complexName,
   };
@@ -143,6 +147,7 @@ export function basketToCompareQueryItems(items: ApartmentCompareBasketItem[]) {
   return items.map((i) => ({
     masterId: i.masterId,
     rtmsAptSeq: i.rtmsAptSeq,
+    r114PropId: i.r114PropId,
     area: i.exclusiveAreaM2 ?? undefined,
   }));
 }

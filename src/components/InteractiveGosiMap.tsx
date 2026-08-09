@@ -216,7 +216,7 @@ export default function InteractiveGosiMap({
                 polygon.setMap(kakaoMap);
                 polygonsRef.current.push(polygon);
 
-                const zoneName = feature.properties.name;
+                const zoneName = feature.properties.displayName || feature.properties.name || feature.properties.alias;
                 if (zoneName) {
                   const centerLatLng = getPolygonCenter(path);
                   const labelEl = document.createElement('div');
@@ -494,7 +494,7 @@ export default function InteractiveGosiMap({
         <div className="absolute top-4 right-4 z-[200] w-[320px] bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl p-5 text-white">
           <div className="flex justify-between items-start mb-3">
             <h3 className="font-bold text-[15px] text-white break-keep pr-4">
-              {selectedFeature.properties.alias || '명칭 미확인'}
+              {selectedFeature.properties.displayName || selectedFeature.properties.alias || selectedFeature.properties.name || '명칭 미확인'}
             </h3>
             <button 
               onClick={() => setSelectedFeature(null)}

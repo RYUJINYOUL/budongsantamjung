@@ -20,7 +20,7 @@ export const COMPARE_SCORE_CARD_TITLES: Record<string, string> = {
   cagr3y: '3년상승률',
   yoy1y: '1년상승률',
   rise6m: '6개월상승률',
-  upside: '가격변화추이',
+  upside: '투자종합',
   livability: '실거주점수',
   risk: '리스크점수',
 };

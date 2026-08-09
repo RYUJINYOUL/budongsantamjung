@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import type { InfraCategory } from '../lib/infrastructureMap';
+import { formatInfraDistanceLabel } from '../lib/infraDisplay';
 
 export interface NearbyInfrastructureItem {
   id: number;
   name: string;
   category: InfraCategory;
   distanceM: number;
-  walkMin: number;
+  walkMin?: number | null;
+  distanceMode?: 'walk' | 'straight';
+  walkable?: boolean;
   nearestLabel?: string;
   displayTitle?: string;
+  progress_score?: number | null;
+  eventId?: number;
 }
 
 export interface NearbyInfrastructureData {
@@ -24,11 +29,6 @@ const TAB_CONFIG: { id: InfraCategory; label: string }[] = [
   { id: 'road', label: '도로' },
   { id: 'construction', label: '건설' },
 ];
-
-function formatDistance(m: number) {
-  if (m >= 1000) return `${(m / 1000).toFixed(1)}km`;
-  return `${m}m`;
-}
 
 interface Props {
   data?: NearbyInfrastructureData | null;
@@ -74,7 +74,7 @@ export default function NearbyInfrastructurePanel({ data, variant = 'dark', clas
           주변 개발호재
         </h4>
         <span className={`text-xs font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-          반경 {radiusKm}km 이내
+          반경 {radiusKm}km · 도로·건설은 직선거리
         </span>
       </div>
 
@@ -120,9 +120,17 @@ export default function NearbyInfrastructurePanel({ data, variant = 'dark', clas
               <span className={`text-sm font-bold leading-snug ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
                 {item.displayTitle || item.name}
               </span>
-              <span className={`shrink-0 text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {formatDistance(item.distanceM)}, {item.walkMin}분거리
-              </span>
+              <div className="shrink-0 text-right">
+                <span className={`block text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {formatInfraDistanceLabel(item)}
+                </span>
+                {item.progress_score != null && (
+                  <span className={`block text-[10px] font-bold mt-0.5 ${isDark ? 'text-teal-400/90' : 'text-teal-700'}`}>
+                    전망점수 {item.progress_score}
+                    <span className={isDark ? ' text-slate-500' : ' text-slate-400'}> (진행·호재 강도)</span>
+                  </span>
+                )}
+              </div>
             </li>
           ))}
         </ul>
