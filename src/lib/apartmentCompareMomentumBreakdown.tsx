@@ -175,9 +175,10 @@ export function buildCompareMetricCards(items: CompareScoringItem[]): {
   metricCards: CompareMetricCard[];
   hasAnyScore: boolean;
   anyMissingLongTerm: boolean;
+  anyLowCoverage: boolean;
 } {
   if (!items.length) {
-    return { metricCards: [], hasAnyScore: false, anyMissingLongTerm: false };
+    return { metricCards: [], hasAnyScore: false, anyMissingLongTerm: false, anyLowCoverage: false };
   }
 
   const aptRows = items.map((item, i) => ({

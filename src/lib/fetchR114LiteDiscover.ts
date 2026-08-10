@@ -2,6 +2,7 @@
  * r114 Lite discover — viewport 내 단지 목록
  */
 import type { ApartmentDiscoverFilters } from './apartmentDiscoverFilters';
+import { defaultApartmentDiscoverFilters } from './apartmentDiscoverFilters';
 import { discoverFiltersToSearchParams } from './fetchApartmentDiscover';
 
 export type R114LiteDiscoverItem = {
@@ -39,25 +40,7 @@ export async function fetchR114LiteDiscover(
   options?: { limit?: number; filters?: ApartmentDiscoverFilters },
 ): Promise<{ items: R114LiteDiscoverItem[]; meta?: { count?: number } }> {
   const params = discoverFiltersToSearchParams(
-    options?.filters ?? {
-      pyeongMin: 0,
-      pyeongMax: 40,
-      priceMinEok: 0,
-      priceMaxEok: 40,
-      sortBy: 'default',
-      dealMode: 'sale',
-      minJeonseRatePercent: null,
-      maxJeonseRatePercent: null,
-      minGapMan: null,
-      maxGapMan: null,
-      minHouseholds: null,
-      maxBuildingAgeYears: null,
-      minParkingPerHousehold: null,
-      maxParkingPerHousehold: null,
-      maxElementaryNavMinutes: null,
-      entranceTypes: [],
-      heatingTypes: [],
-    },
+    options?.filters ?? defaultApartmentDiscoverFilters(),
     geo,
     { analyzedOnly: false },
   );
