@@ -296,7 +296,7 @@ export default function PropertyCard({
                     : 'bg-slate-50 text-slate-500 border-slate-200/80',
               ].join(' ')}
             >
-              {analysisComplete ? '분석완료' : isLiteCard ? 'Lite · 분석 준비' : discoverAwaitingCollect && onClick ? '수집하기' : '분석 준비'}
+              {analysisComplete ? '분석완료' : discoverAwaitingCollect && onClick ? '수집하기' : '분석 준비'}
             </span>
             {analysisComplete && hasRiskScore(riskScore) && (
               <div className="flex items-center gap-1">
@@ -361,7 +361,7 @@ export default function PropertyCard({
                   isLiteCard ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500',
                 ].join(' ')}
               >
-                {isLiteCard ? 'Lite' : data.category}
+                {data.category}
               </span>
             )}
             {onLikeToggle && (

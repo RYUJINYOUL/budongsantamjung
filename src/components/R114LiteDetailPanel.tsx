@@ -5,17 +5,20 @@ import Link from 'next/link';
 import { Building2, ChevronDown, Loader2 } from 'lucide-react';
 import { makeAnalyzeSlug } from '../lib/slug';
 import {
-  fetchR114LiteComplex,
+  fetchR114LiteComplexWithTrades,
+  fetchR114LiteTradesPage,
   formatExclusiveRange,
   formatMoveIn,
   formatPriceMan,
   formatSupplyRange,
   formatWolse,
+  LITE_LOAD_MORE_TRADE_LIMIT,
 } from '../lib/r114LiteApi';
 import type {
   R114LiteDetailResponse,
   R114LitePyeongAreaStats,
   R114LitePyeongType,
+  R114LiteTrade,
   R114TradeType,
 } from '../lib/r114LiteTypes';
 import type { ApartmentDealMode } from '../lib/apartmentDiscoverFilters';
@@ -24,10 +27,16 @@ import {
   isLiteModeSparse,
 } from '../lib/r114LiteCardDisplay';
 import {
+  buildTradeChartSeries,
+  computeJeonseRatioPct,
   filterTradesByPyeong,
   formatAvgPrice1mEok,
+  formatContractDateShort,
+  formatJeonseRatioPct,
   formatRiseRate6m,
+  moveInAgeYears,
 } from '../lib/r114LiteTrades';
+import R114LiteTradeChart from './R114LiteTradeChart';
 
 const TRADE_TABS: { key: R114TradeType; label: string }[] = [
   { key: 'sale', label: '매매' },
@@ -36,6 +45,31 @@ const TRADE_TABS: { key: R114TradeType; label: string }[] = [
 ];
 
 const TRADE_PREVIEW = 5;
+
+function emptyTrades(): Record<R114TradeType, R114LiteTrade[]> {
+  return { sale: [], jeonse: [], wolse: [] };
+}
+
+function mergeTradePages(
+  prev: Record<R114TradeType, R114LiteTrade[]>,
+  incoming: Record<R114TradeType, R114LiteTrade[]>,
+): Record<R114TradeType, R114LiteTrade[]> {
+  const next = { ...prev };
+  for (const key of ['sale', 'jeonse', 'wolse'] as R114TradeType[]) {
+    const seen = new Set(
+      prev[key].map((t) => `${t.contractDate}|${t.priceMan}|${t.depositMan}|${t.monthlyRentMan}|${t.supplyArea}`),
+    );
+    const appended = [...prev[key]];
+    for (const row of incoming[key] || []) {
+      const sig = `${row.contractDate}|${row.priceMan}|${row.depositMan}|${row.monthlyRentMan}|${row.supplyArea}`;
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      appended.push(row);
+    }
+    next[key] = appended;
+  }
+  return next;
+}
 
 type Theme = 'light' | 'dark';
 
@@ -54,8 +88,6 @@ function themeClasses(theme: Theme) {
       pyeongActive: 'border-emerald-500 bg-emerald-50',
       empty: 'border-dashed border-slate-200 text-slate-400',
       badgeSparse: 'bg-amber-50 text-amber-800 border-amber-200',
-      badgeLite: 'bg-slate-100 text-slate-600 border-slate-200',
-      badgeVerified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
       statsGrid: 'bg-slate-50 border-slate-200',
       riseUp: 'text-red-600',
       riseDown: 'text-blue-600',
@@ -75,8 +107,6 @@ function themeClasses(theme: Theme) {
     pyeongActive: 'border-emerald-500/60 bg-emerald-500/10',
     empty: 'border-dashed border-white/10 text-zinc-500',
     badgeSparse: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    badgeLite: 'bg-white/5 text-zinc-400 border-white/10',
-    badgeVerified: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
     statsGrid: 'bg-white/[0.03] border-white/10',
     riseUp: 'text-red-400',
     riseDown: 'text-blue-400',
@@ -210,7 +240,9 @@ export default function R114LiteDetailPanel({
 }) {
   const t = themeClasses(theme);
   const [data, setData] = useState<R114LiteDetailResponse | null>(null);
+  const [tradePages, setTradePages] = useState<Record<R114TradeType, R114LiteTrade[]>>(emptyTrades);
   const [loading, setLoading] = useState(true);
+  const [tradeLoadingMore, setTradeLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPyeong, setSelectedPyeong] = useState<number | null>(null);
   const [tradeTab, setTradeTab] = useState<R114TradeType>('sale');
@@ -220,17 +252,30 @@ export default function R114LiteDetailPanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchR114LiteComplex(r114PropId, { tradeLimit: 500 });
+      const res = await fetchR114LiteComplexWithTrades(r114PropId);
       if (!res.success || !res.data) {
         setError(res.message || '단지 정보를 불러오지 못했습니다.');
         setData(null);
+        setTradePages(emptyTrades());
         return;
       }
       setData(res);
+      setTradePages(res.data.trades ?? emptyTrades());
       const c = res.data.complex;
+      const moveInLabel = formatMoveIn(c.moveIn);
+      const age = moveInAgeYears(c.moveIn);
+      const metaParts = [
+        [c.gu, c.dong].filter(Boolean).join(' '),
+        c.householdCount != null ? `${c.householdCount.toLocaleString()}세대` : null,
+        moveInLabel
+          ? age != null
+            ? `${moveInLabel}(${age}년차)`
+            : moveInLabel
+          : null,
+      ].filter(Boolean);
       onComplexLoaded?.({
         title: c.title,
-        subtitle: c.address || [c.gu, c.dong].filter(Boolean).join(' '),
+        subtitle: metaParts.length > 0 ? metaParts.join(' · ') : (c.address || ''),
       });
     } catch {
       setError('네트워크 오류가 발생했습니다.');
@@ -255,8 +300,8 @@ export default function R114LiteDetailPanel({
   const pyeongTypes = data?.data?.pyeongTypes ?? [];
   const pyeongAreaStats = data?.data?.pyeongAreaStats ?? [];
   const stats = data?.data?.stats;
-  const trades = data?.data?.trades;
-  const resolvedReportId = latestReportId ?? null;
+  const trades = tradePages;
+  const resolvedReportId = latestReportId ?? data?.latestReportId ?? null;
   const hasLiteReport = !!resolvedReportId;
 
   const statsByPyeong = useMemo(
@@ -330,27 +375,99 @@ export default function R114LiteDetailPanel({
     return filterTradesByPyeong(list, selectedPyeongType);
   }, [trades, tradeTab, selectedPyeongType]);
 
+  const chartSeries = useMemo(
+    () => buildTradeChartSeries(filteredTrades, tradeTab),
+    [filteredTrades, tradeTab],
+  );
+
+  const jeonseRatioPct = useMemo(
+    () => computeJeonseRatioPct(activeCardStats.avgPrice1m, activeCardStats.avgJeonseDeposit1m),
+    [activeCardStats.avgPrice1m, activeCardStats.avgJeonseDeposit1m],
+  );
+
+  const headerMetaParts = useMemo(() => {
+    const moveInLabel = formatMoveIn(complex?.moveIn ?? null);
+    const age = moveInAgeYears(complex?.moveIn ?? null);
+    return [
+      complex?.householdCount != null ? `${complex.householdCount.toLocaleString()}세대` : null,
+      moveInLabel
+        ? age != null
+          ? `${moveInLabel}(${age}년차)`
+          : moveInLabel
+        : null,
+    ].filter(Boolean);
+  }, [complex?.householdCount, complex?.moveIn]);
+
   const visibleTrades = filteredTrades.slice(0, tradeVisibleCount);
-  const hasMoreTrades = filteredTrades.length > tradeVisibleCount;
+
+  const serverTabTotals = useMemo(() => ({
+    sale: stats?.saleTotal ?? trades.sale.length,
+    jeonse: stats?.jeonseTotal ?? trades.jeonse.length,
+    wolse: stats?.wolseTotal ?? trades.wolse.length,
+  }), [stats, trades]);
 
   const tabCounts = useMemo(() => {
-    const base = selectedPyeongType
-      ? {
-        sale: filterTradesByPyeong(trades?.sale ?? [], selectedPyeongType),
-        jeonse: filterTradesByPyeong(trades?.jeonse ?? [], selectedPyeongType),
-        wolse: filterTradesByPyeong(trades?.wolse ?? [], selectedPyeongType),
-      }
-      : {
-        sale: trades?.sale ?? [],
-        jeonse: trades?.jeonse ?? [],
-        wolse: trades?.wolse ?? [],
+    if (selectedPyeongType) {
+      return {
+        sale: filterTradesByPyeong(trades.sale, selectedPyeongType).length,
+        jeonse: filterTradesByPyeong(trades.jeonse, selectedPyeongType).length,
+        wolse: filterTradesByPyeong(trades.wolse, selectedPyeongType).length,
       };
-    return {
-      sale: base.sale.length,
-      jeonse: base.jeonse.length,
-      wolse: base.wolse.length,
-    };
-  }, [trades, selectedPyeongType]);
+    }
+    return serverTabTotals;
+  }, [trades, selectedPyeongType, serverTabTotals]);
+
+  const hasMoreTrades = useMemo(() => {
+    if (tradeVisibleCount < filteredTrades.length) return true;
+    if (selectedPyeong != null) return false;
+    return trades[tradeTab].length < serverTabTotals[tradeTab];
+  }, [
+    tradeVisibleCount,
+    filteredTrades.length,
+    selectedPyeong,
+    trades,
+    tradeTab,
+    serverTabTotals,
+  ]);
+
+  const loadMoreTrades = useCallback(async () => {
+    if (tradeVisibleCount + TRADE_PREVIEW <= filteredTrades.length) {
+      setTradeVisibleCount((v) => v + TRADE_PREVIEW);
+      return;
+    }
+    if (selectedPyeong != null || tradeLoadingMore) return;
+
+    const loaded = trades[tradeTab].length;
+    const total = serverTabTotals[tradeTab];
+    if (loaded >= total) {
+      setTradeVisibleCount((v) => v + TRADE_PREVIEW);
+      return;
+    }
+
+    setTradeLoadingMore(true);
+    try {
+      const res = await fetchR114LiteTradesPage(r114PropId, {
+        tradeType: tradeTab,
+        tradeOffset: loaded,
+        tradeLimit: LITE_LOAD_MORE_TRADE_LIMIT,
+      });
+      if (res.success && res.data?.trades) {
+        setTradePages((prev) => mergeTradePages(prev, res.data!.trades));
+        setTradeVisibleCount((v) => v + TRADE_PREVIEW);
+      }
+    } finally {
+      setTradeLoadingMore(false);
+    }
+  }, [
+    tradeVisibleCount,
+    filteredTrades.length,
+    selectedPyeong,
+    tradeLoadingMore,
+    trades,
+    tradeTab,
+    serverTabTotals,
+    r114PropId,
+  ]);
 
   if (loading) {
     return (
@@ -376,6 +493,9 @@ export default function R114LiteDetailPanel({
           <p className={`text-xs ${t.muted} mt-0.5 truncate`}>
             {complex.address || `${complex.city || ''} ${complex.gu || ''} ${complex.dong || ''}`.trim()}
           </p>
+          {headerMetaParts.length > 0 && (
+            <p className={`text-[11px] ${t.muted} mt-1`}>{headerMetaParts.join(' · ')}</p>
+          )}
         </div>
       )}
 
@@ -386,22 +506,24 @@ export default function R114LiteDetailPanel({
               {sparseBadgeLabel(tradeTab, selectedPyeong)}
             </span>
           )}
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${t.badgeLite}`}>
-            Lite
-          </span>
           {hasLiteReport && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${theme === 'light' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'}`}>
               분석완료
             </span>
           )}
-          {complex.rtmsVerifiedAt && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${t.badgeVerified}`}>
-              RTMS verified
-            </span>
-          )}
         </div>
 
         <CardStatsRow theme={theme} dealMode={tradeTab} statsSource={activeCardStats} />
+
+        {jeonseRatioPct != null && (
+          <div className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${t.statsGrid}`}>
+            <div>
+              <p className={`text-[10px] font-bold ${t.muted}`}>전세가율</p>
+              <p className="text-xs font-medium mt-0.5">최근 1개월 평균 기준</p>
+            </div>
+            <p className="text-lg font-black text-emerald-600">{formatJeonseRatioPct(jeonseRatioPct)}</p>
+          </div>
+        )}
 
         {pyeongTypes.length > 0 && (
           <section>
@@ -456,6 +578,19 @@ export default function R114LiteDetailPanel({
             ))}
           </div>
 
+          {filteredTrades.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className={`text-[11px] font-bold ${t.muted}`}>
+                  {tradeTab === 'jeonse' ? '전세' : tradeTab === 'wolse' ? '월세' : '매매'} 시세 추이
+                  {selectedPyeong != null ? ` · ${selectedPyeong}평` : ''}
+                </p>
+                <span className={`text-[10px] ${t.muted}`}>최근 {chartSeries.length}건</span>
+              </div>
+              <R114LiteTradeChart data={chartSeries} kind={tradeTab} theme={theme} />
+            </div>
+          )}
+
           {filteredTrades.length === 0 ? (
             <p className={`text-xs py-6 text-center rounded-xl border ${t.empty}`}>
               {modeSparse
@@ -476,7 +611,7 @@ export default function R114LiteDetailPanel({
                   <tbody>
                     {visibleTrades.map((row, i) => (
                       <tr key={`${row.contractDate}-${i}`} className={t.tableRow}>
-                        <td className="px-2.5 py-2">{row.contractDate?.replace(/-/g, '.')}</td>
+                        <td className="px-2.5 py-2">{formatContractDateShort(row.contractDate)}</td>
                         <td className={`px-2.5 py-2 ${t.muted}`}>
                           {(row.exclusiveArea ?? row.supplyArea)?.toFixed(2) ?? '—'}
                         </td>
@@ -493,11 +628,18 @@ export default function R114LiteDetailPanel({
               {hasMoreTrades && (
                 <button
                   type="button"
-                  onClick={() => setTradeVisibleCount((v) => v + TRADE_PREVIEW)}
-                  className={`mt-2 w-full py-2 text-xs font-bold rounded-xl border ${t.border} ${t.muted} hover:text-emerald-600 flex items-center justify-center gap-1`}
+                  onClick={() => void loadMoreTrades()}
+                  disabled={tradeLoadingMore}
+                  className={`mt-2 w-full py-2 text-xs font-bold rounded-xl border ${t.border} ${t.muted} hover:text-emerald-600 flex items-center justify-center gap-1 disabled:opacity-60`}
                 >
-                  {`더보기 (${Math.min(TRADE_PREVIEW, filteredTrades.length - tradeVisibleCount)}건)`}
-                  <ChevronDown className="w-4 h-4" />
+                  {tradeLoadingMore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      {`더보기 (${Math.min(TRADE_PREVIEW, Math.max(filteredTrades.length - tradeVisibleCount, 1))}건)`}
+                      <ChevronDown className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               )}
             </>

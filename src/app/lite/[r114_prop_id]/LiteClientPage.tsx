@@ -12,7 +12,6 @@ export default function LiteClientPage({ r114PropId }: { r114PropId: string }) {
           <Link href="/" className="p-2 -ml-2 text-zinc-400 hover:text-white">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <span className="text-sm text-zinc-500">Lite 단지</span>
         </div>
       </header>
       <main className="max-w-3xl mx-auto pt-2">

@@ -12,6 +12,8 @@ export interface R114LiteTrade {
 
 export interface R114LitePyeongType {
   pyeongApprox: number;
+  /** merge된 원본 pyeong_approx (33+34 → [33,34]) */
+  mergedPyeongApproxs?: number[];
   households: number;
   supplyMin: number;
   supplyMax: number;
@@ -50,6 +52,8 @@ export interface R114LiteStats {
   saleCount1m: number;
   saleCount6m: number;
   saleTotal: number;
+  jeonseTotal?: number;
+  wolseTotal?: number;
   jeonseCount6m: number;
   wolseCount6m: number;
   tradeTotal: number;
@@ -63,8 +67,16 @@ export interface R114LiteStats {
   wolseRiseRate6m?: number | null;
   avgWolseMonthlyRent1m?: number | null;
   tradeLimit: number;
+  tradeOffset?: number;
   pyeongFilter: number | null;
 }
+
+export type R114LiteTradesPageResponse = {
+  success: boolean;
+  tradesOnly?: boolean;
+  data?: { trades: Record<R114TradeType, R114LiteTrade[]> };
+  message?: string;
+};
 
 export interface R114LitePyeongAreaStats {
   pyeongApprox: number;
@@ -96,5 +108,7 @@ export interface R114LiteDetailResponse {
     trades: Record<R114TradeType, R114LiteTrade[]>;
     stats: R114LiteStats;
   };
+  latestReportId?: string | null;
+  hasReport?: boolean;
   message?: string;
 }

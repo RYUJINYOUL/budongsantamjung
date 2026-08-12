@@ -64,10 +64,83 @@ type MergeFeedItem = {
   id?: string;
   propertyTitle?: string;
   householdCount?: number | null;
+  lat?: number;
+  lng?: number;
+  hasReport?: boolean;
+  latestReportId?: string | null;
+  aptSeq?: string | null;
+  rtmsAptSeq?: string | null;
 };
+
+const MERGE_NEAR_KM = 0.35;
 
 function householdSortKey(item: MergeFeedItem): number {
   return item.householdCount ?? 0;
+}
+
+function normalizeComplexTitle(title: string | undefined | null): string {
+  return (title || '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
+function haversineKm(
+  a: { lat?: number; lng?: number },
+  b: { lat?: number; lng?: number },
+): number | null {
+  const lat1 = a.lat;
+  const lng1 = a.lng;
+  const lat2 = b.lat;
+  const lng2 = b.lng;
+  if (
+    lat1 == null || lng1 == null || lat2 == null || lng2 == null
+    || !Number.isFinite(lat1) || !Number.isFinite(lng1)
+    || !Number.isFinite(lat2) || !Number.isFinite(lng2)
+  ) {
+    return null;
+  }
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const h = s1 * s1
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * s2 * s2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function isSameComplex(a: MergeFeedItem, b: MergeFeedItem): boolean {
+  const pidA = a.r114PropId?.trim();
+  const pidB = b.r114PropId?.trim();
+  if (pidA && pidB && pidA === pidB) return true;
+
+  const rtmsA = (a.rtmsAptSeq || a.aptSeq || '').trim();
+  const rtmsB = (b.rtmsAptSeq || b.aptSeq || '').trim();
+  if (rtmsA && rtmsB && rtmsA === rtmsB) return true;
+
+  const titleA = normalizeComplexTitle(a.propertyTitle);
+  const titleB = normalizeComplexTitle(b.propertyTitle);
+  if (!titleA || titleA !== titleB) return false;
+
+  const dist = haversineKm(a, b);
+  return dist != null && dist <= MERGE_NEAR_KM;
+}
+
+function enrichAnalyzedWithLiteR114<T extends MergeFeedItem>(
+  analyzed: T[],
+  liteItems: T[],
+): T[] {
+  return analyzed.map((item) => {
+    if (item.r114PropId?.trim()) return item;
+    const match = liteItems.find(
+      (lite) => lite.r114PropId?.trim() && isSameComplex(item, lite),
+    );
+    if (!match?.r114PropId) return item;
+    return {
+      ...item,
+      r114PropId: match.r114PropId,
+      lat: match.lat ?? item.lat,
+      lng: match.lng ?? item.lng,
+    };
+  });
 }
 
 /** discover feed → 홈 Analysis 행 */
@@ -104,23 +177,18 @@ export function mapR114LiteDiscoverToFeedItem(item: R114LiteDiscoverItem) {
   };
 }
 
-/** analyzed discover + Lite — 세대수 기준 섞기 (Lite가 목록 맨 아래로 밀리지 않도록) */
+/** analyzed discover + Lite — 중복 제거 후 세대수 기준 섞기 */
 export function mergeDiscoverWithR114Lite<T extends MergeFeedItem>(
   analyzed: T[],
   liteItems: T[],
 ): T[] {
-  const seen = new Set<string>();
-  for (const a of analyzed) {
-    if (a.r114PropId) seen.add(a.r114PropId);
-    if (a.id?.startsWith('lite-')) seen.add(a.id.slice(5));
-  }
-  const extra = liteItems.filter((l) => {
-    const pid = l.r114PropId || (l.id?.startsWith('lite-') ? l.id.slice(5) : '');
-    if (!pid || seen.has(pid)) return false;
-    seen.add(pid);
-    return true;
-  });
-  const merged = [...analyzed, ...extra];
+  const enrichedAnalyzed = enrichAnalyzedWithLiteR114(analyzed, liteItems);
+
+  const extra = liteItems.filter(
+    (lite) => !enrichedAnalyzed.some((item) => isSameComplex(item, lite)),
+  );
+
+  const merged = [...enrichedAnalyzed, ...extra];
   merged.sort((a, b) => {
     const byHousehold = householdSortKey(b) - householdSortKey(a);
     if (byHousehold !== 0) return byHousehold;

@@ -55,7 +55,7 @@ import {
   PAGE_STICKY_HEADER,
 } from '../components/analyzePanelFormStyles';
 import R114LiteFloatingPanel from '../components/R114LiteFloatingPanel';
-import { fetchR114LiteComplex } from '../lib/r114LiteApi';
+import { fetchR114LiteComplex, LITE_INITIAL_TRADE_LIMIT } from '../lib/r114LiteApi';
 import { buildLiteCardDisplay } from '../lib/r114LiteCardDisplay';
 import {
   fetchR114LiteDiscover,
@@ -239,7 +239,7 @@ function HomePageContent() {
       return;
     }
     let cancelled = false;
-    void fetchR114LiteComplex(r114PropId).then((res) => {
+    void fetchR114LiteComplex(r114PropId, { tradeLimit: 0 }).then((res) => {
       if (cancelled || !res.success || !res.data?.complex) return;
       const c = res.data.complex;
       if (c.lat == null || c.lng == null) return;
@@ -498,6 +498,47 @@ function HomePageContent() {
     }
   }, []);
 
+  /** 뒤로가기·bfcache 복귀 시 sessionStorage 좌표로 mapPosition 동기화 */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = sessionStorage.getItem('kakaomap_center');
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as { lat?: number; lng?: number; level?: number };
+      if (!Number.isFinite(parsed.lat) || !Number.isFinite(parsed.lng)) return;
+      setMapPosition({
+        lat: parsed.lat!,
+        lng: parsed.lng!,
+        zoomLevel: parsed.level ?? DEFAULT_MAP_POSITION.zoomLevel,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const prevActivePanelRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevActivePanelRef.current;
+    prevActivePanelRef.current = activePanel;
+    if (prev === 'analyze' && activePanel !== 'analyze') {
+      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    }
+  }, [activePanel, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses]);
+
+  useEffect(() => {
+    const refetchTimeline = () => {
+      if (searchParams.get('panel') === 'analyze') return;
+      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) refetchTimeline();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, [fetchAnalyses, mapPosition, searchParams]);
+
   /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 */
   useEffect(() => {
     if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
@@ -626,8 +667,22 @@ function HomePageContent() {
     router.replace(qs ? `/?${qs}` : '/', { scroll: false });
   }, [router, searchParams, mapPosition, mapCenter]);
 
-  const handleLiteAnalyze = useCallback((r114PropId: string) => {
+  const handleLiteAnalyze = useCallback(async (r114PropId: string) => {
     closeLitePanel();
+    if (litePanelReportId) {
+      router.push(`/analyze/${makeAnalyzeSlug(litePanelReportId)}`);
+      return;
+    }
+    try {
+      const res = await fetchR114LiteComplex(r114PropId, { tradeLimit: 0 });
+      if (res.latestReportId) {
+        const title = res.data?.complex?.title;
+        router.push(`/analyze/${makeAnalyzeSlug(res.latestReportId, title)}`);
+        return;
+      }
+    } catch {
+      /* analyze 패널 fallback */
+    }
     const params = new URLSearchParams(searchParams.toString());
     params.set('panel', 'analyze');
     params.set('category', 'apartment');
@@ -635,7 +690,7 @@ function HomePageContent() {
     params.delete('lite');
     params.delete('liteReport');
     router.push(`/?${params.toString()}`);
-  }, [closeLitePanel, router, searchParams]);
+  }, [closeLitePanel, router, searchParams, litePanelReportId]);
 
   const handleAddApartmentToCompare = useCallback((analysis: Analysis) => {
     const areaRaw = analysis.exclusiveArea ?? analysis.area;
@@ -654,7 +709,7 @@ function HomePageContent() {
   useEffect(() => {
     if (!litePanelPropId) return;
     let cancelled = false;
-    void fetchR114LiteComplex(litePanelPropId).then((res) => {
+    void fetchR114LiteComplex(litePanelPropId, { tradeLimit: 0 }).then((res) => {
       if (cancelled || !res.success || !res.data?.complex) return;
       const { lat, lng } = res.data.complex;
       if (lat != null && lng != null) {

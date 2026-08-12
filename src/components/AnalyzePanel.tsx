@@ -734,14 +734,6 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             </div>
           </div>
 
-          {(prefilledMasterId || prefilledR114PropId) && (
-            <div className="mb-3 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-800 font-semibold leading-relaxed">
-              r114 단지 연결됨
-              {prefilledPlaceName ? ` · ${prefilledPlaceName}` : ''}
-              {prefilledR114PropId ? ` (${prefilledR114PropId})` : prefilledRtmsAptSeq ? ` (${prefilledRtmsAptSeq})` : ''}
-            </div>
-          )}
-
           <div className="relative">
             <div className={PANEL_INPUT_WRAP}>
               <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
