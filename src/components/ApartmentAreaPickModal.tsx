@@ -200,7 +200,7 @@ export default function ApartmentAreaPickModal({
             </h2>
             <p className="text-xs text-slate-500 mt-1">
               {pending?.r114PropId
-                ? '공급 · 전용 · 평형 (전용㎡ 기준 시세)'
+                ? '공급 · 전용 · 평형 (r114 기준)'
                 : '최근 6개월 실거래 기준 전용면적'}
             </p>
           </div>

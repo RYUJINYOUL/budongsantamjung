@@ -189,14 +189,14 @@ function pyeongToAreaOption(
   };
 }
 
-/** Lite 단지 — r114_pyeong + 평형별 6mo stats */
+/** Lite 단지 — r114_pyeong (Lite 패널 meta와 동일, tradeLimit 0) */
 export async function fetchR114LiteAreaOptions(r114PropId: string): Promise<{
   complexName: string | null;
   rtmsAptSeq: string | null;
   areas: ApartmentAreaOption[];
   error?: string | null;
 }> {
-  const res = await fetchR114LiteComplex(r114PropId, { tradeLimit: 1 });
+  const res = await fetchR114LiteComplex(r114PropId, { tradeLimit: 0 });
   if (!res.success || !res.data) {
     return { complexName: null, rtmsAptSeq: null, areas: [], error: res.message || '단지 정보를 불러오지 못했습니다.' };
   }
