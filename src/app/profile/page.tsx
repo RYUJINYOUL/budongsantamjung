@@ -10,7 +10,7 @@ import SideNav from '../../components/SideNav';
 import { makeAnalyzeSlug } from '../../lib/slug';
 import PropertyCard from '../../components/PropertyCard';
 
-type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries';
+type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home';
 
 interface AnalysisCard {
     analysisId?: string;
@@ -126,7 +126,7 @@ function ProfilePageContent() {
     const [authLoading, setAuthLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<Tab>(() => {
         const queryTab = searchParams.get('tab') as Tab;
-        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries'].includes(queryTab)) {
+        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries', 'my-home'].includes(queryTab)) {
             return queryTab;
         }
         return 'favorites';
@@ -134,8 +134,11 @@ function ProfilePageContent() {
 
     useEffect(() => {
         const queryTab = searchParams.get('tab') as Tab;
-        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries'].includes(queryTab)) {
+        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries', 'my-home'].includes(queryTab)) {
             setActiveTab(queryTab);
+            if (queryTab === 'my-home') {
+                setShowMobileHistory(true);
+            }
         }
     }, [searchParams]);
     const [showMobileHistory, setShowMobileHistory] = useState(false);
@@ -524,9 +527,10 @@ function ProfilePageContent() {
                         <div className="min-w-0 -mx-4 px-4 lg:-mx-6 lg:px-6 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                             <div className="flex flex-nowrap border-b border-slate-100 w-max min-w-full">
                                 {([
-                                    { key: 'favorites', label: '찜한 매물' },
-                                    { key: 'my-analyses', label: '내 분석 내역' },
-                                    { key: 'my-discoveries', label: '발견 기록' },
+                                    { key: 'my-home' as Tab, label: '우리집' },
+                                    { key: 'favorites' as Tab, label: '찜한 매물' },
+                                    { key: 'my-analyses' as Tab, label: '내 분석 내역' },
+                                    { key: 'my-discoveries' as Tab, label: '발견 기록' },
                                 ] as { key: Tab; label: string }[]).map(tab => (
                                     <button
                                         key={tab.key}
@@ -545,7 +549,25 @@ function ProfilePageContent() {
 
                     {/* 리스트 본문 */}
                     <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 lg:px-6 py-5 pb-24 min-w-0">
-                        
+
+                        {/* 우리집 · 주간 리포트 */}
+                        {activeTab === 'my-home' && (
+                            <div className="space-y-4">
+                                <div className="text-center py-8 bg-white border border-slate-200/80 rounded-2xl shadow-sm px-5">
+                                    <p className="text-slate-900 font-bold text-sm mb-2">우리집 · 주간 AI 리포트</p>
+                                    <p className="text-[11px] text-slate-500 font-semibold leading-relaxed max-w-xs mx-auto mb-4">
+                                        우리집 등록, 비교 단지, 주간 리포트는 우리집 페이지에서 관리합니다.
+                                    </p>
+                                    <Link
+                                        href="/my-home"
+                                        className="inline-block px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-extrabold rounded-xl transition-all shadow-sm"
+                                    >
+                                        우리집 페이지 열기
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+
                         {/* 찜한 매물 */}
                         {activeTab === 'favorites' && (
                             <div>

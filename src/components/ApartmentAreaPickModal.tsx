@@ -31,6 +31,15 @@ type Props = {
   onClose: () => void;
   onAdded?: (message: string) => void;
   onError?: (message: string) => void;
+  /** 비교함 대신 선택만 (우리집 등록 등) */
+  onPick?: (item: {
+    masterId?: string;
+    rtmsAptSeq?: string;
+    r114PropId?: string;
+    exclusiveAreaM2: number;
+    complexName?: string;
+  }) => void;
+  pickLabel?: string;
 };
 
 export default function ApartmentAreaPickModal({
@@ -38,6 +47,8 @@ export default function ApartmentAreaPickModal({
   onClose,
   onAdded,
   onError,
+  onPick,
+  pickLabel = '비교함 · 평형 선택',
 }: Props) {
   const open = pending != null;
   const [loading, setLoading] = useState(false);
@@ -147,9 +158,15 @@ export default function ApartmentAreaPickModal({
       return;
     }
 
+    if (onPick) {
+      onPick(meta);
+      onClose();
+      return;
+    }
+
     const result = addToCompareBasket(meta);
     if (result.ok) {
-      onAdded?.('비교함에 담았습니다.');
+      onAdded?.('비교함에 추가되었습니다.');
       onClose();
     } else {
       onError?.('error' in result ? result.error : '오류');
@@ -193,7 +210,7 @@ export default function ApartmentAreaPickModal({
         <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-100">
           <div className="min-w-0">
             <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">
-              {isEditMode ? '비교함 · 평형 변경' : '비교함 · 평형 선택'}
+              {isEditMode ? '비교함 · 평형 변경' : pickLabel}
             </p>
             <h2 id="area-pick-title" className="text-base font-black text-slate-900 truncate">
               {titleName}
@@ -302,7 +319,7 @@ export default function ApartmentAreaPickModal({
             onClick={handleConfirm}
             className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:pointer-events-none text-slate-900 font-black text-sm"
           >
-            {isEditMode ? '적용' : '비교함에 담기'}
+            {isEditMode ? '적용' : onPick ? '선택 완료' : '비교함에 담기'}
           </button>
         </div>
       </div>

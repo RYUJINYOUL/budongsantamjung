@@ -32,6 +32,8 @@ export default function WorkplacePlaceSearch({
   const [loading, setLoading] = useState(false);
   const seqRef = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  /** 부모에서 value를 동기화할 때(새로고침·Firestore) 자동 검색하지 않음 */
+  const userEditedRef = useRef(false);
   const isLight = theme === 'light';
 
   useEffect(() => {
@@ -41,6 +43,12 @@ export default function WorkplacePlaceSearch({
   useEffect(() => {
     const q = value.trim();
     if (q.length < 2) {
+      setSuggestions([]);
+      setOpen(false);
+      if (!q) userEditedRef.current = false;
+      return;
+    }
+    if (!userEditedRef.current) {
       setSuggestions([]);
       setOpen(false);
       return;
@@ -79,6 +87,7 @@ export default function WorkplacePlaceSearch({
       const label = s.place_name || s.road_address_name || s.address_name;
       onChange(label);
       onSelect({ label, lat: coords.lat, lng: coords.lng });
+      userEditedRef.current = false;
       setOpen(false);
       setSuggestions([]);
     },
@@ -112,8 +121,13 @@ export default function WorkplacePlaceSearch({
         type="text"
         placeholder={placeholder}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        onChange={(e) => {
+          userEditedRef.current = true;
+          onChange(e.target.value);
+        }}
+        onFocus={() => {
+          if (userEditedRef.current && suggestions.length > 0) setOpen(true);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();

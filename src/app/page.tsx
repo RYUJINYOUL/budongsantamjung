@@ -47,7 +47,7 @@ import {
   type MapPosition,
 } from '../lib/timelineGeo';
 import { parseParcelPolygonFromVworldResponse } from '../lib/parcelGeometry';
-import { reverseGeocodeKakao } from '../lib/geolocation';
+import { getCurrentPosition, reverseGeocodeKakao } from '../lib/geolocation';
 import {
   PANEL_INPUT,
   PANEL_INPUT_WRAP,
@@ -55,6 +55,7 @@ import {
   PAGE_STICKY_HEADER,
 } from '../components/analyzePanelFormStyles';
 import R114LiteFloatingPanel from '../components/R114LiteFloatingPanel';
+import MyHomeHeaderButton from '../components/MyHomeHeaderButton';
 import { fetchR114LiteComplex, LITE_INITIAL_TRADE_LIMIT } from '../lib/r114LiteApi';
 import { buildLiteCardDisplay } from '../lib/r114LiteCardDisplay';
 import {
@@ -112,6 +113,47 @@ function isApartmentAnalysis(a: Pick<Analysis, 'category'>) {
   return c.includes('apartment') || c.includes('아파트');
 }
 
+/** 지도·목록 탭 카테고리 — AnalyzePanel용 영문 category와 분리 */
+function normalizeMapCategory(raw: string | null | undefined): string {
+  const c = (raw ?? '').trim().toLowerCase();
+  if (!c || c === 'all' || c === '전체') return 'all';
+  if (c.includes('apartment') || c === '아파트') return '아파트';
+  if (c.includes('land') || c === '토지') return '토지';
+  if (c.includes('house') || c === '주택') return '주택';
+  if (c.includes('store') || c === '상가') return '상가';
+  if (c.includes('building') || c === '빌딩') return '빌딩';
+  return 'all';
+}
+
+function isMapHomePanel(panel: string | null): boolean {
+  return panel !== 'analyze' && panel !== 'ranking' && panel !== 'compare';
+}
+
+function shouldOpenLitePanelOnMapClick(analysis: Analysis): boolean {
+  return isApartmentAnalysis(analysis) && !!analysis.r114PropId;
+}
+
+function litePanelOptionsFromAnalysis(analysis: Analysis) {
+  const reportId = analysis.latestReportId
+    ?? (analysis.hasReport !== false && !String(analysis.id).startsWith('lite-')
+      ? analysis.id
+      : undefined);
+  return {
+    latestReportId: reportId,
+    propertyTitle: analysis.bldNm || analysis.propertyTitle,
+  };
+}
+
+const HOME_GEO_ZOOM = 2;
+
+type GeoLoadHint = 'user' | 'seoul' | null;
+
+function listGeoLoadingMessage(geoReady: boolean, geoLoadHint: GeoLoadHint): string {
+  if (geoLoadHint === 'seoul') return '서울 기준으로 보여 드립니다.';
+  if (!geoReady || geoLoadHint === 'user') return '유저님 위치의 리포트 불러오는 중 입니다.';
+  return '불러오는 중…';
+}
+
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -129,6 +171,9 @@ function HomePageContent() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
+  const [geoReady, setGeoReady] = useState(false);
+  const [geoLoadHint, setGeoLoadHint] = useState<GeoLoadHint>(null);
+  const geoBootstrapGenRef = useRef(0);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasTimelineLoadedRef = useRef(false);
   /** URL lat/lng → mapCenter 1회만 (lite 닫을 때 stale 서울 좌표 재적용 방지) */
@@ -267,6 +312,7 @@ function HomePageContent() {
       : null);
 
   const [compareToast, setCompareToast] = useState<string | null>(null);
+  const [liteCompareNotice, setLiteCompareNotice] = useState<string | null>(null);
   const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
 
   useEffect(() => {
@@ -349,6 +395,80 @@ function HomePageContent() {
     return () => { window.removeEventListener('resize', checkMobile); unsubscribe(); };
   }, []);
 
+  const applyHomeGeo = useCallback((lat: number, lng: number, zoomLevel: number) => {
+    setMapCenter({ lat, lng });
+    setMapPosition({ lat, lng, zoomLevel });
+    setGeoReady(true);
+  }, []);
+
+  /** 진입 시 현재 위치(GPS) — 거부·실패 시 서울. URL lat/lng 공유 링크는 우선 */
+  useEffect(() => {
+    const gen = ++geoBootstrapGenRef.current;
+    let cancelled = false;
+
+    const finish = (lat: number, lng: number, zoomLevel: number, hint: GeoLoadHint = null) => {
+      if (cancelled || geoBootstrapGenRef.current !== gen) return;
+      setGeoLoadHint(hint);
+      applyHomeGeo(lat, lng, zoomLevel);
+    };
+
+    const panel = searchParams.get('panel');
+    const latStr = searchParams.get('lat');
+    const lngStr = searchParams.get('lng');
+    const urlLat = latStr != null ? parseFloat(latStr) : NaN;
+    const urlLng = lngStr != null ? parseFloat(lngStr) : NaN;
+    if (Number.isFinite(urlLat) && Number.isFinite(urlLng)) {
+      finish(urlLat, urlLng, HOME_GEO_ZOOM, null);
+      return () => { cancelled = true; };
+    }
+
+    if (!isMapHomePanel(panel)) {
+      finish(
+        DEFAULT_MAP_POSITION.lat,
+        DEFAULT_MAP_POSITION.lng,
+        DEFAULT_MAP_POSITION.zoomLevel,
+        null,
+      );
+      return () => { cancelled = true; };
+    }
+
+    setGeoLoadHint('user');
+
+    const fallbackTimer = window.setTimeout(() => {
+      finish(
+        DEFAULT_MAP_POSITION.lat,
+        DEFAULT_MAP_POSITION.lng,
+        DEFAULT_MAP_POSITION.zoomLevel,
+        'seoul',
+      );
+    }, 12000);
+
+    void getCurrentPosition()
+      .then(({ lat, lng }) => {
+        window.clearTimeout(fallbackTimer);
+        finish(lat, lng, HOME_GEO_ZOOM, 'user');
+      })
+      .catch(() => {
+        window.clearTimeout(fallbackTimer);
+        finish(
+          DEFAULT_MAP_POSITION.lat,
+          DEFAULT_MAP_POSITION.lng,
+          DEFAULT_MAP_POSITION.zoomLevel,
+          'seoul',
+        );
+      });
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [searchParams, applyHomeGeo]);
+
+  useEffect(() => {
+    if (!loading) setGeoLoadHint(null);
+  }, [loading]);
+
+  /** URL·탭·카테고리 동기화 + bootstrap 이후 lat/lng 변경 반영 */
   useEffect(() => {
     const tab = searchParams.get('tab');
     const lat = searchParams.get('lat');
@@ -364,15 +484,23 @@ function HomePageContent() {
       setShowMobileMap(true);
     }
 
-    if (lat && lng) {
+    if (lat && lng && geoReady) {
       const geoKey = `${lat},${lng}`;
       if (appliedUrlGeoRef.current !== geoKey) {
         appliedUrlGeoRef.current = geoKey;
-        setMapCenter({ lat: parseFloat(lat), lng: parseFloat(lng) });
+        const parsedLat = parseFloat(lat);
+        const parsedLng = parseFloat(lng);
+        if (Number.isFinite(parsedLat) && Number.isFinite(parsedLng)) {
+          setMapCenter({ lat: parsedLat, lng: parsedLng });
+          setMapPosition((prev) => ({ lat: parsedLat, lng: parsedLng, zoomLevel: prev.zoomLevel }));
+        }
       }
     }
-    if (category) setSelectedCategory(category);
-  }, [searchParams]);
+
+    if (isMapHomePanel(panel)) {
+      setSelectedCategory(normalizeMapCategory(category));
+    }
+  }, [searchParams, geoReady]);
 
   // 구형 URL 하위 호환 리다이렉트 (?panel=ranking -> /ranking)
   useEffect(() => {
@@ -498,49 +626,20 @@ function HomePageContent() {
     }
   }, []);
 
-  /** 뒤로가기·bfcache 복귀 시 sessionStorage 좌표로 mapPosition 동기화 */
+  /** 뒤로가기·bfcache 복귀 — 현재 mapPosition 기준 재조회 (저장 좌표 복원 없음) */
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = sessionStorage.getItem('kakaomap_center');
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as { lat?: number; lng?: number; level?: number };
-      if (!Number.isFinite(parsed.lat) || !Number.isFinite(parsed.lng)) return;
-      setMapPosition({
-        lat: parsed.lat!,
-        lng: parsed.lng!,
-        zoomLevel: parsed.level ?? DEFAULT_MAP_POSITION.zoomLevel,
-      });
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const prevActivePanelRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prev = prevActivePanelRef.current;
-    prevActivePanelRef.current = activePanel;
-    if (prev === 'analyze' && activePanel !== 'analyze') {
-      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
-      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
-    }
-  }, [activePanel, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses]);
-
-  useEffect(() => {
-    const refetchTimeline = () => {
-      if (searchParams.get('panel') === 'analyze') return;
-      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
-      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
-    };
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) refetchTimeline();
+      if (!e.persisted || !geoReady) return;
+      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
     };
     window.addEventListener('pageshow', onPageShow);
     return () => window.removeEventListener('pageshow', onPageShow);
-  }, [fetchAnalyses, mapPosition, searchParams]);
+  }, [fetchAnalyses, mapPosition, geoReady]);
 
   /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 */
   useEffect(() => {
+    if (!geoReady) return;
     if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     const debounceMs =
       useServerApartmentDiscoverForCategory(selectedCategory) ? 600 : 300;
@@ -551,10 +650,10 @@ function HomePageContent() {
     return () => {
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [mapPosition, selectedCategory, fetchAnalyses]);
+  }, [mapPosition, selectedCategory, fetchAnalyses, geoReady]);
 
   useEffect(() => {
-    if (!apartmentTabDiscover) return;
+    if (!geoReady || !apartmentTabDiscover) return;
     if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     fetchDebounceRef.current = setTimeout(() => {
       const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
@@ -563,9 +662,10 @@ function HomePageContent() {
     return () => {
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [discoverFilters, selectedCategory, mapPosition, fetchAnalyses]);
+  }, [discoverFilters, selectedCategory, mapPosition, fetchAnalyses, apartmentTabDiscover, geoReady]);
 
   useEffect(() => {
+    if (!geoReady) return;
     if (prevSelectedCategoryRef.current === selectedCategory) return;
     prevSelectedCategoryRef.current = selectedCategory;
     const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
@@ -573,7 +673,20 @@ function HomePageContent() {
     if (selectedCategory === '아파트' || selectedCategory === 'all') {
       setAptAreaCenterM2({});
     }
-  }, [selectedCategory, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses]);
+  }, [selectedCategory, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses, geoReady]);
+
+  const prevActivePanelRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevActivePanelRef.current;
+    prevActivePanelRef.current = activePanel;
+    if (!geoReady) return;
+    if (prev === 'analyze' && activePanel !== 'analyze') {
+      setSelectedCategory('all');
+      selectedCategoryRef.current = 'all';
+      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
+      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    }
+  }, [activePanel, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses, geoReady]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -652,6 +765,7 @@ function HomePageContent() {
   }, [router, searchParams]);
 
   const closeLitePanel = useCallback(() => {
+    setLiteCompareNotice(null);
     const params = new URLSearchParams(searchParams.toString());
     params.delete('lite');
     params.delete('liteReport');
@@ -706,6 +820,10 @@ function HomePageContent() {
     });
   }, []);
 
+  const handleLiteCompare = useCallback((payload: ApartmentComparePickPayload) => {
+    setComparePickPending(payload);
+  }, []);
+
   useEffect(() => {
     if (!litePanelPropId) return;
     let cancelled = false;
@@ -727,15 +845,8 @@ function HomePageContent() {
       : null;
 
     /** 아파트 — r114_prop_id 있으면 Lite 패널 (분석완료·미분석 공통) */
-    if (isApartment && analysis.r114PropId) {
-      const reportId = analysis.latestReportId
-        ?? (analysis.hasReport !== false && !String(analysis.id).startsWith('lite-')
-          ? analysis.id
-          : undefined);
-      openLitePanel(analysis.r114PropId, coords, {
-        latestReportId: reportId,
-        propertyTitle: analysis.bldNm || analysis.propertyTitle,
-      });
+    if (shouldOpenLitePanelOnMapClick(analysis)) {
+      openLitePanel(analysis.r114PropId!, coords, litePanelOptionsFromAnalysis(analysis));
       return;
     }
 
@@ -778,6 +889,19 @@ function HomePageContent() {
     setCompareToast(message);
     window.setTimeout(() => setCompareToast(null), 2800);
   }, []);
+
+  const handleCompareBasketFeedback = useCallback((message: string) => {
+    if (litePanelPropId) {
+      setLiteCompareNotice(message);
+      return;
+    }
+    showCompareToast(message);
+  }, [litePanelPropId, showCompareToast]);
+
+  const handleLiteCompareNoticeTap = useCallback(() => {
+    setLiteCompareNotice(null);
+    closeLitePanel();
+  }, [closeLitePanel]);
 
   const categoryMappings: Record<string, string[]> = {
     '아파트': ['apartment', '아파트'],
@@ -1249,22 +1373,23 @@ function HomePageContent() {
 
           {/* 헤더 */}
           <header className={PAGE_STICKY_HEADER}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 lg:hidden" />
-                <h1 className={PAGE_HEADER_TITLE}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-9 shrink-0 lg:hidden" />
+                <h1 className={`${PAGE_HEADER_TITLE} shrink-0`}>
                   {activePanel === 'analyze' ? '매물분석' : activePanel === 'ranking' ? '부동산랭킹' : activePanel === 'compare' ? '지역 브리핑' : '부동산탐정'}
                 </h1>
               </div>
-              {(activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') ? (
-                <a href="/" className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95">
-                  지도
-                </a>
-              ) : (
-                <a href="/?panel=analyze" className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95">
-                  분석
-                </a>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
+                  <MyHomeHeaderButton />
+                )}
+                {(activePanel === 'analyze' || activePanel === 'ranking' || activePanel === 'compare') && (
+                  <a href="/" className="lg:hidden bg-emerald-400 hover:bg-emerald-500 text-white px-3 py-1 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all active:scale-95">
+                    지도
+                  </a>
+                )}
+              </div>
             </div>
           </header>
 
@@ -1440,7 +1565,9 @@ function HomePageContent() {
                     <div className="absolute inset-0 rounded-full border-2 border-emerald-100" />
                     <div className="absolute inset-0 rounded-full border-t-2 border-emerald-500 animate-spin" />
                   </div>
-                  <p className="mono text-xs font-bold text-emerald-600 tracking-widest">LOADING...</p>
+                  <p className="text-xs font-bold text-emerald-700 text-center leading-relaxed px-4">
+                    {listGeoLoadingMessage(geoReady, geoLoadHint)}
+                  </p>
                 </div>
               ) : error ? (
                 <div className="text-center py-16">
@@ -1519,15 +1646,27 @@ function HomePageContent() {
           <div className="h-full flex flex-col w-full">
             <div className="flex-1 relative">
 
+              {isMapHomePanel(activePanel) && (loading || !geoReady) && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 lg:top-4 lg:translate-y-0 z-[25] max-w-[min(100%,20rem)] pointer-events-none px-4">
+                  <p className="rounded-2xl border border-emerald-200/80 bg-white/95 backdrop-blur-md px-4 py-2.5 text-center text-[12px] font-bold text-emerald-800 shadow-lg shadow-emerald-500/10 leading-snug">
+                    {listGeoLoadingMessage(geoReady, geoLoadHint ?? (!geoReady ? 'user' : null))}
+                  </p>
+                </div>
+              )}
+
               {/* Lite 단지 플로팅 패널 — 지도 위에 떠 있음 (사이드바·지도 레이아웃 유지) */}
               {litePanelPropId && activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
                 <R114LiteFloatingPanel
+                  key={litePanelPropId}
                   r114PropId={litePanelPropId}
                   initialDealMode={discoverFilters.dealMode}
                   latestReportId={litePanelReportId}
                   reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
                   onClose={closeLitePanel}
                   onAnalyzeClick={handleLiteAnalyze}
+                  onCompareClick={handleLiteCompare}
+                  compareNotice={liteCompareNotice}
+                  onCompareNoticeTap={handleLiteCompareNoticeTap}
                 />
               )}
 
@@ -1565,6 +1704,7 @@ function HomePageContent() {
                   selectedProperty={selectedMapProperty}
                   navigationZoomLevel={2}
                   initialCenter={mapCenter}
+                  restoreSavedCenter={false}
                   onPropertySelect={property => {
                     if (activePanel === 'ranking') {
                       if (String(property.id).startsWith('gosi-')) {
@@ -1587,7 +1727,19 @@ function HomePageContent() {
                       return;
                     }
                     const analysis = analyses.find((a) => a.id === property.id);
-                    if (analysis) setSelectedProperty(analysis);
+                    if (!analysis) return;
+                    if (shouldOpenLitePanelOnMapClick(analysis)) {
+                      setSelectedProperty(null);
+                      openLitePanel(
+                        analysis.r114PropId!,
+                        analysis.lat != null && analysis.lng != null
+                          ? { lat: analysis.lat, lng: analysis.lng }
+                          : null,
+                        litePanelOptionsFromAnalysis(analysis),
+                      );
+                      return;
+                    }
+                    setSelectedProperty(analysis);
                   }}
                   onBoundsChanged={bounds => setMapBounds(bounds)}
                   onMapIdle={pos => setMapPosition(pos)}
@@ -1605,7 +1757,7 @@ function HomePageContent() {
                   <div className="pointer-events-auto">
                     <ApartmentCompareBasketBar anchor="inline" />
                   </div>
-                  {selectedProperty && (() => {
+                  {selectedProperty && !shouldOpenLitePanelOnMapClick(selectedProperty) && (() => {
                     const { data, aptDisplay } = buildPropertyCardBundle(selectedProperty);
                     return (
                       <div className="w-full pointer-events-auto shadow-xl rounded-2xl">
@@ -1833,8 +1985,8 @@ function HomePageContent() {
       <ApartmentAreaPickModal
         pending={comparePickPending}
         onClose={() => setComparePickPending(null)}
-        onAdded={showCompareToast}
-        onError={showCompareToast}
+        onAdded={handleCompareBasketFeedback}
+        onError={handleCompareBasketFeedback}
       />
       {compareToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl shadow-lg border border-white/10">

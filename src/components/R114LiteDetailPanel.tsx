@@ -37,6 +37,9 @@ import {
   moveInAgeYears,
 } from '../lib/r114LiteTrades';
 import R114LiteTradeChart from './R114LiteTradeChart';
+import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
+import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
+import { useR114LiteContext } from '../hooks/useR114LiteContext';
 
 const TRADE_TABS: { key: R114TradeType; label: string }[] = [
   { key: 'sale', label: '매매' },
@@ -45,6 +48,53 @@ const TRADE_TABS: { key: R114TradeType; label: string }[] = [
 ];
 
 const TRADE_PREVIEW = 5;
+
+export type R114LitePanelActions = {
+  analyzeLabel: string;
+  analyzeHref?: string;
+  onAnalyze?: () => void;
+  onCompare: () => void;
+};
+
+const outlineActionBtnClass = (theme: Theme) =>
+  theme === 'light'
+    ? 'flex-1 py-2.5 rounded-xl border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 font-bold text-sm transition-colors text-center'
+    : 'flex-1 py-2.5 rounded-xl border-2 border-emerald-500/70 text-emerald-400 hover:bg-emerald-500/10 font-bold text-sm transition-colors text-center';
+
+export function R114LitePanelActionButtons({
+  actions,
+  theme = 'light',
+  className = '',
+}: {
+  actions: R114LitePanelActions;
+  theme?: Theme;
+  className?: string;
+}) {
+  const outlineBtn = outlineActionBtnClass(theme);
+  return (
+    <div className={`flex min-w-0 flex-1 gap-2 ${className}`}>
+      {actions.analyzeHref ? (
+        <Link href={actions.analyzeHref} className={outlineBtn}>
+          {actions.analyzeLabel}
+        </Link>
+      ) : (
+        <button type="button" onClick={actions.onAnalyze} className={outlineBtn}>
+          {actions.analyzeLabel}
+        </button>
+      )}
+      <button type="button" onClick={actions.onCompare} className={outlineBtn}>
+        비교하기
+      </button>
+    </div>
+  );
+}
+
+export type R114LiteComplexChrome = {
+  title: string;
+  subtitle: string;
+  address: string;
+  meta: string;
+};
 
 function emptyTrades(): Record<R114TradeType, R114LiteTrade[]> {
   return { sale: [], jeonse: [], wolse: [] };
@@ -225,18 +275,25 @@ export default function R114LiteDetailPanel({
   compactHeader = false,
   initialDealMode = 'sale',
   onAnalyzeClick,
+  onCompareClick,
   latestReportId,
   reportTitle,
   onComplexLoaded,
+  floatingChrome = false,
+  onFloatingActionsChange,
 }: {
   r114PropId: string;
   theme?: Theme;
   compactHeader?: boolean;
   initialDealMode?: ApartmentDealMode;
   onAnalyzeClick?: () => void;
+  onCompareClick?: (payload: ApartmentComparePickPayload) => void;
   latestReportId?: string | null;
   reportTitle?: string | null;
-  onComplexLoaded?: (complex: { title: string; subtitle: string }) => void;
+  onComplexLoaded?: (complex: R114LiteComplexChrome, propId: string) => void;
+  /** FloatingPanel 모바일 — 액션은 패널 chrome, 본문 footer 숨김 */
+  floatingChrome?: boolean;
+  onFloatingActionsChange?: (actions: R114LitePanelActions | null) => void;
 }) {
   const t = themeClasses(theme);
   const [data, setData] = useState<R114LiteDetailResponse | null>(null);
@@ -247,12 +304,16 @@ export default function R114LiteDetailPanel({
   const [selectedPyeong, setSelectedPyeong] = useState<number | null>(null);
   const [tradeTab, setTradeTab] = useState<R114TradeType>('sale');
   const [tradeVisibleCount, setTradeVisibleCount] = useState(TRADE_PREVIEW);
+  const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (requestPropId: string, cancelled: () => boolean) => {
     setLoading(true);
     setError(null);
+    setData(null);
+    setTradePages(emptyTrades());
     try {
-      const res = await fetchR114LiteComplexWithTrades(r114PropId);
+      const res = await fetchR114LiteComplexWithTrades(requestPropId);
+      if (cancelled()) return;
       if (!res.success || !res.data) {
         setError(res.message || '단지 정보를 불러오지 못했습니다.');
         setData(null);
@@ -264,8 +325,9 @@ export default function R114LiteDetailPanel({
       const c = res.data.complex;
       const moveInLabel = formatMoveIn(c.moveIn);
       const age = moveInAgeYears(c.moveIn);
+      const addressLine =
+        c.address || `${c.city || ''} ${c.gu || ''} ${c.dong || ''}`.trim();
       const metaParts = [
-        [c.gu, c.dong].filter(Boolean).join(' '),
         c.householdCount != null ? `${c.householdCount.toLocaleString()}세대` : null,
         moveInLabel
           ? age != null
@@ -273,23 +335,29 @@ export default function R114LiteDetailPanel({
             : moveInLabel
           : null,
       ].filter(Boolean);
+      const metaLine = metaParts.join(' · ');
       onComplexLoaded?.({
         title: c.title,
-        subtitle: metaParts.length > 0 ? metaParts.join(' · ') : (c.address || ''),
-      });
+        subtitle: metaLine || addressLine,
+        address: addressLine,
+        meta: metaLine,
+      }, requestPropId);
     } catch {
+      if (cancelled()) return;
       setError('네트워크 오류가 발생했습니다.');
       setData(null);
     } finally {
-      setLoading(false);
+      if (!cancelled()) setLoading(false);
     }
-  }, [r114PropId, onComplexLoaded]);
+  }, [onComplexLoaded]);
 
   useEffect(() => {
     setSelectedPyeong(null);
     setTradeTab(initialDealMode);
     setTradeVisibleCount(TRADE_PREVIEW);
-    void load();
+    let cancelled = false;
+    void load(r114PropId, () => cancelled);
+    return () => { cancelled = true; };
   }, [r114PropId, initialDealMode, load]);
 
   useEffect(() => {
@@ -297,6 +365,7 @@ export default function R114LiteDetailPanel({
   }, [selectedPyeong, tradeTab]);
 
   const complex = data?.data?.complex;
+  const contextState = useR114LiteContext(r114PropId, complex?.lat, complex?.lng);
   const pyeongTypes = data?.data?.pyeongTypes ?? [];
   const pyeongAreaStats = data?.data?.pyeongAreaStats ?? [];
   const stats = data?.data?.stats;
@@ -469,6 +538,67 @@ export default function R114LiteDetailPanel({
     r114PropId,
   ]);
 
+  const comparePayload = useMemo<ApartmentComparePickPayload | null>(() => {
+    if (!complex) return null;
+    const pyeongExcl = selectedPyeongType ? pyeongExclusiveCenterM2(selectedPyeongType) : null;
+    const suggestedAreaM2 = activeCardStats.exclusiveAreaM2 ?? pyeongExcl;
+    return {
+      r114PropId,
+      complexName: complex.title,
+      suggestedAreaM2: suggestedAreaM2 != null && Number.isFinite(suggestedAreaM2) ? suggestedAreaM2 : null,
+    };
+  }, [complex, selectedPyeongType, activeCardStats.exclusiveAreaM2, r114PropId]);
+
+  const handleCompareClick = useCallback(() => {
+    if (!comparePayload) return;
+    if (onCompareClick) {
+      onCompareClick(comparePayload);
+      return;
+    }
+    setComparePickPending(comparePayload);
+  }, [comparePayload, onCompareClick]);
+
+  const floatingActions = useMemo<R114LitePanelActions | null>(() => {
+    if (!complex || !comparePayload) return null;
+    if (resolvedReportId) {
+      return {
+        analyzeLabel: 'AI 리포트',
+        analyzeHref: `/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex.title)}`,
+        onCompare: handleCompareClick,
+      };
+    }
+    if (onAnalyzeClick) {
+      return {
+        analyzeLabel: 'AI 분석',
+        onAnalyze: onAnalyzeClick,
+        onCompare: handleCompareClick,
+      };
+    }
+    return {
+      analyzeLabel: 'AI 분석',
+      analyzeHref: `/?panel=analyze&r114PropId=${encodeURIComponent(r114PropId)}`,
+      onCompare: handleCompareClick,
+    };
+  }, [
+    complex,
+    comparePayload,
+    resolvedReportId,
+    reportTitle,
+    r114PropId,
+    onAnalyzeClick,
+    handleCompareClick,
+  ]);
+
+  useEffect(() => {
+    if (!floatingChrome || !onFloatingActionsChange) return;
+    if (loading || error || !floatingActions) {
+      onFloatingActionsChange(null);
+      return;
+    }
+    onFloatingActionsChange(floatingActions);
+    return () => onFloatingActionsChange(null);
+  }, [floatingChrome, onFloatingActionsChange, loading, error, floatingActions]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -485,8 +615,35 @@ export default function R114LiteDetailPanel({
     );
   }
 
+  const outlineBtn = outlineActionBtnClass(theme);
+
+  const actionButton = resolvedReportId ? (
+    <Link href={`/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex.title)}`} className={outlineBtn}>
+      리포트 보기
+    </Link>
+  ) : onAnalyzeClick ? (
+    <button type="button" onClick={onAnalyzeClick} className={outlineBtn}>
+      AI 분석
+    </button>
+  ) : (
+    <Link href={`/?panel=analyze&r114PropId=${encodeURIComponent(r114PropId)}`} className={outlineBtn}>
+      AI 분석
+    </Link>
+  );
+
+  const compareButtonClass = outlineBtn;
+
+  const stickyFooterClass =
+    theme === 'light'
+      ? 'border-slate-200/90 bg-white/95 supports-[backdrop-filter]:bg-white/90'
+      : 'border-white/10 bg-[#0a0a0c]/95 supports-[backdrop-filter]:bg-[#0a0a0c]/90';
+
+  const contentBottomPad = floatingChrome
+    ? 'pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-24'
+    : 'pb-24';
+
   return (
-    <div className={`${t.text} pb-6`}>
+    <div className={`${t.text} flex min-h-full flex-col`}>
       {!compactHeader && (
         <div className="px-4 pt-1 pb-3">
           <h1 className="font-bold text-lg leading-tight">{complex.title}</h1>
@@ -499,7 +656,7 @@ export default function R114LiteDetailPanel({
         </div>
       )}
 
-      <div className="px-4 space-y-5">
+      <div className={`flex-1 px-4 space-y-5 ${contentBottomPad}`}>
         <div className="flex flex-wrap gap-1.5">
           {modeSparse && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${t.badgeSparse}`}>
@@ -646,6 +803,8 @@ export default function R114LiteDetailPanel({
           )}
         </section>
 
+        <R114LiteSchoolCard ctx={contextState} theme={theme} />
+
         <section className={`rounded-2xl p-3.5 ${t.section}`}>
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="w-4 h-4 text-emerald-500" />
@@ -658,30 +817,26 @@ export default function R114LiteDetailPanel({
           <InfoRow theme={theme} label="난방" value={complex.heatingSystem} />
         </section>
 
-        {resolvedReportId ? (
-          <Link
-            href={`/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex?.title)}`}
-            className="block w-full text-center py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm transition-colors"
-          >
-            AI 분석 리포트 보기
-          </Link>
-        ) : onAnalyzeClick ? (
-          <button
-            type="button"
-            onClick={onAnalyzeClick}
-            className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm transition-colors"
-          >
-            분석하기
-          </button>
-        ) : (
-          <Link
-            href={`/?panel=analyze&r114PropId=${encodeURIComponent(r114PropId)}`}
-            className="block w-full text-center py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm transition-colors"
-          >
-            분석하기
-          </Link>
-        )}
+        <R114LiteRegionSection ctx={contextState} theme={theme} />
       </div>
+
+      <div
+        className={`sticky bottom-0 z-10 mt-auto shrink-0 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t backdrop-blur-md shadow-[0_-8px_24px_rgba(0,0,0,0.08)] ${stickyFooterClass} ${floatingChrome ? 'max-lg:hidden' : ''}`}
+      >
+        <div className="flex gap-2">
+          {actionButton}
+          <button type="button" onClick={handleCompareClick} className={compareButtonClass}>
+            비교하기
+          </button>
+        </div>
+      </div>
+
+      {!onCompareClick && (
+        <ApartmentAreaPickModal
+          pending={comparePickPending}
+          onClose={() => setComparePickPending(null)}
+        />
+      )}
     </div>
   );
 }

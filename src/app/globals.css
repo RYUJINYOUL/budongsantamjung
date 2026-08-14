@@ -612,3 +612,10 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
 }
+
+/* 우리집 지도 — 카카오 축척(2km 등) 숨김 */
+.kakao-map--my-home .map_scale,
+.kakao-map--my-home .wrap_mapscale,
+.kakao-map--my-home .control_scale {
+  display: none !important;
+}

@@ -112,3 +112,61 @@ export interface R114LiteDetailResponse {
   hasReport?: boolean;
   message?: string;
 }
+
+export interface R114LiteContextSchool {
+  school_id?: string;
+  school_name?: string;
+  school_level?: string;
+  distance?: number;
+  total_students?: number;
+  student_growth_rate?: number;
+}
+
+export interface R114LiteContextRow {
+  id: string;
+  label: string;
+  value: string;
+  empty?: boolean;
+}
+
+export interface R114LiteContextDetails {
+  schoolDistrict?: { schools?: R114LiteContextSchool[] };
+  academy?: { within1km?: number | null; within2km?: number | null };
+  nearbyInfrastructure?: {
+    radiusKm?: number;
+    items?: Array<{
+      id?: number;
+      name: string;
+      category: string;
+      distanceM?: number | null;
+      walkMin?: number | null;
+    }>;
+  };
+  developmentEvents?: {
+    items?: Array<{ name: string; category: string; distanceM?: number | null; walkMin?: number | null }>;
+    radiusKm?: number;
+  };
+  redevelopment?: {
+    isInZone?: boolean;
+    projects?: Array<{ title: string; stage?: string | null; gosiDate?: string | null }>;
+  };
+  dynamicNews?: {
+    items?: Array<{ title: string; date?: string | null; url?: string | null }>;
+  };
+  population?: {
+    summary?: string;
+    movement?: { netMigration?: number; trend?: string };
+  };
+}
+
+export interface R114LiteContextResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    sigunguCd: string | null;
+    sigunguName: string | null;
+    rows: R114LiteContextRow[];
+    details?: R114LiteContextDetails;
+  };
+  meta?: { source?: string; available?: boolean };
+}

@@ -1,5 +1,6 @@
 import type {
   R114LiteDetailResponse,
+  R114LiteContextResponse,
   R114LitePyeongAreaStats,
   R114LitePyeongType,
   R114LiteTradesPageResponse,
@@ -115,6 +116,13 @@ export async function fetchR114LiteComplexWithTrades(r114PropId: string): Promis
     /* meta만 표시 */
   }
   return meta;
+}
+
+/** 지역·입지 — complex 로드 후 lazy (batch + 좌표) */
+export async function fetchR114LiteContext(r114PropId: string): Promise<R114LiteContextResponse> {
+  const url = `/api/r114/complex/${encodeURIComponent(r114PropId)}/context`;
+  const res = await fetchWithRetry(url, { cache: 'no-store' });
+  return res.json() as Promise<R114LiteContextResponse>;
 }
 
 /** 만원 → "5억 5,000" / "5,500" */

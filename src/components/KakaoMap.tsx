@@ -49,6 +49,14 @@ interface KakaoMapProps {
   fitAllPropertiesOnChange?: boolean;
   /** 검색·내 위치 이동 시 줌 (카카오: 숫자↑=축소). 기본 4 */
   navigationZoomLevel?: number;
+  /** false면 sessionStorage 저장 좌표로 초기화하지 않음 (홈 GPS 진입) */
+  restoreSavedCenter?: boolean;
+  /** true면 줌 아웃 시에도 행정구역 클러스터 대신 매물 마커 유지 (우리집 지도) */
+  disableRegionMarkers?: boolean;
+  /** 우리집 지도 — 반경 N건·범례·축척(2km) 등 통계 오버레이 숨김 */
+  hideMarkerStats?: boolean;
+  /** 검색바 상단 inset (모바일 햄버거 메뉴 회피 등) */
+  searchBarTopClass?: string;
 }
 
 // 전역 스크립트 로딩 상태 관리
@@ -76,6 +84,10 @@ export default function KakaoMap({
   compactUi = false,
   fitAllPropertiesOnChange = false,
   navigationZoomLevel = 2,
+  disableRegionMarkers = false,
+  hideMarkerStats = false,
+  searchBarTopClass = 'top-4 left-4 right-4',
+  restoreSavedCenter = true,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -293,7 +305,7 @@ export default function KakaoMap({
       let startLng = 126.9780;
       let startLevel = 8;
 
-      const saved = sessionStorage.getItem('kakaomap_center');
+      const saved = restoreSavedCenter ? sessionStorage.getItem('kakaomap_center') : null;
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -544,7 +556,8 @@ export default function KakaoMap({
 
     const validProperties = (properties || []).filter(hasValidCoords);
     // 줌 레벨 >= 9 이면 행정구역 마커 모드(시도, 구 단위) → 분석 마커는 생성만 하고 지도에 올리지 않음
-    const isRegionMode = !isAnalyzeMode && !isBenefitMode && !isRankingMode && zoomLevel >= 9;
+    const isRegionMode =
+      !disableRegionMarkers && !isAnalyzeMode && !isBenefitMode && !isRankingMode && zoomLevel >= 9;
 
     const newMarkers = validProperties.map((property) => {
       const isSelected = selectedProperty?.id === property.id;
@@ -588,14 +601,14 @@ export default function KakaoMap({
         map.setBounds(bounds);
       }
     }
-  }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect, isRankingMode, fitAllPropertiesOnChange, navigationZoomLevel]);
+  }, [map, properties, isAnalyzeMode, selectedProperty?.id, zoomLevel, isBenefitMode, benefitParcels, selectedBenefitParcel, onBenefitParcelSelect, isRankingMode, fitAllPropertiesOnChange, navigationZoomLevel, disableRegionMarkers]);
 
 
   // 행정구역 클러스터 마커 (줌 레벨 변경 및 표시 조건 분기)
   useEffect(() => {
     if (!map || !regionsLoaded) return;
 
-    if (isAnalyzeMode || isBenefitMode || isRankingMode) {
+    if (disableRegionMarkers || isAnalyzeMode || isBenefitMode || isRankingMode) {
       markersRef.current.forEach(m => m.setMap(map)); // 분석 핀 등 개별 핀 표시 복원
       clearRegionMarkers();
       return;
@@ -615,7 +628,7 @@ export default function KakaoMap({
       clearRegionMarkers();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, zoomLevel, regionsLoaded, isAnalyzeMode, isBenefitMode, isRankingMode]);
+  }, [map, zoomLevel, regionsLoaded, isAnalyzeMode, isBenefitMode, isRankingMode, disableRegionMarkers]);
 
   // PanTip 자동 디스미스 타이머
   useEffect(() => {
@@ -713,7 +726,8 @@ export default function KakaoMap({
     if (!map || !initialCenter) return;
     const position = new window.kakao.maps.LatLng(initialCenter.lat, initialCenter.lng);
     map.setCenter(position);
-  }, [map, initialCenter]);
+    map.setLevel(navigationZoomLevel);
+  }, [map, initialCenter, navigationZoomLevel]);
 
   // 선택된 수혜 필지 위치로 지도 이동
   useEffect(() => {
@@ -829,9 +843,9 @@ export default function KakaoMap({
   }
 
   return (
-    <div className="h-full relative w-full">
+    <div className={`h-full relative w-full ${hideMarkerStats ? 'kakao-map--my-home' : ''}`}>
       {/* 지도 내장 검색 바 (Floating) - 더 깔끔한 디자인 */}
-      <div className="absolute top-4 left-4 right-4 z-20 flex flex-col max-w-md mx-auto gap-2">
+      <div className={`absolute z-20 flex flex-col max-w-md mx-auto gap-2 ${searchBarTopClass}`}>
         {!compactUi && (
         <>
         <div className="flex w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 overflow-hidden">
@@ -934,7 +948,7 @@ export default function KakaoMap({
       )}
 
       {/* 영역 매물 수 (모바일·PC) + 범례 (PC만) */}
-      {!compactUi && !isAnalyzeMode && !isLoading && (
+      {!compactUi && !hideMarkerStats && !isAnalyzeMode && !isLoading && (
         <div className="absolute top-[70%] lg:top-auto lg:bottom-4 left-4 z-20 flex flex-col gap-2 max-w-[200px]">
           {markerCount > 0 && (
             <div className="bg-white/95 backdrop-blur-md rounded-xl px-3 py-2 shadow-lg border border-slate-200/80 text-[11px] font-bold text-slate-700">
@@ -965,7 +979,7 @@ export default function KakaoMap({
       )}
 
       {/* 🧭 지도를 좌우로 이동하며 매물을 확인해보세요 안내 툴팁 */}
-      {showPanTip && (
+      {showPanTip && !hideMarkerStats && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 bg-slate-900/90 backdrop-blur-md text-white px-4 py-2.5 rounded-full shadow-lg border border-slate-700/50 flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-300 pointer-events-none">
           <span className="text-xs font-semibold tracking-wide">🧭 지도를 이동하며 주변 매물을 확인해보세요</span>
         </div>
