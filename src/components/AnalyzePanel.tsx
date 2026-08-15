@@ -13,6 +13,9 @@ import {
   type AnalysisDetailInput,
 } from '../lib/collectAnalysisInputData';
 import { parseParcelPolygonFromVworldResponse, computePolygonCentroid } from '../lib/parcelGeometry';
+import { fetchR114LiteComplex } from '../lib/r114LiteApi';
+import type { R114LiteResolveAptSeqResponse } from '../lib/r114LiteTypes';
+import R114LiteAptSeqResolveForm from './R114LiteAptSeqResolveForm';
 import {
   PANEL_CARD,
   PANEL_CARD_INNER,
@@ -220,6 +223,13 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [noTradeDataModal, setNoTradeDataModal] = useState<{ aptName: string | null; reason: string } | null>(null);
+  const [aptSeqResolveModal, setAptSeqResolveModal] = useState(false);
+  const [r114LiteMeta, setR114LiteMeta] = useState<{
+    title: string;
+    address: string;
+    needsResolve: boolean;
+  } | null>(null);
+  const resumeAnalyzePnuRef = useRef<string | null>(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -250,7 +260,25 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     fetch('/industry_master.json').then(r => r.json()).then(setAllIndustries).catch(() => {});
   }, []);
 
-  // 외부(지도 터치 등)에서 위치 정보가 전달되었을 때 상태를 일치시킴 또는 추가 필지에 적층시킴
+  useEffect(() => {
+    if (!prefilledR114PropId) {
+      setR114LiteMeta(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchR114LiteComplex(prefilledR114PropId, { tradeLimit: 0 }).then((res) => {
+      if (cancelled || !res.success || !res.data?.complex) return;
+      const c = res.data.complex;
+      setR114LiteMeta({
+        title: c.title,
+        address: (c.address || [c.city, c.gu, c.dong].filter(Boolean).join(' ')).trim(),
+        needsResolve: !c.rtmsVerifiedAt,
+      });
+      if (c.rtmsAptSeq) setPrefilledRtmsAptSeq(c.rtmsAptSeq);
+    });
+    return () => { cancelled = true; };
+  }, [prefilledR114PropId]);
+
   useEffect(() => {
     if (!externalClickParcel) return;
     const { lat: latVal, lng: lngVal, address: addr, pnu, polygon } = externalClickParcel;
@@ -542,59 +570,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     onLocationClear?.();
   };
 
-  const handleAnalyze = async () => {
+  const executeReportGeneration = useCallback(async (resolvedPnu: string | null) => {
     if (!selectedCategory || !address || !lat || !lng || !user) return;
-
-    let resolvedPnu = primaryPnu;
-
-    // 아파트인 경우 PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
-    if (selectedCategory === 'apartment') {
-      if (!resolvedPnu && lat && lng) {
-        setIsCheckingAvailability(true);
-        try {
-          const fetched = await getPnuFromCoords(lat, lng);
-          if (fetched) {
-            resolvedPnu = fetched;
-            setPrimaryPnu(fetched);
-          }
-        } catch { /* 무시 */ }
-        setIsCheckingAvailability(false);
-      }
-
-      if (!resolvedPnu) {
-        // 재시도 후에도 PNU 없음 — 진짜 실패
-        setNoTradeDataModal({
-          aptName: null,
-          reason: '필지 정보를 불러올 수 없습니다. 주소를 다시 선택해주세요.',
-        });
-        return;
-      }
-    }
-
-    // 아파트 — 기존 단지 report 있으면 허브로 (중복 pending report 방지)
-    if (selectedCategory === 'apartment' && resolvedPnu) {
-      try {
-        const idToken = await user.getIdToken();
-        const resolveParams = new URLSearchParams({
-          pnu: resolvedPnu,
-          address,
-        });
-        const resolveRes = await fetch(
-          `/api/land/detective/apartment/resolve?${resolveParams.toString()}`,
-          { headers: { Authorization: `Bearer ${idToken}` } },
-        );
-        if (resolveRes.ok) {
-          const hub = await resolveRes.json();
-          if (Number(hub.reportCount) > 0 && hub.latestReportId) {
-            const reportId = hub.latestCompletedReportId || hub.latestReportId;
-            router.push(`/analyze/${makeAnalyzeSlug(reportId)}`);
-            return;
-          }
-        }
-      } catch {
-        // resolve 실패 시 신규 분석 진행
-      }
-    }
 
     setIsAnalyzing(true);
     setAnalysisStep(0);
@@ -656,10 +633,107 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         const slug = makeAnalyzeSlug(result.reportId, result.bldNm);
         router.push(`/analyze/${slug}${qs}`);
       } else throw new Error('결과 수신 실패');
-    } catch (err: any) {
-      setAnalysisError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '오류 발생';
+      setAnalysisError(message);
       setIsAnalyzing(false);
     }
+  }, [
+    additionalParcels,
+    address,
+    adminSampleMode,
+    desiredBusiness,
+    detailInput,
+    isMultiParcel,
+    lat,
+    lng,
+    pendingSpecialNotes,
+    prefilledMasterId,
+    prefilledPlaceName,
+    prefilledR114PropId,
+    prefilledRtmsAptSeq,
+    primaryPolygon,
+    router,
+    selectedCategory,
+    user,
+  ]);
+
+  const handleAptSeqResolved = useCallback((data: NonNullable<R114LiteResolveAptSeqResponse['data']>) => {
+    setPrefilledRtmsAptSeq(data.rtmsAptSeq);
+    setR114LiteMeta((prev) => (prev ? { ...prev, needsResolve: false } : null));
+    setAptSeqResolveModal(false);
+    const pendingPnu = resumeAnalyzePnuRef.current;
+    resumeAnalyzePnuRef.current = null;
+    if (pendingPnu) {
+      void executeReportGeneration(pendingPnu);
+    }
+  }, [executeReportGeneration]);
+
+  const handleAnalyze = async () => {
+    if (!selectedCategory || !address || !lat || !lng || !user) return;
+
+    let resolvedPnu = primaryPnu;
+
+    // 아파트인 경우 PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
+    if (selectedCategory === 'apartment') {
+      if (!resolvedPnu && lat && lng) {
+        setIsCheckingAvailability(true);
+        try {
+          const fetched = await getPnuFromCoords(lat, lng);
+          if (fetched) {
+            resolvedPnu = fetched;
+            setPrimaryPnu(fetched);
+          }
+        } catch { /* 무시 */ }
+        setIsCheckingAvailability(false);
+      }
+
+      if (!resolvedPnu) {
+        // 재시도 후에도 PNU 없음 — 진짜 실패
+        setNoTradeDataModal({
+          aptName: null,
+          reason: '필지 정보를 불러올 수 없습니다. 주소를 다시 선택해주세요.',
+        });
+        return;
+      }
+    }
+
+    // 아파트 — 기존 단지 report 있으면 허브로 (중복 pending report 방지)
+    if (selectedCategory === 'apartment' && resolvedPnu) {
+      try {
+        const idToken = await user.getIdToken();
+        const resolveParams = new URLSearchParams({
+          pnu: resolvedPnu,
+          address,
+        });
+        const resolveRes = await fetch(
+          `/api/land/detective/apartment/resolve?${resolveParams.toString()}`,
+          { headers: { Authorization: `Bearer ${idToken}` } },
+        );
+        if (resolveRes.ok) {
+          const hub = await resolveRes.json();
+          if (Number(hub.reportCount) > 0 && hub.latestReportId) {
+            const reportId = hub.latestCompletedReportId || hub.latestReportId;
+            router.push(`/analyze/${makeAnalyzeSlug(reportId)}`);
+            return;
+          }
+        }
+      } catch {
+        // resolve 실패 시 신규 분석 진행
+      }
+    }
+
+    if (
+      selectedCategory === 'apartment' &&
+      prefilledR114PropId &&
+      r114LiteMeta?.needsResolve
+    ) {
+      resumeAnalyzePnuRef.current = resolvedPnu;
+      setAptSeqResolveModal(true);
+      return;
+    }
+
+    await executeReportGeneration(resolvedPnu);
   };
 
   return (
@@ -983,6 +1057,32 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         )}
         <p className="text-[9px] text-slate-400 text-center mt-2 font-medium">국가 공공 데이터 기반 리포트</p>
       </div>
+
+      {/* r114 Lite aptSeq 미검증 — 리포트 생성 직전 단지 확인 */}
+      {aptSeqResolveModal && prefilledR114PropId && r114LiteMeta && (
+        <div
+          className="absolute inset-0 z-50 flex items-end lg:items-center justify-center bg-slate-950/50 backdrop-blur-sm px-0 lg:px-4"
+          onClick={() => {
+            setAptSeqResolveModal(false);
+            resumeAnalyzePnuRef.current = null;
+          }}
+        >
+          <div
+            className="w-full lg:max-w-md max-h-[92vh] overflow-y-auto bg-white rounded-t-3xl lg:rounded-3xl p-5 pb-8 lg:pb-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-8 h-1 bg-slate-200 rounded-full mx-auto mb-4 lg:hidden" />
+            <R114LiteAptSeqResolveForm
+              r114PropId={prefilledR114PropId}
+              defaultTitle={r114LiteMeta.title}
+              defaultAddress={r114LiteMeta.address}
+              theme="light"
+              successHint="단지 확인 완료. 공공데이터 수집을 이어갑니다."
+              onResolved={handleAptSeqResolved}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 아파트 실거래 없음 모달 */}
       {noTradeDataModal && (

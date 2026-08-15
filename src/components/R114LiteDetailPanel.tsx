@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Building2, ChevronDown, Loader2 } from 'lucide-react';
 import { makeAnalyzeSlug } from '../lib/slug';
@@ -38,7 +38,6 @@ import {
 } from '../lib/r114LiteTrades';
 import R114LiteTradeChart from './R114LiteTradeChart';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
-import R114LiteAptSeqResolveForm from './R114LiteAptSeqResolveForm';
 import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
 import { useR114LiteContext } from '../hooks/useR114LiteContext';
 
@@ -306,7 +305,6 @@ export default function R114LiteDetailPanel({
   const [tradeTab, setTradeTab] = useState<R114TradeType>('sale');
   const [tradeVisibleCount, setTradeVisibleCount] = useState(TRADE_PREVIEW);
   const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
-  const resolveFormRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async (requestPropId: string, cancelled: () => boolean) => {
     setLoading(true);
@@ -374,23 +372,6 @@ export default function R114LiteDetailPanel({
   const trades = tradePages;
   const resolvedReportId = latestReportId ?? data?.latestReportId ?? null;
   const hasLiteReport = !!resolvedReportId;
-  const needsAptSeqResolve = !complex?.rtmsVerifiedAt;
-
-  const handleAptSeqResolved = useCallback(() => {
-    void load(r114PropId, () => false);
-  }, [load, r114PropId]);
-
-  const scrollToResolveForm = useCallback(() => {
-    resolveFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, []);
-
-  const handleAnalyzeAttempt = useCallback(() => {
-    if (needsAptSeqResolve) {
-      scrollToResolveForm();
-      return;
-    }
-    onAnalyzeClick?.();
-  }, [needsAptSeqResolve, onAnalyzeClick, scrollToResolveForm]);
 
   const statsByPyeong = useMemo(
     () => new Map(pyeongAreaStats.map((s) => [s.pyeongApprox, s])),
@@ -588,15 +569,8 @@ export default function R114LiteDetailPanel({
     }
     if (onAnalyzeClick) {
       return {
-        analyzeLabel: needsAptSeqResolve ? '단지 확인 필요' : 'AI 분석',
-        onAnalyze: needsAptSeqResolve ? scrollToResolveForm : handleAnalyzeAttempt,
-        onCompare: handleCompareClick,
-      };
-    }
-    if (needsAptSeqResolve) {
-      return {
-        analyzeLabel: '단지 확인 필요',
-        onAnalyze: scrollToResolveForm,
+        analyzeLabel: 'AI 분석',
+        onAnalyze: onAnalyzeClick,
         onCompare: handleCompareClick,
       };
     }
@@ -613,9 +587,6 @@ export default function R114LiteDetailPanel({
     r114PropId,
     onAnalyzeClick,
     handleCompareClick,
-    needsAptSeqResolve,
-    scrollToResolveForm,
-    handleAnalyzeAttempt,
   ]);
 
   useEffect(() => {
@@ -650,12 +621,8 @@ export default function R114LiteDetailPanel({
     <Link href={`/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex.title)}`} className={outlineBtn}>
       리포트 보기
     </Link>
-  ) : needsAptSeqResolve ? (
-    <button type="button" onClick={scrollToResolveForm} className={`${outlineBtn} opacity-90`}>
-      단지 확인 필요
-    </button>
   ) : onAnalyzeClick ? (
-    <button type="button" onClick={handleAnalyzeAttempt} className={outlineBtn}>
+    <button type="button" onClick={onAnalyzeClick} className={outlineBtn}>
       AI 분석
     </button>
   ) : (
@@ -690,20 +657,6 @@ export default function R114LiteDetailPanel({
       )}
 
       <div className={`flex-1 px-4 space-y-5 ${contentBottomPad}`}>
-        {needsAptSeqResolve && (
-          <div ref={resolveFormRef}>
-            <R114LiteAptSeqResolveForm
-              r114PropId={r114PropId}
-              defaultTitle={complex.title}
-              defaultAddress={
-                complex.address || `${complex.city || ''} ${complex.gu || ''} ${complex.dong || ''}`.trim()
-              }
-              theme={theme}
-              onResolved={handleAptSeqResolved}
-            />
-          </div>
-        )}
-
         <div className="flex flex-wrap gap-1.5">
           {modeSparse && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${t.badgeSparse}`}>

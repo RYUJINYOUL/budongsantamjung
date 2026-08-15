@@ -47,12 +47,14 @@ export default function R114LiteAptSeqResolveForm({
   defaultTitle,
   defaultAddress,
   theme = 'light',
+  successHint,
   onResolved,
 }: {
   r114PropId: string;
   defaultTitle: string;
   defaultAddress: string;
   theme?: Theme;
+  successHint?: string;
   onResolved: (result: NonNullable<R114LiteResolveAptSeqResponse['data']>) => void;
 }) {
   const t = themeClasses(theme);
@@ -98,14 +100,18 @@ export default function R114LiteAptSeqResolveForm({
         return;
       }
 
-      setSuccess(res.alreadyVerified ? '이미 확인된 단지입니다.' : '단지 확인이 완료되었습니다. AI 분석을 진행할 수 있습니다.');
+      setSuccess(
+        res.alreadyVerified
+          ? '이미 확인된 단지입니다.'
+          : (successHint || '단지 확인이 완료되었습니다. AI 분석을 진행할 수 있습니다.'),
+      );
       onResolved(res.data);
     } catch {
       setError('네트워크 오류가 발생했습니다.');
     } finally {
       setSubmitting(false);
     }
-  }, [anchorTrades, onResolved, portalAddress, portalTitle, r114PropId]);
+  }, [anchorTrades, onResolved, portalAddress, portalTitle, r114PropId, successHint]);
 
   return (
     <section className={`rounded-2xl border p-4 space-y-4 ${t.section}`}>
