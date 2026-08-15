@@ -4,6 +4,8 @@ import type {
   R114LitePyeongAreaStats,
   R114LitePyeongType,
   R114LiteTradesPageResponse,
+  R114LiteResolveAptSeqRequest,
+  R114LiteResolveAptSeqResponse,
   R114TradeType,
 } from './r114LiteTypes';
 import type { ApartmentAreaOption } from './apartmentCompareAreas';
@@ -123,6 +125,21 @@ export async function fetchR114LiteContext(r114PropId: string): Promise<R114Lite
   const url = `/api/r114/complex/${encodeURIComponent(r114PropId)}/context`;
   const res = await fetchWithRetry(url, { cache: 'no-store' });
   return res.json() as Promise<R114LiteContextResponse>;
+}
+
+/** Lite aptSeq 미검증 — 포털 입력 + anchor 실거래 3건으로 단지 확인 */
+export async function resolveR114LiteAptSeq(
+  r114PropId: string,
+  payload: R114LiteResolveAptSeqRequest,
+): Promise<R114LiteResolveAptSeqResponse> {
+  const url = `/api/r114/complex/${encodeURIComponent(r114PropId)}/resolve-apt-seq`;
+  const res = await fetchWithRetry(url, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<R114LiteResolveAptSeqResponse>;
 }
 
 /** 만원 → "5억 5,000" / "5,500" */

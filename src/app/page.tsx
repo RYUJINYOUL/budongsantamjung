@@ -828,6 +828,9 @@ function HomePageContent() {
         router.push(`/analyze/${makeAnalyzeSlug(res.latestReportId, title)}?return=${encodeURIComponent(returnQs)}`);
         return;
       }
+      if (res.data?.complex && !res.data.complex.rtmsVerifiedAt) {
+        return;
+      }
     } catch {
       /* analyze 패널 fallback */
     }

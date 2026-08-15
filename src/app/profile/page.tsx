@@ -846,7 +846,7 @@ function ProfilePageContent() {
                                 <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-4">
                                     <div>
                                         <p className="text-xs font-black text-slate-800 mb-1">날짜 선택 (KST)</p>
-                                        <p className="text-[10px] text-slate-450 font-semibold mb-3">AI 분석 완료된 리포트 · 유료·무료 포함</p>
+                                        <p className="text-[10px] text-slate-450 font-semibold mb-3">AI 분석 완료 · <span className="text-slate-500">무료=하루 1회, 유료=2회째·일일패스·결제</span></p>
                                         <div className="flex flex-wrap items-center gap-2">
                                             <select
                                                 value={adminYear}

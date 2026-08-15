@@ -101,6 +101,38 @@ export interface R114LitePyeongAreaStats {
   tradeSparse: boolean;
 }
 
+export interface R114LiteAnchorTradeInput {
+  priceMan: number | '';
+  exclusiveAreaM2: number | '';
+  contractYearMonth: string;
+}
+
+export interface R114LiteResolveAptSeqRequest {
+  portalTitle: string;
+  portalAddress: string;
+  anchorTrades: R114LiteAnchorTradeInput[];
+}
+
+export interface R114LiteResolveAptSeqResponse {
+  success: boolean;
+  alreadyVerified?: boolean;
+  message?: string;
+  code?: string;
+  data?: {
+    r114PropId: string;
+    rtmsAptSeq: string;
+    rtmsAptNm?: string | null;
+    rtmsVerifiedAt: string;
+    matchCount?: number;
+    masterSynced?: number;
+  };
+  meta?: {
+    verdict?: string;
+    matchCount?: number;
+    joinStatus?: string;
+  };
+}
+
 export interface R114LiteDetailResponse {
   success: boolean;
   data?: {
