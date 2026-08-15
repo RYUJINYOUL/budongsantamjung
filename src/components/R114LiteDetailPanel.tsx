@@ -761,6 +761,7 @@ export default function R114LiteDetailPanel({
                   <thead>
                     <tr className={t.tableHead}>
                       <th className="px-2.5 py-2 font-bold text-left">계약일</th>
+                      <th className="px-2.5 py-2 font-bold text-left">층</th>
                       <th className="px-2.5 py-2 font-bold text-left">전용㎡</th>
                       <th className="px-2.5 py-2 font-bold text-right">가격</th>
                     </tr>
@@ -770,7 +771,14 @@ export default function R114LiteDetailPanel({
                       <tr key={`${row.contractDate}-${i}`} className={t.tableRow}>
                         <td className="px-2.5 py-2">{formatContractDateShort(row.contractDate)}</td>
                         <td className={`px-2.5 py-2 ${t.muted}`}>
-                          {(row.exclusiveArea ?? row.supplyArea)?.toFixed(2) ?? '—'}
+                          {row.floor ? `${row.floor}층` : '—'}
+                        </td>
+                        <td className={`px-2.5 py-2 ${t.muted}`}>
+                          {row.exclusiveArea != null
+                            ? row.exclusiveArea.toFixed(2)
+                            : row.supplyArea != null
+                              ? `${row.supplyArea.toFixed(2)} (공급)`
+                              : '—'}
                         </td>
                         <td className="px-2.5 py-2 text-right font-bold">
                           {tradeTab === 'sale' && formatPriceMan(row.priceMan)}

@@ -49,6 +49,11 @@ import {
 } from '../../../lib/apartmentComparePrompt';
 import { isAdminUser } from '../../../lib/adminUids';
 import { extractAptRegionLabel } from '../../../lib/apartmentTenYearStory';
+import {
+  externalAiChatToastMessage,
+  openExternalAiChatWithPrompt,
+  type ExternalAiChatProvider,
+} from '../../../lib/openExternalAiChat';
 
 const ComparableMap = dynamic(() => import('../../../components/ComparableMap'), { ssr: false });
 const CompareScoreFrameView = dynamic(() => import('../../../components/CompareScoreFrameView'), { ssr: false });
@@ -629,6 +634,12 @@ export default function ApartmentCompareClientPage() {
     [comparePromptInput],
   );
 
+  const handleOpenExternalAiChat = useCallback(async (provider: ExternalAiChatProvider) => {
+    if (!comparePromptText) return;
+    const result = await openExternalAiChatWithPrompt(provider, comparePromptText);
+    showToast(externalAiChatToastMessage(result));
+  }, [comparePromptText, showToast]);
+
   const compareAdminAiPrompt = useMemo(
     () => (comparePromptInput ? buildApartmentCompareAdminAiPrompt(comparePromptInput) : ''),
     [comparePromptInput],
@@ -904,7 +915,7 @@ export default function ApartmentCompareClientPage() {
           <h1 className="flex-1 text-center text-sm font-black text-white tracking-tight truncate px-2">
             아파트 단지 비교
           </h1>
-          <div className="flex items-center justify-end gap-1.5 shrink-0 min-w-[88px]">
+          <div className="flex items-center justify-end gap-1 shrink-0">
             {isAdmin && (
               <button
                 type="button"
@@ -921,11 +932,43 @@ export default function ApartmentCompareClientPage() {
               type="button"
               disabled={!canOpenCompareCards}
               onClick={openCompareCards}
-              title="점수 카드 보기"
-              aria-label="점수 카드 보기"
+              title="간편 카드 보기"
+              aria-label="간편 카드 보기"
               className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-emerald-400/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-30 disabled:pointer-events-none transition-colors"
             >
               <Image className="w-3.5 h-3.5" strokeWidth={2.25} />
+            </button>
+            <button
+              type="button"
+              disabled={!comparePromptText}
+              onClick={() => handleOpenExternalAiChat('chatgpt')}
+              title="ChatGPT에 질문 (프롬프트 복사)"
+              aria-label="ChatGPT에 질문"
+              className="inline-flex items-center justify-center min-w-[2rem] h-8 px-1.5 rounded-lg border border-white/15 bg-white/[0.04] text-[10px] font-black text-white/75 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              GPT
+            </button>
+            <button
+              type="button"
+              disabled={!comparePromptText}
+              onClick={() => handleOpenExternalAiChat('claude')}
+              title="Claude에 질문 (프롬프트 복사)"
+              aria-label="Claude에 질문"
+              className="inline-flex items-center justify-center min-w-[2rem] h-8 px-1.5 rounded-lg border border-orange-400/25 bg-orange-500/10 text-[10px] font-black text-orange-200 hover:bg-orange-500/20 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <span className="hidden sm:inline">Claude</span>
+              <span className="sm:hidden">C</span>
+            </button>
+            <button
+              type="button"
+              disabled={!comparePromptText}
+              onClick={() => handleOpenExternalAiChat('gemini')}
+              title="Gemini에 질문 (프롬프트 복사)"
+              aria-label="Gemini에 질문"
+              className="inline-flex items-center justify-center min-w-[2rem] h-8 px-1.5 rounded-lg border border-sky-400/25 bg-sky-500/10 text-[10px] font-black text-sky-200 hover:bg-sky-500/20 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+            >
+              <span className="hidden sm:inline">Gemini</span>
+              <span className="sm:hidden">G</span>
             </button>
             <button
               type="button"

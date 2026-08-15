@@ -87,32 +87,47 @@ function formatDistanceM(m: number | null | undefined) {
 }
 
 function devEventsToInfraData(details: R114LiteContextDetails | undefined): NearbyInfrastructureData | null {
+  const mapItem = (
+    item: {
+      id?: number;
+      name: string;
+      category?: string;
+      distanceM?: number | null;
+      walkMin?: number | null;
+      progress_score?: number | null;
+      displayTitle?: string;
+    },
+    idx: number,
+  ) => ({
+    id: item.id ?? idx,
+    name: item.name,
+    category: (item.category === 'railway' || item.category === 'road' || item.category === 'construction'
+      ? item.category
+      : 'construction') as 'railway' | 'road' | 'construction',
+    distanceM: item.distanceM != null ? item.distanceM : 0,
+    walkMin: item.walkMin ?? null,
+    distanceMode: item.walkMin != null ? ('walk' as const) : ('straight' as const),
+    progress_score: item.progress_score ?? null,
+    displayTitle: item.displayTitle || item.name,
+  });
+
   const raw = details?.nearbyInfrastructure;
   if (raw?.items?.length) {
     return {
       radiusKm: raw.radiusKm,
-      items: raw.items.map((item, idx) => ({
-        id: item.id ?? idx,
-        name: item.name,
-        category: (item.category === 'railway' || item.category === 'road' || item.category === 'construction'
-          ? item.category
-          : 'construction') as 'railway' | 'road' | 'construction',
-        distanceM: item.distanceM ?? 0,
-        walkMin: item.walkMin,
-      })),
+      items: raw.items.map(mapItem),
     };
   }
   const dev = details?.developmentEvents?.items;
   if (!dev?.length) return null;
   return {
     radiusKm: details?.developmentEvents?.radiusKm ?? 1.5,
-    items: dev.map((item, idx) => ({
-      id: idx,
-      name: item.name,
-      category: 'construction' as const,
-      distanceM: item.distanceM ?? 0,
-      walkMin: item.walkMin,
-    })),
+    items: dev.map((item, idx) => mapItem({
+      ...item,
+      displayTitle: item.ui_label && item.name !== item.ui_label
+        ? `${item.name} · ${item.ui_label}`
+        : item.name,
+    }, idx)),
   };
 }
 

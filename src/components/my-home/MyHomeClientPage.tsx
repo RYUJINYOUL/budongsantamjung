@@ -11,7 +11,7 @@ import {
   fetchMyHomeWeeklyReports,
   saveMyHomeConfig,
 } from '../../lib/myHomeFirestore';
-import { fetchMyHomeCompareData, scoringItemAt } from '../../lib/myHomeApi';
+import { fetchMyHomeCompareData, resolveMyHomeReportTargetId, scoringItemAt } from '../../lib/myHomeApi';
 import type { CompareScoringPayload } from '../../lib/apartmentCompareScoring';
 import { momentumFromScoring } from '../../lib/myHomeCompareTable';
 import type {
@@ -251,19 +251,13 @@ export default function MyHomeClientPage() {
     ? [
         {
           label: '보고서 1',
-          reportId:
-            reg.reportId ??
-            compareResults[0]?.latestCompletedReportId ??
-            compareResults[0]?.latestReportId,
+          reportId: resolveMyHomeReportTargetId(compareResults[0]),
           complexName: reg.complexName,
           isHome: true,
         },
         ...compareSlots.map((slot, i) => ({
           label: `보고서 ${i + 2}`,
-          reportId:
-            slot.reportId ??
-            compareResults[i + 1]?.latestCompletedReportId ??
-            compareResults[i + 1]?.latestReportId,
+          reportId: resolveMyHomeReportTargetId(compareResults[i + 1]),
           complexName: slot.complexName,
           isHome: false,
         })),

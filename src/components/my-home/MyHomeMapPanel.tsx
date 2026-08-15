@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import { defaultApartmentDiscoverFilters } from '../../lib/apartmentDiscoverFilters';
-import { fetchApartmentDiscover, type ApartmentDiscoverItem } from '../../lib/fetchApartmentDiscover';
 import {
-  discoverItemToMapMarker,
+  discoverFeedItemToMapMarker,
+  fetchMergedApartmentDiscoverFeed,
   registrationToMapMarker,
+  type MyHomeDiscoverFeedItem,
   workplaceToMapMarker,
 } from '../../lib/myHomeMapUtils';
 import type { MapMarkerProperty } from '../../lib/mapMarkers';
@@ -66,13 +67,15 @@ export default function MyHomeMapPanel({
     lng: registration?.lng ?? DEFAULT_MAP_POSITION.lng,
     zoomLevel: registration ? 5 : DEFAULT_MAP_POSITION.zoomLevel,
   }));
-  const [discoverItems, setDiscoverItems] = useState<ApartmentDiscoverItem[]>([]);
+  const [discoverFeed, setDiscoverFeed] = useState<MyHomeDiscoverFeedItem[]>([]);
   const [loadingDiscover, setLoadingDiscover] = useState(false);
+  const discoverDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const discoverAbortRef = useRef<AbortController | null>(null);
   const [pickPending, setPickPending] = useState<ApartmentComparePickPayload | null>(null);
   const [pickedReportId, setPickedReportId] = useState<string | null>(null);
   const [pickedCoords, setPickedCoords] = useState<{ lat?: number | null; lng?: number | null }>({});
   const [selectedInsight, setSelectedInsight] = useState<MyHomeInsightItem | null>(null);
-  const itemByIdRef = useRef<Map<string, ApartmentDiscoverItem>>(new Map());
+  const itemByIdRef = useRef<Map<string, MyHomeDiscoverFeedItem>>(new Map());
   const insightByIdRef = useRef<Map<string, MyHomeInsightItem>>(new Map());
 
   useEffect(() => {
@@ -85,48 +88,62 @@ export default function MyHomeMapPanel({
     }
   }, [registration?.lat, registration?.lng]);
 
-  const loadDiscover = useCallback(async (lat: number, lng: number, zoomLevel: number) => {
+  const loadDiscoverFeed = useCallback(async (lat: number, lng: number, zoomLevel: number) => {
+    if (discoverAbortRef.current) {
+      discoverAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    discoverAbortRef.current = abortController;
+
     setLoadingDiscover(true);
     try {
-      const radiusKm = Math.min(zoomLevelToRadiusKm(zoomLevel), 2.5);
-      const res = await fetchApartmentDiscover(
+      const radiusKm = zoomLevelToRadiusKm(zoomLevel);
+      const items = await fetchMergedApartmentDiscoverFeed(
         defaultApartmentDiscoverFilters(),
         { lat, lng, radiusKm },
-        undefined,
-        { analyzedOnly: false },
+        { signal: abortController.signal },
       );
-      setDiscoverItems(res.items);
-      const m = new Map<string, ApartmentDiscoverItem>();
-      for (const item of res.items) m.set(item.id, item);
+      if (abortController.signal.aborted) return;
+      setDiscoverFeed(items);
+      const m = new Map<string, MyHomeDiscoverFeedItem>();
+      for (const item of items) m.set(item.id, item);
       itemByIdRef.current = m;
-    } catch {
-      setDiscoverItems([]);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setDiscoverFeed([]);
       itemByIdRef.current = new Map();
     } finally {
-      setLoadingDiscover(false);
+      if (discoverAbortRef.current === abortController) {
+        setLoadingDiscover(false);
+      }
     }
   }, []);
 
-  /** 등록·추가 모드 진입/해제 시 discover 상태 초기화 */
+  const scheduleDiscoverFeedLoad = useCallback(
+    (lat: number, lng: number, zoomLevel: number) => {
+      if (discoverDebounceRef.current) clearTimeout(discoverDebounceRef.current);
+      discoverDebounceRef.current = setTimeout(() => {
+        void loadDiscoverFeed(lat, lng, zoomLevel);
+      }, 600);
+    },
+    [loadDiscoverFeed],
+  );
+
   useEffect(() => {
-    if (!pickMode) {
-      setDiscoverItems([]);
-      itemByIdRef.current = new Map();
-      return;
-    }
-    void loadDiscover(mapCenter.lat, mapCenter.lng, mapCenter.zoomLevel);
-    // pickMode 전환 시 1회만 — 이후 이동은 handleMapIdle
+    scheduleDiscoverFeedLoad(mapCenter.lat, mapCenter.lng, mapCenter.zoomLevel);
+    return () => {
+      if (discoverDebounceRef.current) clearTimeout(discoverDebounceRef.current);
+      discoverAbortRef.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickMode]);
+  }, []);
 
   const handleMapIdle = useCallback(
     (pos: { lat: number; lng: number; zoomLevel: number }) => {
       setMapCenter(pos);
-      if (pickMode) {
-        void loadDiscover(pos.lat, pos.lng, pos.zoomLevel);
-      }
+      scheduleDiscoverFeedLoad(pos.lat, pos.lng, pos.zoomLevel);
     },
-    [loadDiscover, pickMode],
+    [scheduleDiscoverFeedLoad],
   );
 
   const savedMarkers = useMemo(() => {
@@ -158,31 +175,33 @@ export default function MyHomeMapPanel({
     return markers;
   }, [insightItems]);
 
-  const mapProperties = useMemo(() => {
-    if (pickMode) {
-      const markers: MapMarkerProperty[] = [];
-      for (const item of discoverItems) {
-        if (item.lat == null || item.lng == null) continue;
-        markers.push(discoverItemToMapMarker(item));
-      }
-      return markers;
+  const discoverMarkers = useMemo(() => {
+    const markers: MapMarkerProperty[] = [];
+    for (const item of discoverFeed) {
+      const marker = discoverFeedItemToMapMarker(item);
+      if (marker) markers.push(marker);
     }
-    return [...savedMarkers, ...insightMarkers];
-  }, [pickMode, discoverItems, savedMarkers, insightMarkers]);
+    return markers;
+  }, [discoverFeed]);
+
+  const mapProperties = useMemo(
+    () => [...discoverMarkers, ...savedMarkers, ...insightMarkers],
+    [discoverMarkers, savedMarkers, insightMarkers],
+  );
 
   const handlePropertySelect = useCallback(
     (property: MapMarkerProperty) => {
       if (pickMode) {
         const item = itemByIdRef.current.get(property.id);
         if (!item) return;
-        setPickedCoords({ lat: item.lat, lng: item.lng });
-        setPickedReportId(item.latestReportId ?? item.id ?? null);
+        setPickedCoords({ lat: item.lat ?? null, lng: item.lng ?? null });
+        setPickedReportId(item.hasReport && item.latestReportId ? item.latestReportId : null);
         setPickPending({
           masterId: item.masterId ?? undefined,
           rtmsAptSeq: item.rtmsAptSeq ?? item.aptSeq ?? undefined,
           r114PropId: item.r114PropId ?? undefined,
           complexName: item.propertyTitle,
-          suggestedAreaM2: item.exclusiveArea ?? item.centerM2 ?? item.area,
+          suggestedAreaM2: item.exclusiveArea ?? item.centerM2 ?? item.area ?? undefined,
         });
         return;
       }
@@ -205,9 +224,11 @@ export default function MyHomeMapPanel({
         properties={mapProperties}
         compactUi={false}
         disableRegionMarkers
-        hideMarkerStats
+        hideMarkerStats={false}
         searchBarTopClass="top-14 left-4 right-4 lg:top-4"
         initialCenter={{ lat: mapCenter.lat, lng: mapCenter.lng }}
+        initialZoomLevel={mapCenter.zoomLevel}
+        restoreSavedCenter={false}
         navigationZoomLevel={mapCenter.zoomLevel}
         onMapIdle={handleMapIdle}
         onPropertySelect={handlePropertySelect}
@@ -235,8 +256,12 @@ export default function MyHomeMapPanel({
         </div>
       )}
 
-      {pickMode && loadingDiscover && (
-        <div className="absolute bottom-20 right-4 z-30 bg-white/90 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-500 flex items-center gap-1.5">
+      {loadingDiscover && (
+        <div
+          className={`absolute right-4 z-30 bg-white/90 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-500 flex items-center gap-1.5 ${
+            pickMode ? 'bottom-20' : 'bottom-6'
+          }`}
+        >
           <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
           단지 불러오는 중
         </div>

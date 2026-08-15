@@ -82,3 +82,11 @@ export function formatMyHomeRise(v: number | null | undefined) {
   const sign = v > 0 ? '+' : '';
   return `${sign}${v.toFixed(1)}%`;
 }
+
+/** AI 분석 완료 리포트만 — 미완료 latestReportId 로 보고서 버튼 노출 금지 */
+export function resolveMyHomeReportTargetId(
+  compareItem?: Pick<MyHomeCompareItem, 'latestCompletedReportId'> | null,
+): string | null {
+  const completed = String(compareItem?.latestCompletedReportId ?? '').trim();
+  return completed || null;
+}

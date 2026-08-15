@@ -34,6 +34,7 @@ export type DiscoverMappedAnalysis = {
   r114PropId?: string | null;
   householdCount?: number | null;
   avgPrice1m?: number | null;
+  riseRate6m?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
   createdAt: string;
@@ -65,6 +66,7 @@ export function mapDiscoverItemsToFeed(
       r114PropId: item.r114PropId ?? undefined,
       householdCount: item.card?.hardware?.householdCount ?? null,
       avgPrice1m: item.avgPrice1m ?? item.card?.avgPrice1m ?? null,
+      riseRate6m: item.riseRate6m ?? item.card?.riseRate6m ?? null,
       exclusiveArea: centerM2,
       area: centerM2,
       createdAt: item.createdAt ?? new Date().toISOString(),

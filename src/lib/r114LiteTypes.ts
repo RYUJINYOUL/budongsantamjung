@@ -5,6 +5,8 @@ export interface R114LiteTrade {
   supplyArea: number | null;
   exclusiveArea?: number | null;
   pyeongApprox: number | null;
+  /** RTMS batch ingest row only */
+  floor?: string | null;
   priceMan: number | null;
   depositMan: number | null;
   monthlyRentMan: number | null;
@@ -143,7 +145,14 @@ export interface R114LiteContextDetails {
     }>;
   };
   developmentEvents?: {
-    items?: Array<{ name: string; category: string; distanceM?: number | null; walkMin?: number | null }>;
+    items?: Array<{
+      name: string;
+      category: string;
+      distanceM?: number | null;
+      walkMin?: number | null;
+      progress_score?: number | null;
+      ui_label?: string | null;
+    }>;
     radiusKm?: number;
   };
   redevelopment?: {

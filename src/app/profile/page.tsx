@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, Suspense } from 'react';
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { auth } from '../../lib/firebase';
@@ -9,8 +9,14 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import SideNav from '../../components/SideNav';
 import { makeAnalyzeSlug } from '../../lib/slug';
 import PropertyCard from '../../components/PropertyCard';
+import ApartmentCompareBasketBars, { ApartmentCompareBasketBar, useCompareBasketKeys } from '../../components/ApartmentCompareBasket';
+import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../../components/ApartmentAreaPickModal';
+import { compareItemKey } from '../../lib/apartmentCompareBasket';
+import { isAdminUser } from '../../lib/adminUids';
 
-type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home';
+type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home' | 'admin-analyses';
+
+const PROFILE_TABS: Tab[] = ['favorites', 'my-analyses', 'my-discoveries', 'my-home', 'admin-analyses'];
 
 interface AnalysisCard {
     analysisId?: string;
@@ -56,6 +62,60 @@ interface ApartmentGroupReport {
     createdAt?: string | null;
 }
 
+interface AdminDigestItem {
+    id: string;
+    bldNm?: string | null;
+    propertyTitle?: string;
+    category?: string;
+    address?: string;
+    isFree?: boolean;
+    isPaid?: boolean;
+    isAdminReport?: boolean;
+    riskScore?: string | null;
+    analyzedAt?: string;
+    createdAt?: string;
+}
+
+interface AdminDigestSummary {
+    total: number;
+    freeCount: number;
+    paidCount: number;
+    adminCount: number;
+}
+
+type AdminDigestFilter = 'all' | 'exclude_admin';
+
+function todayKstDateParts() {
+    const iso = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date());
+    const [year, month, day] = iso.split('-');
+    return { year, month, day };
+}
+
+function daysInMonth(year: number, month: number) {
+    return new Date(year, month, 0).getDate();
+}
+
+function buildAdminDateString(year: string, month: string, day: string) {
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+function formatDateTime(dateString?: string) {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleString('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
 const getScoreBadgeClasses = (score: string | undefined | null) => {
     const n = parseFloat(score || '0');
     // 높은 점수 = 우수(녹색), 중간 = 보통(황색), 낮은 점수 = 주의(적색)
@@ -82,6 +142,16 @@ const formatBudget = (b?: number) => {
     if (!b) return ''; 
     return b >= 10000 ? `${(b / 10000).toFixed(1)}억원` : `${b.toLocaleString()}만원`; 
 };
+
+const isApartmentCategory = (category?: string) =>
+    category === '아파트' || category === 'apartment';
+
+const compareKeyFromCard = (item: AnalysisCard) =>
+    compareItemKey({
+        masterId: item.aptSeq && !String(item.aptSeq).includes('-') ? item.aptSeq : undefined,
+        rtmsAptSeq: item.aptSeq?.includes('-') ? item.aptSeq : undefined,
+        exclusiveAreaM2: item.exclusiveArea ?? item.area ?? null,
+    });
 
 const catIconMap: Record<string, string> = {
   'land': '/land.svg',
@@ -126,7 +196,7 @@ function ProfilePageContent() {
     const [authLoading, setAuthLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<Tab>(() => {
         const queryTab = searchParams.get('tab') as Tab;
-        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries', 'my-home'].includes(queryTab)) {
+        if (queryTab && PROFILE_TABS.includes(queryTab)) {
             return queryTab;
         }
         return 'favorites';
@@ -134,7 +204,7 @@ function ProfilePageContent() {
 
     useEffect(() => {
         const queryTab = searchParams.get('tab') as Tab;
-        if (queryTab && ['favorites', 'my-analyses', 'my-discoveries', 'my-home'].includes(queryTab)) {
+        if (queryTab && PROFILE_TABS.includes(queryTab)) {
             setActiveTab(queryTab);
             if (queryTab === 'my-home') {
                 setShowMobileHistory(true);
@@ -165,9 +235,43 @@ function ProfilePageContent() {
     const [myDiscoveries, setMyDiscoveries] = useState<any[]>([]);
     const [discLoading, setDiscLoading] = useState(false);
 
+    const isAdmin = isAdminUser(user?.uid);
+    const initialKst = todayKstDateParts();
+    const [adminYear, setAdminYear] = useState(initialKst.year);
+    const [adminMonth, setAdminMonth] = useState(initialKst.month);
+    const [adminDay, setAdminDay] = useState(initialKst.day);
+    const [adminFilter, setAdminFilter] = useState<AdminDigestFilter>('all');
+    const [adminAnalyses, setAdminAnalyses] = useState<AdminDigestItem[]>([]);
+    const [adminSummary, setAdminSummary] = useState<AdminDigestSummary | null>(null);
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [adminPage, setAdminPage] = useState(1);
+    const [adminTotalPages, setAdminTotalPages] = useState(1);
+
     const [uploading, setUploading] = useState(false);
     const [uploadMsg, setUploadMsg] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const compareBasketKeys = useCompareBasketKeys();
+    const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
+    const [compareToast, setCompareToast] = useState<string | null>(null);
+
+    const handleAddApartmentToCompare = useCallback((item: AnalysisCard) => {
+        const areaRaw = item.exclusiveArea ?? item.area;
+        const exclusiveAreaM2 = areaRaw != null ? Number(areaRaw) : null;
+        const rtms = item.aptSeq?.includes('-') ? item.aptSeq : undefined;
+        const masterId = item.aptSeq && !item.aptSeq.includes('-') ? item.aptSeq : undefined;
+        setComparePickPending({
+            masterId: masterId ? String(masterId) : undefined,
+            rtmsAptSeq: rtms ? String(rtms) : undefined,
+            complexName: item.bldNm || item.propertyTitle || undefined,
+            suggestedAreaM2: Number.isFinite(exclusiveAreaM2) ? exclusiveAreaM2 : null,
+        });
+    }, []);
+
+    const handleCompareBasketFeedback = useCallback((message: string) => {
+        setCompareToast(message);
+        window.setTimeout(() => setCompareToast(null), 2800);
+    }, []);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -188,8 +292,52 @@ function ProfilePageContent() {
             loadMyAnalyses();
         } else if (activeTab === 'my-discoveries') {
             loadMyDiscoveries();
+        } else if (activeTab === 'admin-analyses' && isAdmin) {
+            loadAdminAnalyses(adminPage);
         }
-    }, [user, activeTab]);
+    }, [user, activeTab, isAdmin, adminPage, adminYear, adminMonth, adminDay, adminFilter]);
+
+    const loadAdminAnalyses = async (page = 1) => {
+        if (!user || !isAdmin) return;
+        setAdminLoading(true);
+        try {
+            const date = buildAdminDateString(adminYear, adminMonth, adminDay);
+            const excludeAdmin = adminFilter === 'exclude_admin' ? '1' : '0';
+            const idToken = await user.getIdToken();
+            const res = await fetch(
+                `/api/land/detective/admin/analyses-by-date?date=${date}&page=${page}&limit=20&excludeAdmin=${excludeAdmin}`,
+                { headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '조회 실패');
+            setAdminAnalyses(data.analyses || []);
+            setAdminSummary(data.summary || null);
+            setAdminPage(data.page || 1);
+            setAdminTotalPages(data.totalPages || 1);
+        } catch {
+            setAdminAnalyses([]);
+            setAdminSummary(null);
+        } finally {
+            setAdminLoading(false);
+        }
+    };
+
+    const handleAdminDatePartChange = (part: 'year' | 'month' | 'day', value: string) => {
+        let nextYear = adminYear;
+        let nextMonth = adminMonth;
+        let nextDay = adminDay;
+        if (part === 'year') nextYear = value;
+        if (part === 'month') nextMonth = value.padStart(2, '0');
+        if (part === 'day') nextDay = value.padStart(2, '0');
+        const maxDay = daysInMonth(Number(nextYear), Number(nextMonth));
+        if (Number(nextDay) > maxDay) {
+            nextDay = String(maxDay).padStart(2, '0');
+        }
+        setAdminYear(nextYear);
+        setAdminMonth(nextMonth);
+        setAdminDay(nextDay);
+        setAdminPage(1);
+    };
 
     const loadFavorites = async (page = 1) => {
         if (!user) return;
@@ -531,6 +679,7 @@ function ProfilePageContent() {
                                     { key: 'favorites' as Tab, label: '찜한 매물' },
                                     { key: 'my-analyses' as Tab, label: '내 분석 내역' },
                                     { key: 'my-discoveries' as Tab, label: '발견 기록' },
+                                    ...(isAdmin ? [{ key: 'admin-analyses' as Tab, label: 'AI 분석 현황' }] : []),
                                 ] as { key: Tab; label: string }[]).map(tab => (
                                     <button
                                         key={tab.key}
@@ -582,7 +731,10 @@ function ProfilePageContent() {
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {favorites.map((item) => (
+                                        <ApartmentCompareBasketBar anchor="inline" />
+                                        {favorites.map((item) => {
+                                            const isApartment = isApartmentCategory(item.category);
+                                            return (
                                             <PropertyCard
                                                 key={item.id}
                                                 data={{
@@ -603,12 +755,15 @@ function ProfilePageContent() {
                                                     area: item.area,
                                                 }}
                                                 currentUid={user?.uid}
+                                                inCompareBasket={isApartment && compareBasketKeys.has(compareKeyFromCard(item))}
+                                                onAddToCompare={isApartment ? () => handleAddApartmentToCompare(item) : undefined}
                                                 onLikeToggle={(id, e) => toggleLike(id)}
                                                 onClick={() => {
                                                     router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
                                                 }}
                                             />
-                                        ))}
+                                            );
+                                        })}
                                         <Pagination page={favPage} totalPages={favTotalPages} onPageChange={loadFavorites} />
                                     </div>
                                 )}
@@ -635,8 +790,11 @@ function ProfilePageContent() {
                                     </div>
                                 ) : (
                                     <div className="space-y-6">
+                                        <ApartmentCompareBasketBar anchor="inline" />
                                         <div className="space-y-3">
-                                            {myAnalyses.map((item) => (
+                                            {myAnalyses.map((item) => {
+                                                const isApartment = isApartmentCategory(item.category);
+                                                return (
                                                 <PropertyCard
                                                     key={item.id}
                                                     data={{
@@ -657,12 +815,15 @@ function ProfilePageContent() {
                                                         area: item.area,
                                                     }}
                                                     currentUid={user?.uid}
+                                                    inCompareBasket={isApartment && compareBasketKeys.has(compareKeyFromCard(item))}
+                                                    onAddToCompare={isApartment ? () => handleAddApartmentToCompare(item) : undefined}
                                                     onLikeToggle={(id, e) => toggleLike(id)}
                                                     onClick={() => {
                                                         router.push(`/analyze/${makeAnalyzeSlug(item.id!, item.bldNm)}`);
                                                     }}
                                                 />
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                         <Pagination
                                             page={myPage}
@@ -673,6 +834,144 @@ function ProfilePageContent() {
                                                 await loadOtherAnalyses(p);
                                                 setMyLoading(false);
                                             }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* 관리자 — 날짜별 AI 분석 */}
+                        {activeTab === 'admin-analyses' && isAdmin && (
+                            <div className="space-y-4">
+                                <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black text-slate-800 mb-1">날짜 선택 (KST)</p>
+                                        <p className="text-[10px] text-slate-450 font-semibold mb-3">AI 분석 완료된 리포트 · 유료·무료 포함</p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <select
+                                                value={adminYear}
+                                                onChange={(e) => handleAdminDatePartChange('year', e.target.value)}
+                                                className="h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700"
+                                            >
+                                                {Array.from({ length: 4 }, (_, i) => {
+                                                    const y = String(Number(initialKst.year) - 2 + i);
+                                                    return <option key={y} value={y}>{y}년</option>;
+                                                })}
+                                            </select>
+                                            <select
+                                                value={adminMonth}
+                                                onChange={(e) => handleAdminDatePartChange('month', e.target.value)}
+                                                className="h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700"
+                                            >
+                                                {Array.from({ length: 12 }, (_, i) => {
+                                                    const m = String(i + 1).padStart(2, '0');
+                                                    return <option key={m} value={m}>{Number(m)}월</option>;
+                                                })}
+                                            </select>
+                                            <select
+                                                value={adminDay}
+                                                onChange={(e) => handleAdminDatePartChange('day', e.target.value)}
+                                                className="h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700"
+                                            >
+                                                {Array.from({ length: daysInMonth(Number(adminYear), Number(adminMonth)) }, (_, i) => {
+                                                    const d = String(i + 1).padStart(2, '0');
+                                                    return <option key={d} value={d}>{Number(d)}일</option>;
+                                                })}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAdminFilter('all'); setAdminPage(1); }}
+                                            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition-colors ${adminFilter === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                                        >
+                                            전체
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setAdminFilter('exclude_admin'); setAdminPage(1); }}
+                                            className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition-colors ${adminFilter === 'exclude_admin' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                                        >
+                                            관리자분석제외
+                                        </button>
+                                    </div>
+
+                                    {adminSummary && (
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            <div className="rounded-xl bg-slate-50 border border-slate-200/70 px-3 py-2 text-center">
+                                                <p className="text-sm font-black text-slate-800">{adminSummary.total}</p>
+                                                <p className="text-[9px] font-bold text-slate-400">총 분석</p>
+                                            </div>
+                                            <div className="rounded-xl bg-emerald-50/70 border border-emerald-100 px-3 py-2 text-center">
+                                                <p className="text-sm font-black text-emerald-700">{adminSummary.freeCount}</p>
+                                                <p className="text-[9px] font-bold text-emerald-600">무료</p>
+                                            </div>
+                                            <div className="rounded-xl bg-sky-50/70 border border-sky-100 px-3 py-2 text-center">
+                                                <p className="text-sm font-black text-sky-700">{adminSummary.paidCount}</p>
+                                                <p className="text-[9px] font-bold text-sky-600">유료</p>
+                                            </div>
+                                            <div className="rounded-xl bg-violet-50/70 border border-violet-100 px-3 py-2 text-center">
+                                                <p className="text-sm font-black text-violet-700">{adminSummary.adminCount}</p>
+                                                <p className="text-[9px] font-bold text-violet-600">관리자</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {adminLoading ? (
+                                    <div className="flex justify-center py-16">
+                                        <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                ) : adminAnalyses.length === 0 ? (
+                                    <div className="text-center py-14 bg-white border border-slate-200/80 rounded-2xl shadow-sm">
+                                        <p className="text-slate-800 font-bold text-xs">해당 날짜에 AI 분석 완료 건이 없습니다</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {adminAnalyses.map((item) => (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.id, item.bldNm || item.propertyTitle)}`)}
+                                                className="w-full text-left bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm hover:border-emerald-200 hover:shadow-md transition-all"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-black text-slate-900 truncate">
+                                                            {item.bldNm || item.propertyTitle || '매물'}
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-500 font-semibold mt-0.5 truncate">{item.address}</p>
+                                                        <p className="text-[10px] text-slate-400 font-bold mt-1">{formatDateTime(item.analyzedAt || item.createdAt)}</p>
+                                                    </div>
+                                                    <div className="shrink-0 flex flex-col items-end gap-1">
+                                                        {item.riskScore && (
+                                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${getScoreBadgeClasses(item.riskScore)}`}>
+                                                                AI {formatScoreLabel(item.riskScore)}
+                                                            </span>
+                                                        )}
+                                                        <div className="flex flex-wrap justify-end gap-1">
+                                                            {item.isFree ? (
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-100">무료</span>
+                                                            ) : (
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-600 border border-sky-100">유료</span>
+                                                            )}
+                                                            {item.isAdminReport && (
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-600 border border-violet-100">관리자</span>
+                                                            )}
+                                                            {item.category && (
+                                                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">{item.category}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                        <Pagination
+                                            page={adminPage}
+                                            totalPages={adminTotalPages}
+                                            onPageChange={(p) => setAdminPage(p)}
                                         />
                                     </div>
                                 )}
@@ -786,6 +1085,18 @@ function ProfilePageContent() {
                 </div>
 
             </div>
+            <ApartmentCompareBasketBars />
+            <ApartmentAreaPickModal
+                pending={comparePickPending}
+                onClose={() => setComparePickPending(null)}
+                onAdded={handleCompareBasketFeedback}
+                onError={handleCompareBasketFeedback}
+            />
+            {compareToast && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-bold px-4 py-2.5 rounded-xl shadow-lg border border-white/10">
+                    {compareToast}
+                </div>
+            )}
         </div>
     );
 }

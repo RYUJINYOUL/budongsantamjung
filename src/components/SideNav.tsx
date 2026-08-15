@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { isAdminUser } from '../lib/adminUids';
+import { readHomeMapSession } from '../lib/homeMapSession';
 
 const EMERALD_ICON_FILTER =
   'invert(43%) sepia(97%) saturate(541%) hue-rotate(113deg) brightness(91%) contrast(92%)';
@@ -56,11 +57,27 @@ function SideNavInner() {
   const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [homeHref, setHomeHref] = useState('/');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const saved = readHomeMapSession();
+    if (!saved) {
+      setHomeHref('/');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('tab', saved.tab);
+    params.set('lat', String(saved.lat));
+    params.set('lng', String(saved.lng));
+    params.set('zoom', String(saved.zoomLevel));
+    if (saved.category !== 'all') params.set('category', saved.category);
+    setHomeHref(`/?${params.toString()}`);
+  }, [pathname]);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/' && !searchParams.get('panel');
@@ -112,11 +129,12 @@ function SideNavInner() {
         <nav className="flex-1 p-3 lg:p-2 overflow-y-auto">
           <ul className="space-y-1">
             {NAV_ITEMS.map((item) => {
-              const active = isActive(item.href);
+              const href = item.id === 'home' ? homeHref : item.href;
+              const active = isActive(item.id === 'home' ? '/' : item.href);
               return (
                 <li key={item.id}>
                   <Link
-                    href={item.href}
+                    href={href}
                     onClick={() => setIsOpen(false)}
                     className={[
                       'w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all',

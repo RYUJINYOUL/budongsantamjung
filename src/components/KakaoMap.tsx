@@ -51,6 +51,8 @@ interface KakaoMapProps {
   navigationZoomLevel?: number;
   /** false면 sessionStorage 저장 좌표로 초기화하지 않음 (홈 GPS 진입) */
   restoreSavedCenter?: boolean;
+  /** 초기 줌 (restoreSavedCenter=false 일 때 initializeMap에 사용) */
+  initialZoomLevel?: number;
   /** true면 줌 아웃 시에도 행정구역 클러스터 대신 매물 마커 유지 (우리집 지도) */
   disableRegionMarkers?: boolean;
   /** 우리집 지도 — 반경 N건·범례·축척(2km) 등 통계 오버레이 숨김 */
@@ -88,6 +90,7 @@ export default function KakaoMap({
   hideMarkerStats = false,
   searchBarTopClass = 'top-4 left-4 right-4',
   restoreSavedCenter = true,
+  initialZoomLevel,
 }: KakaoMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -316,7 +319,7 @@ export default function KakaoMap({
       } else if (initialCenterRef.current) {
         startLat = initialCenterRef.current.lat;
         startLng = initialCenterRef.current.lng;
-        startLevel = 6;
+        startLevel = initialZoomLevel ?? navigationZoomLevel ?? 6;
       }
 
       const options = {
@@ -352,11 +355,13 @@ export default function KakaoMap({
 
         setZoomLevel(zoomLevel);
 
-        sessionStorage.setItem('kakaomap_center', JSON.stringify({
-          lat: c.getLat(),
-          lng: c.getLng(),
-          level: zoomLevel,
-        }));
+        if (restoreSavedCenter) {
+          sessionStorage.setItem('kakaomap_center', JSON.stringify({
+            lat: c.getLat(),
+            lng: c.getLng(),
+            level: zoomLevel,
+          }));
+        }
       };
 
       // idle 이벤트: 지도 이동/확대축소가 끝났을 때 발생
@@ -721,13 +726,15 @@ export default function KakaoMap({
     }
   }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
-  // initialCenter가 외부에서 변경되었을 때 지도 중앙 이동
+  // initialCenter·줌이 외부(URL 복귀 등)에서 바뀌면 지도 뷰 동기화
   useEffect(() => {
     if (!map || !initialCenter) return;
     const position = new window.kakao.maps.LatLng(initialCenter.lat, initialCenter.lng);
     map.setCenter(position);
-    map.setLevel(navigationZoomLevel);
-  }, [map, initialCenter, navigationZoomLevel]);
+    if (initialZoomLevel != null) {
+      map.setLevel(initialZoomLevel);
+    }
+  }, [map, initialCenter?.lat, initialCenter?.lng, initialZoomLevel]);
 
   // 선택된 수혜 필지 위치로 지도 이동
   useEffect(() => {

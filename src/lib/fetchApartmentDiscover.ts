@@ -19,6 +19,7 @@ export type ApartmentDiscoverItem = {
   locationName?: string | null;
   category: string;
   avgPrice1m?: number | null;
+  riseRate6m?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
   centerM2?: number | null;

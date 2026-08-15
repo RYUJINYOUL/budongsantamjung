@@ -46,8 +46,9 @@ import {
   zoomLevelToRadiusKm,
   type MapPosition,
 } from '../lib/timelineGeo';
+import { readHomeMapSession, writeHomeMapSession } from '../lib/homeMapSession';
 import { parseParcelPolygonFromVworldResponse } from '../lib/parcelGeometry';
-import { getCurrentPosition, reverseGeocodeKakao } from '../lib/geolocation';
+import { reverseGeocodeKakao } from '../lib/geolocation';
 import {
   PANEL_INPUT,
   PANEL_INPUT_WRAP,
@@ -144,15 +145,7 @@ function litePanelOptionsFromAnalysis(analysis: Analysis) {
   };
 }
 
-const HOME_GEO_ZOOM = 2;
-
-type GeoLoadHint = 'user' | 'seoul' | null;
-
-function listGeoLoadingMessage(geoReady: boolean, geoLoadHint: GeoLoadHint): string {
-  if (geoLoadHint === 'seoul') return '서울 기준으로 보여 드립니다.';
-  if (!geoReady || geoLoadHint === 'user') return '유저님 위치의 리포트 불러오는 중 입니다.';
-  return '불러오는 중…';
-}
+const HOME_DEFAULT_ZOOM = DEFAULT_MAP_POSITION.zoomLevel;
 
 function HomePageContent() {
   const router = useRouter();
@@ -172,9 +165,8 @@ function HomePageContent() {
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
   const [geoReady, setGeoReady] = useState(false);
-  const [geoLoadHint, setGeoLoadHint] = useState<GeoLoadHint>(null);
-  const geoBootstrapGenRef = useRef(0);
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncHomeUrlRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasTimelineLoadedRef = useRef(false);
   /** URL lat/lng → mapCenter 1회만 (lite 닫을 때 stale 서울 좌표 재적용 방지) */
   const appliedUrlGeoRef = useRef<string | null>(null);
@@ -396,77 +388,49 @@ function HomePageContent() {
   }, []);
 
   const applyHomeGeo = useCallback((lat: number, lng: number, zoomLevel: number) => {
-    setMapCenter({ lat, lng });
-    setMapPosition({ lat, lng, zoomLevel });
+    setMapCenter((prev) => (
+      prev?.lat === lat && prev?.lng === lng ? prev : { lat, lng }
+    ));
+    setMapPosition((prev) => {
+      if (prev.lat === lat && prev.lng === lng && prev.zoomLevel === zoomLevel) return prev;
+      return { lat, lng, zoomLevel };
+    });
     setGeoReady(true);
   }, []);
 
-  /** 진입 시 현재 위치(GPS) — 거부·실패 시 서울. URL lat/lng 공유 링크는 우선 */
-  useEffect(() => {
-    const gen = ++geoBootstrapGenRef.current;
-    let cancelled = false;
-
-    const finish = (lat: number, lng: number, zoomLevel: number, hint: GeoLoadHint = null) => {
-      if (cancelled || geoBootstrapGenRef.current !== gen) return;
-      setGeoLoadHint(hint);
-      applyHomeGeo(lat, lng, zoomLevel);
-    };
-
-    const panel = searchParams.get('panel');
-    const latStr = searchParams.get('lat');
-    const lngStr = searchParams.get('lng');
+  const applyGeoFromUrlSearchParams = useCallback((params: URLSearchParams) => {
+    const latStr = params.get('lat');
+    const lngStr = params.get('lng');
+    const zoomStr = params.get('zoom');
     const urlLat = latStr != null ? parseFloat(latStr) : NaN;
     const urlLng = lngStr != null ? parseFloat(lngStr) : NaN;
-    if (Number.isFinite(urlLat) && Number.isFinite(urlLng)) {
-      finish(urlLat, urlLng, HOME_GEO_ZOOM, null);
-      return () => { cancelled = true; };
-    }
+    const urlZoom = zoomStr != null ? parseInt(zoomStr, 10) : NaN;
+    if (!Number.isFinite(urlLat) || !Number.isFinite(urlLng)) return false;
+    const zoomLevel = Number.isFinite(urlZoom) ? urlZoom : HOME_DEFAULT_ZOOM;
+    appliedUrlGeoRef.current = `${urlLat},${urlLng},${zoomLevel}`;
+    applyHomeGeo(urlLat, urlLng, zoomLevel);
+    return true;
+  }, [applyHomeGeo]);
 
-    if (!isMapHomePanel(panel)) {
-      finish(
-        DEFAULT_MAP_POSITION.lat,
-        DEFAULT_MAP_POSITION.lng,
-        DEFAULT_MAP_POSITION.zoomLevel,
-        null,
-      );
-      return () => { cancelled = true; };
-    }
-
-    setGeoLoadHint('user');
-
-    const fallbackTimer = window.setTimeout(() => {
-      finish(
-        DEFAULT_MAP_POSITION.lat,
-        DEFAULT_MAP_POSITION.lng,
-        DEFAULT_MAP_POSITION.zoomLevel,
-        'seoul',
-      );
-    }, 12000);
-
-    void getCurrentPosition()
-      .then(({ lat, lng }) => {
-        window.clearTimeout(fallbackTimer);
-        finish(lat, lng, HOME_GEO_ZOOM, 'user');
-      })
-      .catch(() => {
-        window.clearTimeout(fallbackTimer);
-        finish(
-          DEFAULT_MAP_POSITION.lat,
-          DEFAULT_MAP_POSITION.lng,
-          DEFAULT_MAP_POSITION.zoomLevel,
-          'seoul',
-        );
-      });
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(fallbackTimer);
-    };
-  }, [searchParams, applyHomeGeo]);
-
+  /** 진입·복귀: URL > session > 서울 (GPS 없음) */
   useEffect(() => {
-    if (!loading) setGeoLoadHint(null);
-  }, [loading]);
+    if (applyGeoFromUrlSearchParams(searchParams)) return;
+
+    if (geoReady) return;
+
+    const saved = readHomeMapSession();
+    if (saved) {
+      appliedUrlGeoRef.current = `${saved.lat},${saved.lng},${saved.zoomLevel}`;
+      applyHomeGeo(saved.lat, saved.lng, saved.zoomLevel);
+    } else {
+      appliedUrlGeoRef.current = `${DEFAULT_MAP_POSITION.lat},${DEFAULT_MAP_POSITION.lng},${DEFAULT_MAP_POSITION.zoomLevel}`;
+      applyHomeGeo(
+        DEFAULT_MAP_POSITION.lat,
+        DEFAULT_MAP_POSITION.lng,
+        DEFAULT_MAP_POSITION.zoomLevel,
+      );
+    }
+  }, [searchParams, applyHomeGeo, applyGeoFromUrlSearchParams, geoReady]);
 
   /** URL·탭·카테고리 동기화 + bootstrap 이후 lat/lng 변경 반영 */
   useEffect(() => {
@@ -485,22 +449,18 @@ function HomePageContent() {
     }
 
     if (lat && lng && geoReady) {
-      const geoKey = `${lat},${lng}`;
-      if (appliedUrlGeoRef.current !== geoKey) {
-        appliedUrlGeoRef.current = geoKey;
-        const parsedLat = parseFloat(lat);
-        const parsedLng = parseFloat(lng);
-        if (Number.isFinite(parsedLat) && Number.isFinite(parsedLng)) {
-          setMapCenter({ lat: parsedLat, lng: parsedLng });
-          setMapPosition((prev) => ({ lat: parsedLat, lng: parsedLng, zoomLevel: prev.zoomLevel }));
-        }
-      }
+      applyGeoFromUrlSearchParams(searchParams);
     }
 
     if (isMapHomePanel(panel)) {
-      setSelectedCategory(normalizeMapCategory(category));
+      if (category) {
+        setSelectedCategory(normalizeMapCategory(category));
+      } else if (geoReady) {
+        const saved = readHomeMapSession();
+        if (saved?.category) setSelectedCategory(normalizeMapCategory(saved.category));
+      }
     }
-  }, [searchParams, geoReady]);
+  }, [searchParams, geoReady, applyGeoFromUrlSearchParams]);
 
   // 구형 URL 하위 호환 리다이렉트 (?panel=ranking -> /ranking)
   useEffect(() => {
@@ -626,16 +586,29 @@ function HomePageContent() {
     }
   }, []);
 
-  /** 뒤로가기·bfcache 복귀 — 현재 mapPosition 기준 재조회 (저장 좌표 복원 없음) */
+  /** 뒤로가기·bfcache 복귀 — URL 좌표로 지도 복원 후 재조회 */
   useEffect(() => {
-    const onPageShow = (e: PageTransitionEvent) => {
-      if (!e.persisted || !geoReady) return;
-      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
-      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
+    const onPageShow = () => {
+      if (!geoReady || window.location.pathname !== '/') return;
+      const params = new URLSearchParams(window.location.search);
+      if (applyGeoFromUrlSearchParams(params)) {
+        const zoomStr = params.get('zoom');
+        const zoom = zoomStr != null ? parseInt(zoomStr, 10) : HOME_DEFAULT_ZOOM;
+        const lat = parseFloat(params.get('lat') || '');
+        const lng = parseFloat(params.get('lng') || '');
+        const radius = zoomLevelToRadiusKm(Number.isFinite(zoom) ? zoom : HOME_DEFAULT_ZOOM);
+        fetchAnalyses(lat, lng, radius, true);
+        return;
+      }
+      const saved = readHomeMapSession();
+      if (saved) {
+        applyHomeGeo(saved.lat, saved.lng, saved.zoomLevel);
+        fetchAnalyses(saved.lat, saved.lng, zoomLevelToRadiusKm(saved.zoomLevel), true);
+      }
     };
     window.addEventListener('pageshow', onPageShow);
     return () => window.removeEventListener('pageshow', onPageShow);
-  }, [fetchAnalyses, mapPosition, geoReady]);
+  }, [fetchAnalyses, applyHomeGeo, applyGeoFromUrlSearchParams, geoReady]);
 
   /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 */
   useEffect(() => {
@@ -675,18 +648,65 @@ function HomePageContent() {
     }
   }, [selectedCategory, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses, geoReady]);
 
-  const prevActivePanelRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prev = prevActivePanelRef.current;
-    prevActivePanelRef.current = activePanel;
-    if (!geoReady) return;
-    if (prev === 'analyze' && activePanel !== 'analyze') {
-      setSelectedCategory('all');
-      selectedCategoryRef.current = 'all';
-      const radius = zoomLevelToRadiusKm(mapPosition.zoomLevel);
-      fetchAnalyses(mapPosition.lat, mapPosition.lng, radius, true);
-    }
-  }, [activePanel, mapPosition.lat, mapPosition.lng, mapPosition.zoomLevel, fetchAnalyses, geoReady]);
+  const syncHomeUrl = useCallback((overrides?: {
+    lat?: number;
+    lng?: number;
+    zoomLevel?: number;
+    category?: string;
+    tab?: 'map' | 'list';
+  }) => {
+    if (!isMapHomePanel(searchParams.get('panel'))) return;
+
+    const liveParams = new URLSearchParams(window.location.search);
+    if (liveParams.get('lite')) return;
+
+    const params = new URLSearchParams(liveParams.toString());
+    const lat = overrides?.lat ?? mapPosition.lat;
+    const lng = overrides?.lng ?? mapPosition.lng;
+    const zoomLevel = overrides?.zoomLevel ?? mapPosition.zoomLevel;
+    const category = overrides?.category ?? selectedCategory;
+    const tab = overrides?.tab ?? (showMobileMap ? 'map' : 'list');
+
+    params.set('tab', tab);
+    params.set('lat', String(lat));
+    params.set('lng', String(lng));
+    params.set('zoom', String(zoomLevel));
+    if (category !== 'all') params.set('category', category);
+    else params.delete('category');
+
+    appliedUrlGeoRef.current = `${lat},${lng},${zoomLevel}`;
+    const qs = params.toString();
+    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
+  }, [router, searchParams, mapPosition, selectedCategory, showMobileMap]);
+
+  const scheduleSyncHomeUrl = useCallback((overrides?: Parameters<typeof syncHomeUrl>[0]) => {
+    if (syncHomeUrlRef.current) clearTimeout(syncHomeUrlRef.current);
+    syncHomeUrlRef.current = setTimeout(() => syncHomeUrl(overrides), 500);
+  }, [syncHomeUrl]);
+
+  const handleCategoryChange = useCallback((cat: string) => {
+    setSelectedCategory(cat);
+    setDisplayCount(isMobile ? 15 : 20);
+    writeHomeMapSession({ category: cat });
+    scheduleSyncHomeUrl({ category: cat });
+  }, [isMobile, scheduleSyncHomeUrl]);
+
+  const handleMapIdle = useCallback((pos: MapPosition) => {
+    setMapPosition(pos);
+    writeHomeMapSession({
+      lat: pos.lat,
+      lng: pos.lng,
+      zoomLevel: pos.zoomLevel,
+      category: selectedCategoryRef.current,
+      tab: showMobileMap ? 'map' : 'list',
+    });
+    if (new URLSearchParams(window.location.search).get('lite')) return;
+    scheduleSyncHomeUrl({
+      lat: pos.lat,
+      lng: pos.lng,
+      zoomLevel: pos.zoomLevel,
+    });
+  }, [scheduleSyncHomeUrl, showMobileMap]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ko-KR', {
@@ -740,6 +760,7 @@ function HomePageContent() {
       params.set('lng', ((mapBounds.neLng + mapBounds.swLng) / 2).toString());
     }
     if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (mapPosition?.zoomLevel != null) params.set('zoom', String(mapPosition.zoomLevel));
     return params;
   }, [showMobileMap, mapPosition, mapCenter, mapBounds, selectedCategory]);
 
@@ -748,7 +769,12 @@ function HomePageContent() {
     coords?: { lat: number; lng: number } | null,
     options?: { latestReportId?: string | null; propertyTitle?: string | null },
   ) => {
-    const params = new URLSearchParams(searchParams.toString());
+    if (syncHomeUrlRef.current) {
+      clearTimeout(syncHomeUrlRef.current);
+      syncHomeUrlRef.current = null;
+    }
+
+    const params = new URLSearchParams(window.location.search);
     params.set('lite', r114PropId);
     if (options?.latestReportId) {
       params.set('liteReport', String(options.latestReportId));
@@ -758,40 +784,48 @@ function HomePageContent() {
     if (coords?.lat != null && coords?.lng != null) {
       params.set('lat', String(coords.lat));
       params.set('lng', String(coords.lng));
-      appliedUrlGeoRef.current = `${coords.lat},${coords.lng}`;
+      appliedUrlGeoRef.current = `${coords.lat},${coords.lng},${mapPosition.zoomLevel}`;
       setMapCenter({ lat: coords.lat, lng: coords.lng });
     }
     router.replace(`/?${params.toString()}`, { scroll: false });
-  }, [router, searchParams]);
+  }, [router, mapPosition.zoomLevel]);
 
   const closeLitePanel = useCallback(() => {
     setLiteCompareNotice(null);
-    const params = new URLSearchParams(searchParams.toString());
+    if (syncHomeUrlRef.current) {
+      clearTimeout(syncHomeUrlRef.current);
+      syncHomeUrlRef.current = null;
+    }
+    const params = new URLSearchParams(window.location.search);
     params.delete('lite');
     params.delete('liteReport');
     const geo = mapPosition?.lat != null && mapPosition?.lng != null
-      ? { lat: mapPosition.lat, lng: mapPosition.lng }
-      : mapCenter;
+      ? { lat: mapPosition.lat, lng: mapPosition.lng, zoom: mapPosition.zoomLevel }
+      : mapCenter
+        ? { lat: mapCenter.lat, lng: mapCenter.lng, zoom: mapPosition.zoomLevel }
+        : null;
     if (geo) {
       params.set('lat', String(geo.lat));
       params.set('lng', String(geo.lng));
-      appliedUrlGeoRef.current = `${geo.lat},${geo.lng}`;
+      params.set('zoom', String(geo.zoom));
+      appliedUrlGeoRef.current = `${geo.lat},${geo.lng},${geo.zoom}`;
     }
     const qs = params.toString();
     router.replace(qs ? `/?${qs}` : '/', { scroll: false });
-  }, [router, searchParams, mapPosition, mapCenter]);
+  }, [router, mapPosition, mapCenter]);
 
   const handleLiteAnalyze = useCallback(async (r114PropId: string) => {
+    const returnQs = buildDiscoverReturnParams().toString();
     closeLitePanel();
     if (litePanelReportId) {
-      router.push(`/analyze/${makeAnalyzeSlug(litePanelReportId)}`);
+      router.push(`/analyze/${makeAnalyzeSlug(litePanelReportId)}?return=${encodeURIComponent(returnQs)}`);
       return;
     }
     try {
       const res = await fetchR114LiteComplex(r114PropId, { tradeLimit: 0 });
       if (res.latestReportId) {
         const title = res.data?.complex?.title;
-        router.push(`/analyze/${makeAnalyzeSlug(res.latestReportId, title)}`);
+        router.push(`/analyze/${makeAnalyzeSlug(res.latestReportId, title)}?return=${encodeURIComponent(returnQs)}`);
         return;
       }
     } catch {
@@ -804,7 +838,7 @@ function HomePageContent() {
     params.delete('lite');
     params.delete('liteReport');
     router.push(`/?${params.toString()}`);
-  }, [closeLitePanel, router, searchParams, litePanelReportId]);
+  }, [closeLitePanel, router, searchParams, litePanelReportId, buildDiscoverReturnParams]);
 
   const handleAddApartmentToCompare = useCallback((analysis: Analysis) => {
     const areaRaw = analysis.exclusiveArea ?? analysis.area;
@@ -1472,7 +1506,7 @@ function HomePageContent() {
                       <button
                         key={cat}
                         type="button"
-                        onClick={() => { setSelectedCategory(cat); setDisplayCount(isMobile ? 15 : 20); }}
+                        onClick={() => handleCategoryChange(cat)}
                         className={`shrink-0 px-3.5 py-1.5 rounded-full text-[11px] font-bold border transition-all ${selectedCategory === cat ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/15' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700'}`}
                       >
                         {CATEGORY_LABELS[cat]}
@@ -1566,7 +1600,7 @@ function HomePageContent() {
                     <div className="absolute inset-0 rounded-full border-t-2 border-emerald-500 animate-spin" />
                   </div>
                   <p className="text-xs font-bold text-emerald-700 text-center leading-relaxed px-4">
-                    {listGeoLoadingMessage(geoReady, geoLoadHint)}
+                    불러오는 중…
                   </p>
                 </div>
               ) : error ? (
@@ -1649,7 +1683,7 @@ function HomePageContent() {
               {isMapHomePanel(activePanel) && (loading || !geoReady) && (
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 lg:top-4 lg:translate-y-0 z-[25] max-w-[min(100%,20rem)] pointer-events-none px-4">
                   <p className="rounded-2xl border border-emerald-200/80 bg-white/95 backdrop-blur-md px-4 py-2.5 text-center text-[12px] font-bold text-emerald-800 shadow-lg shadow-emerald-500/10 leading-snug">
-                    {listGeoLoadingMessage(geoReady, geoLoadHint ?? (!geoReady ? 'user' : null))}
+                    불러오는 중…
                   </p>
                 </div>
               )}
@@ -1679,7 +1713,7 @@ function HomePageContent() {
               {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare') && (
                 <div className="absolute top-20 lg:top-1/2 lg:-translate-y-1/2 right-4 z-20 flex flex-col gap-1.5 bg-white/90 backdrop-blur-sm p-1.5 rounded-xl shadow-md border border-slate-200">
                   {CATEGORIES.map(cat => (
-                    <button key={cat} onClick={() => setSelectedCategory(cat)}
+                    <button key={cat} onClick={() => handleCategoryChange(cat)}
                       className={`px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm text-center ${selectedCategory === cat ? 'bg-emerald-400 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
                       {CATEGORY_LABELS[cat]}
                     </button>
@@ -1702,8 +1736,9 @@ function HomePageContent() {
                 <KakaoMap
                   properties={mapProperties}
                   selectedProperty={selectedMapProperty}
-                  navigationZoomLevel={2}
+                  navigationZoomLevel={mapPosition.zoomLevel}
                   initialCenter={mapCenter}
+                  initialZoomLevel={mapPosition.zoomLevel}
                   restoreSavedCenter={false}
                   onPropertySelect={property => {
                     if (activePanel === 'ranking') {
@@ -1742,7 +1777,7 @@ function HomePageContent() {
                     setSelectedProperty(analysis);
                   }}
                   onBoundsChanged={bounds => setMapBounds(bounds)}
-                  onMapIdle={pos => setMapPosition(pos)}
+                  onMapIdle={handleMapIdle}
                   onMapDrag={() => { setSelectedProperty(null); setSelectedRankingApt(null); setSelectedGosiPoint(null); }}
                   isAnalyzeMode={activePanel === 'analyze'}
                   primaryPolygon={primaryPolygon}
