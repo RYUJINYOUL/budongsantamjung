@@ -170,6 +170,9 @@ function HomePageContent() {
   const hasTimelineLoadedRef = useRef(false);
   /** URL lat/lng → mapCenter 1회만 (lite 닫을 때 stale 서울 좌표 재적용 방지) */
   const appliedUrlGeoRef = useRef<string | null>(null);
+  /** syncHomeUrl → router.replace 직후 URL→지도 재적용 스킵 */
+  const selfUrlSyncRef = useRef(false);
+  const mapPositionRef = useRef(mapPosition);
   const [user, setUser] = useState<User | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   // 분석 패널에서 선택한 위치 → 지도 이동 + 마커 표시
@@ -202,6 +205,16 @@ function HomePageContent() {
   useEffect(() => {
     discoverFiltersRef.current = discoverFilters;
   }, [discoverFilters]);
+
+  useEffect(() => {
+    mapPositionRef.current = mapPosition;
+  }, [mapPosition]);
+
+  useEffect(() => {
+    return () => {
+      if (syncHomeUrlRef.current) clearTimeout(syncHomeUrlRef.current);
+    };
+  }, []);
 
   const useApartmentDiscoverFeed =
     useServerApartmentDiscoverForCategory(selectedCategory);
@@ -414,6 +427,8 @@ function HomePageContent() {
 
   /** 진입·복귀: URL > session > 서울 (GPS 없음) */
   useEffect(() => {
+    if (selfUrlSyncRef.current) return;
+
     if (applyGeoFromUrlSearchParams(searchParams)) return;
 
     if (geoReady) return;
@@ -449,7 +464,23 @@ function HomePageContent() {
     }
 
     if (lat && lng && geoReady) {
-      applyGeoFromUrlSearchParams(searchParams);
+      if (selfUrlSyncRef.current) {
+        selfUrlSyncRef.current = false;
+      } else {
+        const urlLat = parseFloat(lat);
+        const urlLng = parseFloat(lng);
+        const urlZoomRaw = searchParams.get('zoom');
+        const urlZoom = urlZoomRaw != null ? parseInt(urlZoomRaw, 10) : NaN;
+        const pos = mapPositionRef.current;
+        const zoomLevel = Number.isFinite(urlZoom) ? urlZoom : HOME_DEFAULT_ZOOM;
+        const geoDiffers =
+          Math.abs(pos.lat - urlLat) > 1e-5
+          || Math.abs(pos.lng - urlLng) > 1e-5
+          || pos.zoomLevel !== zoomLevel;
+        if (geoDiffers) {
+          applyGeoFromUrlSearchParams(searchParams);
+        }
+      }
     }
 
     if (isMapHomePanel(panel)) {
@@ -655,18 +686,20 @@ function HomePageContent() {
     category?: string;
     tab?: 'map' | 'list';
   }) => {
-    if (!isMapHomePanel(searchParams.get('panel'))) return;
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
 
     const liveParams = new URLSearchParams(window.location.search);
     if (liveParams.get('lite')) return;
+    if (!isMapHomePanel(liveParams.get('panel'))) return;
 
-    const params = new URLSearchParams(liveParams.toString());
-    const lat = overrides?.lat ?? mapPosition.lat;
-    const lng = overrides?.lng ?? mapPosition.lng;
-    const zoomLevel = overrides?.zoomLevel ?? mapPosition.zoomLevel;
+    const pos = mapPositionRef.current;
+    const lat = overrides?.lat ?? pos.lat;
+    const lng = overrides?.lng ?? pos.lng;
+    const zoomLevel = overrides?.zoomLevel ?? pos.zoomLevel;
     const category = overrides?.category ?? selectedCategory;
     const tab = overrides?.tab ?? (showMobileMap ? 'map' : 'list');
 
+    const params = new URLSearchParams(liveParams.toString());
     params.set('tab', tab);
     params.set('lat', String(lat));
     params.set('lng', String(lng));
@@ -674,14 +707,24 @@ function HomePageContent() {
     if (category !== 'all') params.set('category', category);
     else params.delete('category');
 
-    appliedUrlGeoRef.current = `${lat},${lng},${zoomLevel}`;
     const qs = params.toString();
-    router.replace(qs ? `/?${qs}` : '/', { scroll: false });
-  }, [router, searchParams, mapPosition, selectedCategory, showMobileMap]);
+    const nextUrl = qs ? `/?${qs}` : '/';
+    if (window.location.pathname === '/') {
+      const curQs = window.location.search.replace(/^\?/, '');
+      if (curQs === qs) return;
+    }
+
+    appliedUrlGeoRef.current = `${lat},${lng},${zoomLevel}`;
+    selfUrlSyncRef.current = true;
+    router.replace(nextUrl, { scroll: false });
+  }, [router, selectedCategory, showMobileMap]);
 
   const scheduleSyncHomeUrl = useCallback((overrides?: Parameters<typeof syncHomeUrl>[0]) => {
     if (syncHomeUrlRef.current) clearTimeout(syncHomeUrlRef.current);
-    syncHomeUrlRef.current = setTimeout(() => syncHomeUrl(overrides), 500);
+    syncHomeUrlRef.current = setTimeout(() => {
+      syncHomeUrlRef.current = null;
+      syncHomeUrl(overrides);
+    }, 500);
   }, [syncHomeUrl]);
 
   const handleCategoryChange = useCallback((cat: string) => {
@@ -692,7 +735,11 @@ function HomePageContent() {
   }, [isMobile, scheduleSyncHomeUrl]);
 
   const handleMapIdle = useCallback((pos: MapPosition) => {
+    mapPositionRef.current = pos;
     setMapPosition(pos);
+    setMapCenter((prev) => (
+      prev?.lat === pos.lat && prev?.lng === pos.lng ? prev : { lat: pos.lat, lng: pos.lng }
+    ));
     writeHomeMapSession({
       lat: pos.lat,
       lng: pos.lng,
@@ -701,11 +748,7 @@ function HomePageContent() {
       tab: showMobileMap ? 'map' : 'list',
     });
     if (new URLSearchParams(window.location.search).get('lite')) return;
-    scheduleSyncHomeUrl({
-      lat: pos.lat,
-      lng: pos.lng,
-      zoomLevel: pos.zoomLevel,
-    });
+    scheduleSyncHomeUrl();
   }, [scheduleSyncHomeUrl, showMobileMap]);
 
   const formatDate = (dateString: string) => {

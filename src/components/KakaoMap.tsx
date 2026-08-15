@@ -726,9 +726,20 @@ export default function KakaoMap({
     }
   }, [map, selectedProperty, isAnalyzeMode, primaryPolygon]);
 
-  // initialCenter·줌이 외부(URL 복귀 등)에서 바뀌면 지도 뷰 동기화
+  // initialCenter·줌이 외부(URL 복귀 등)에서 바뀌면 지도 뷰 동기화 — 이미 같은 뷰면 스킵
   useEffect(() => {
     if (!map || !initialCenter) return;
+    const c = map.getCenter();
+    const level = map.getLevel();
+    const latDiff = Math.abs(c.getLat() - initialCenter.lat);
+    const lngDiff = Math.abs(c.getLng() - initialCenter.lng);
+    if (
+      latDiff < 1e-5
+      && lngDiff < 1e-5
+      && (initialZoomLevel == null || level === initialZoomLevel)
+    ) {
+      return;
+    }
     const position = new window.kakao.maps.LatLng(initialCenter.lat, initialCenter.lng);
     map.setCenter(position);
     if (initialZoomLevel != null) {
