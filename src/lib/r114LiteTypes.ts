@@ -108,9 +108,11 @@ export interface R114LiteAnchorTradeInput {
 }
 
 export interface R114LiteResolveAptSeqRequest {
-  portalTitle: string;
-  portalAddress: string;
-  anchorTrades: R114LiteAnchorTradeInput[];
+  portalTitle?: string;
+  portalAddress?: string;
+  anchorTrades?: R114LiteAnchorTradeInput[];
+  /** r114_trade + 6mo batch 자동 fingerprint (매매 → 전월세 fallback) */
+  autoFromR114?: boolean;
 }
 
 export interface R114LiteResolveAptSeqResponse {
@@ -125,11 +127,14 @@ export interface R114LiteResolveAptSeqResponse {
     rtmsVerifiedAt: string;
     matchCount?: number;
     masterSynced?: number;
+    channel?: string | null;
   };
   meta?: {
     verdict?: string;
     matchCount?: number;
     joinStatus?: string;
+    channel?: string | null;
+    autoFromR114?: boolean;
   };
 }
 

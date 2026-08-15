@@ -13,7 +13,7 @@ import {
   type AnalysisDetailInput,
 } from '../lib/collectAnalysisInputData';
 import { parseParcelPolygonFromVworldResponse, computePolygonCentroid } from '../lib/parcelGeometry';
-import { fetchR114LiteComplex } from '../lib/r114LiteApi';
+import { fetchR114LiteComplex, resolveR114LiteAptSeq } from '../lib/r114LiteApi';
 import type { R114LiteResolveAptSeqResponse } from '../lib/r114LiteTypes';
 import R114LiteAptSeqResolveForm from './R114LiteAptSeqResolveForm';
 import {
@@ -224,6 +224,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [noTradeDataModal, setNoTradeDataModal] = useState<{ aptName: string | null; reason: string } | null>(null);
   const [aptSeqResolveModal, setAptSeqResolveModal] = useState(false);
+  const [aptSeqAutoFailed, setAptSeqAutoFailed] = useState(false);
   const [r114LiteMeta, setR114LiteMeta] = useState<{
     title: string;
     address: string;
@@ -728,6 +729,21 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       prefilledR114PropId &&
       r114LiteMeta?.needsResolve
     ) {
+      setIsCheckingAvailability(true);
+      try {
+        const autoRes = await resolveR114LiteAptSeq(prefilledR114PropId, { autoFromR114: true });
+        if (autoRes.success && autoRes.data) {
+          setPrefilledRtmsAptSeq(autoRes.data.rtmsAptSeq);
+          setR114LiteMeta((prev) => (prev ? { ...prev, needsResolve: false } : null));
+          setIsCheckingAvailability(false);
+          await executeReportGeneration(resolvedPnu);
+          return;
+        }
+      } catch {
+        /* 수동 입력 모달 fallback */
+      }
+      setIsCheckingAvailability(false);
+      setAptSeqAutoFailed(true);
       resumeAnalyzePnuRef.current = resolvedPnu;
       setAptSeqResolveModal(true);
       return;
@@ -1064,6 +1080,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           className="absolute inset-0 z-50 flex items-end lg:items-center justify-center bg-slate-950/50 backdrop-blur-sm px-0 lg:px-4"
           onClick={() => {
             setAptSeqResolveModal(false);
+            setAptSeqAutoFailed(false);
             resumeAnalyzePnuRef.current = null;
           }}
         >
@@ -1072,6 +1089,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-8 h-1 bg-slate-200 rounded-full mx-auto mb-4 lg:hidden" />
+            {aptSeqAutoFailed && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
+                r114·RTMS 6개월 자동 매칭에 실패했습니다. 네이버·호갱노노 매매 3건을 입력해 주세요.
+              </p>
+            )}
             <R114LiteAptSeqResolveForm
               r114PropId={prefilledR114PropId}
               defaultTitle={r114LiteMeta.title}
