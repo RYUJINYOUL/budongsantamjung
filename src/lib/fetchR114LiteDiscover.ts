@@ -177,10 +177,13 @@ export function mapR114LiteDiscoverToFeedItem(item: R114LiteDiscoverItem) {
   };
 }
 
-/** analyzed discover + Lite — 중복 제거 후 세대수 기준 섞기 */
+export type MergeDiscoverSort = 'household' | 'distance';
+
+/** analyzed discover + Lite — 중복 제거 후 정렬 (기본: 세대수, 검색 시: 센터 거리) */
 export function mergeDiscoverWithR114Lite<T extends MergeFeedItem>(
   analyzed: T[],
   liteItems: T[],
+  options?: { sort?: MergeDiscoverSort; center?: { lat: number; lng: number } },
 ): T[] {
   const enrichedAnalyzed = enrichAnalyzedWithLiteR114(analyzed, liteItems);
 
@@ -189,10 +192,22 @@ export function mergeDiscoverWithR114Lite<T extends MergeFeedItem>(
   );
 
   const merged = [...enrichedAnalyzed, ...extra];
-  merged.sort((a, b) => {
-    const byHousehold = householdSortKey(b) - householdSortKey(a);
-    if (byHousehold !== 0) return byHousehold;
-    return (a.propertyTitle || '').localeCompare(b.propertyTitle || '', 'ko');
-  });
+  const sortMode = options?.sort ?? 'household';
+  const center = options?.center;
+
+  if (sortMode === 'distance' && center) {
+    merged.sort((a, b) => {
+      const distA = haversineKm(a, center) ?? Infinity;
+      const distB = haversineKm(b, center) ?? Infinity;
+      if (distA !== distB) return distA - distB;
+      return (a.propertyTitle || '').localeCompare(b.propertyTitle || '', 'ko');
+    });
+  } else {
+    merged.sort((a, b) => {
+      const byHousehold = householdSortKey(b) - householdSortKey(a);
+      if (byHousehold !== 0) return byHousehold;
+      return (a.propertyTitle || '').localeCompare(b.propertyTitle || '', 'ko');
+    });
+  }
   return merged;
 }

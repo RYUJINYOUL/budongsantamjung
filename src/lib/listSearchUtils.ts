@@ -110,20 +110,3 @@ export function findBestAnalysisMatchForSearch<T extends GeoItem>(
   if (best && (bestScore > 0 || bestDist <= 0.5)) return best;
   return null;
 }
-
-/** 검색 앵커 기준 — 이름 일치 우선, 그다음 거리 */
-export function sortAnalysesForSearchAnchor<T extends GeoItem>(
-  list: T[],
-  anchor: ListSearchAnchor,
-): T[] {
-  const labelNorm = normalizeSearchLabel(anchor.label);
-  return [...list].sort((a, b) => {
-    const scoreA = titleMatchScore(a, labelNorm);
-    const scoreB = titleMatchScore(b, labelNorm);
-    if (scoreA !== scoreB) return scoreB - scoreA;
-
-    const distA = haversineKm(a, anchor) ?? Infinity;
-    const distB = haversineKm(b, anchor) ?? Infinity;
-    return distA - distB;
-  });
-}

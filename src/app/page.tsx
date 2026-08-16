@@ -68,7 +68,6 @@ import {
 import {
   analysisMatchesListSearch,
   findBestAnalysisMatchForSearch,
-  sortAnalysesForSearchAnchor,
   type ListSearchAnchor,
 } from '../lib/listSearchUtils';
 
@@ -550,7 +549,10 @@ function HomePageContent() {
           setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
         }
         const liteList = liteResult.items.map(mapR114LiteDiscoverToFeedItem) as Analysis[];
-        setAnalyses(mergeDiscoverWithR114Lite(list as Analysis[], liteList));
+        const mergeOpts = listSearchAnchorRef.current
+          ? { sort: 'distance' as const, center: { lat, lng } }
+          : undefined;
+        setAnalyses(mergeDiscoverWithR114Lite(list as Analysis[], liteList, mergeOpts));
         hasTimelineLoadedRef.current = true;
         return;
       }
@@ -594,7 +596,10 @@ function HomePageContent() {
           setAptCardCache((prev) => ({ ...prev, ...cardUpdates }));
         }
         const liteList = liteResult.items.map(mapR114LiteDiscoverToFeedItem) as Analysis[];
-        const aptMerged = mergeDiscoverWithR114Lite(aptList as Analysis[], liteList);
+        const mergeOpts = listSearchAnchorRef.current
+          ? { sort: 'distance' as const, center: { lat, lng } }
+          : undefined;
+        const aptMerged = mergeDiscoverWithR114Lite(aptList as Analysis[], liteList, mergeOpts);
         setAnalyses([...nonAptTimeline, ...aptMerged]);
         hasTimelineLoadedRef.current = true;
         return;
@@ -1089,7 +1094,20 @@ function HomePageContent() {
   const [listSearchQuery, setListSearchQuery] = useState('');
   const [listSearchResults, setListSearchResults] = useState<any[]>([]);
   const [listSearchAnchor, setListSearchAnchor] = useState<ListSearchAnchor | null>(null);
+  const listSearchAnchorRef = useRef<ListSearchAnchor | null>(null);
   const ignoreSearchRef = useRef(false);
+
+  const clearListSearchAnchor = useCallback(() => {
+    listSearchAnchorRef.current = null;
+    setListSearchAnchor(null);
+  }, []);
+
+  const handleMapDrag = useCallback(() => {
+    clearListSearchAnchor();
+    setSelectedProperty(null);
+    setSelectedRankingApt(null);
+    setSelectedGosiPoint(null);
+  }, [clearListSearchAnchor]);
 
   const navigateFromListSearch = useCallback((
     lat: number,
@@ -1097,7 +1115,9 @@ function HomePageContent() {
     label: string,
   ) => {
     const trimmed = label.trim();
-    setListSearchAnchor({ lat, lng, label: trimmed });
+    const anchor = { lat, lng, label: trimmed };
+    listSearchAnchorRef.current = anchor;
+    setListSearchAnchor(anchor);
     setListSearchQuery(trimmed);
     ignoreSearchRef.current = true;
     setListSearchResults([]);
@@ -1128,15 +1148,8 @@ function HomePageContent() {
     return () => clearTimeout(timer);
   }, [listSearchQuery]);
 
-  const searchFilteredAnalyses = useMemo(() => {
-    const q = listSearchQuery.trim();
-    if (!q) return filteredAnalyses;
-    const matched = filteredAnalyses.filter((a) => analysisMatchesListSearch(a, q));
-    if (matched.length > 0) return matched;
-    // 장소 검색 직후 — feed 이름과 불일치해도 주변 목록은 거리순으로 표시
-    if (listSearchAnchor) return filteredAnalyses;
-    return matched;
-  }, [filteredAnalyses, listSearchQuery, listSearchAnchor]);
+  // 검색은 지도 이동·핀 선택용 — 목록 텍스트 필터는 적용하지 않음
+  const searchFilteredAnalyses = filteredAnalyses;
 
   const getAptCenterM2 = useCallback(
     (a: Analysis): number | null | undefined => {
@@ -1238,14 +1251,10 @@ function HomePageContent() {
   );
 
   const listAnalysesForDisplay = useMemo(() => {
-    const applySearchOrder = (list: Analysis[]) => (
-      listSearchAnchor ? sortAnalysesForSearchAnchor(list, listSearchAnchor) : list
-    );
-
     let list = searchFilteredAnalyses;
     if (selectedCategory === '아파트') {
       if (apartmentTabDiscover) {
-        list = sortApartmentDiscoverList(list, discoverFilters, (a) => {
+        return sortApartmentDiscoverList(list, discoverFilters, (a) => {
           if (a.id?.startsWith('lite-')) {
             return {
               riseRate6m: a.riseRate6m ?? null,
@@ -1256,7 +1265,6 @@ function HomePageContent() {
           if (!a.aptSeq || centerM2 == null) return undefined;
           return aptCardCache[analysisCardCacheKey(String(a.aptSeq), centerM2)];
         });
-        return applySearchOrder(list);
       }
       list = list.filter((a) => {
         if (!isApartmentAnalysis(a)) return true;
@@ -1271,12 +1279,12 @@ function HomePageContent() {
           discoverFilters,
         );
       });
-      list = sortApartmentDiscoverList(list, discoverFilters, (a) => {
+      return sortApartmentDiscoverList(list, discoverFilters, (a) => {
         const key = cardKeyForAnalysis(a);
         return key ? aptCardCache[key] : undefined;
       });
     }
-    return applySearchOrder(list);
+    return list;
   }, [
     searchFilteredAnalyses,
     selectedCategory,
@@ -1285,7 +1293,6 @@ function HomePageContent() {
     aptCardCache,
     aptAreaCenterM2,
     cardKeyForAnalysis,
-    listSearchAnchor,
     apartmentTabDiscover,
   ]);
 
@@ -1661,7 +1668,7 @@ function HomePageContent() {
                       value={listSearchQuery}
                       onChange={(e) => {
                         setListSearchQuery(e.target.value);
-                        setListSearchAnchor(null);
+                        clearListSearchAnchor();
                       }}
                       className={PANEL_INPUT}
                     />
@@ -1671,7 +1678,7 @@ function HomePageContent() {
                         onClick={() => {
                           setListSearchQuery('');
                           setListSearchResults([]);
-                          setListSearchAnchor(null);
+                          clearListSearchAnchor();
                         }}
                         className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
                         aria-label="검색어 지우기"
@@ -1928,7 +1935,7 @@ function HomePageContent() {
                   }}
                   onBoundsChanged={bounds => setMapBounds(bounds)}
                   onMapIdle={handleMapIdle}
-                  onMapDrag={() => { setSelectedProperty(null); setSelectedRankingApt(null); setSelectedGosiPoint(null); }}
+                  onMapDrag={handleMapDrag}
                   isAnalyzeMode={activePanel === 'analyze'}
                   primaryPolygon={primaryPolygon}
                   additionalPolygons={additionalPolygons}
