@@ -6782,7 +6782,7 @@ export default function AnalysisDetailPage({
                                 {recentAnalysisBlocked.message}
                             </p>
                             <p className="mt-2 text-center text-xs leading-relaxed text-slate-500">
-                                동일 단지는 7일 이내 AI 분석·재분석을 다시 실행할 수 없습니다.
+                                동일 단지에 7일 이내 완료된 AI 분석이 있으면 새 분석·재분석을 실행할 수 없습니다.
                             </p>
                             <div className="mt-6 space-y-2.5">
                                 {recentAnalysisBlocked.reportId && (
