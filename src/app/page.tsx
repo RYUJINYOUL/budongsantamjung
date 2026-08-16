@@ -1436,6 +1436,13 @@ function HomePageContent() {
     }
   };
 
+  const showLitePanel = Boolean(
+    litePanelPropId
+    && activePanel !== 'analyze'
+    && activePanel !== 'ranking'
+    && activePanel !== 'compare',
+  );
+
   return (
     <div className="detective-bg min-h-screen text-slate-900 relative">
       <div className="noise-overlay" />
@@ -1539,6 +1546,7 @@ function HomePageContent() {
               <ComparePanel onShowResult={setShowCompareResult} />
             </div>
           ) : (
+            <div className="relative flex-1 min-h-0 flex flex-col min-w-0">
             <div className={`flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 pb-24 ${showMobileMap ? 'hidden lg:block' : 'block'}`}>
               <div className="flex flex-col gap-3 mb-4">
                 <h2 className="text-sm font-bold text-slate-800">최근 분석</h2>
@@ -1715,6 +1723,22 @@ function HomePageContent() {
                 </div>
               )}
             </div>
+            {showLitePanel && !showMobileMap && (
+              <R114LiteFloatingPanel
+                key={litePanelPropId}
+                r114PropId={litePanelPropId!}
+                placement="list-inset"
+                initialDealMode={discoverFilters.dealMode}
+                latestReportId={litePanelReportId}
+                reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
+                onClose={closeLitePanel}
+                onAnalyzeClick={handleLiteAnalyze}
+                onCompareClick={handleLiteCompare}
+                compareNotice={liteCompareNotice}
+                onCompareNoticeTap={handleLiteCompareNoticeTap}
+              />
+            )}
+            </div>
           )}
         </div>
 
@@ -1729,6 +1753,23 @@ function HomePageContent() {
                     불러오는 중…
                   </p>
                 </div>
+              )}
+
+              {/* Lite 단지 패널 — 모바일 지도·PC (목록 탭은 좌측 패널 내부) */}
+              {showLitePanel && (showMobileMap || !isMobile) && (
+                <R114LiteFloatingPanel
+                  key={litePanelPropId}
+                  r114PropId={litePanelPropId!}
+                  placement="map"
+                  initialDealMode={discoverFilters.dealMode}
+                  latestReportId={litePanelReportId}
+                  reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
+                  onClose={closeLitePanel}
+                  onAnalyzeClick={handleLiteAnalyze}
+                  onCompareClick={handleLiteCompare}
+                  compareNotice={liteCompareNotice}
+                  onCompareNoticeTap={handleLiteCompareNoticeTap}
+                />
               )}
 
               {/* 상급지 비교 결과 오버레이 — 지도 위에 전체를 덮음 (항상 마운트, hidden으로 가시성 제어) */}
@@ -1948,22 +1989,6 @@ function HomePageContent() {
             </div>
           </div>
         </div>
-
-        {/* Lite 단지 패널 — 모바일 리스트·지도 공통 (지도 컬럼 hidden 시에도 표시) */}
-        {litePanelPropId && activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
-          <R114LiteFloatingPanel
-            key={litePanelPropId}
-            r114PropId={litePanelPropId}
-            initialDealMode={discoverFilters.dealMode}
-            latestReportId={litePanelReportId}
-            reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
-            onClose={closeLitePanel}
-            onAnalyzeClick={handleLiteAnalyze}
-            onCompareClick={handleLiteCompare}
-            compareNotice={liteCompareNotice}
-            onCompareNoticeTap={handleLiteCompareNoticeTap}
-          />
-        )}
       </div>
       {/* 앱 다운로드 안내 배너 팝업 (PC 전용) */}
       {!isMobile && activePanel === 'analyze' && showBanner && (

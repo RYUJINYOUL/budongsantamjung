@@ -20,6 +20,7 @@ export default function R114LiteFloatingPanel({
   onCompareClick,
   compareNotice,
   onCompareNoticeTap,
+  placement = 'map',
 }: {
   r114PropId: string;
   initialDealMode?: ApartmentDealMode;
@@ -30,6 +31,8 @@ export default function R114LiteFloatingPanel({
   onCompareClick?: (payload: ApartmentComparePickPayload) => void;
   compareNotice?: string | null;
   onCompareNoticeTap?: () => void;
+  /** list-inset: 모바일 목록 영역 안 / map: 지도 컬럼(모바일·PC) */
+  placement?: 'list-inset' | 'map';
 }) {
   const [chrome, setChrome] = useState<R114LiteComplexChrome | null>(null);
   const [floatingActions, setFloatingActions] = useState<R114LitePanelActions | null>(null);
@@ -67,12 +70,13 @@ export default function R114LiteFloatingPanel({
     </button>
   );
 
+  const shellClassName = placement === 'list-inset'
+    ? 'absolute inset-0 z-[30] flex flex-col bg-white shadow-2xl w-full h-full animate-in slide-in-from-right-4 duration-200 lg:hidden'
+    : 'absolute inset-0 z-[46] flex flex-col bg-white shadow-2xl border-r border-slate-200/80 w-full h-full max-w-[min(420px,100%)] animate-in slide-in-from-left-4 duration-200';
+
   return (
     <aside
-      className="fixed inset-0 z-[46] flex flex-col bg-white shadow-2xl border-r border-slate-200/80
-        w-full h-full
-        lg:absolute lg:inset-y-0 lg:left-[25%] lg:right-auto lg:w-full lg:max-w-[min(420px,100%)] lg:h-full
-        animate-in slide-in-from-left-4 duration-200"
+      className={shellClassName}
       role="dialog"
       aria-modal="true"
       aria-label={`${chrome?.title || '단지'} 상세`}
