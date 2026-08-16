@@ -69,8 +69,9 @@ export default function R114LiteFloatingPanel({
 
   return (
     <aside
-      className="absolute top-0 left-0 z-[46] flex flex-col bg-white shadow-2xl border-r border-slate-200/80
-        w-full max-w-[min(100%,420px)] h-full
+      className="fixed inset-0 z-[46] flex flex-col bg-white shadow-2xl border-r border-slate-200/80
+        w-full h-full
+        lg:absolute lg:inset-y-0 lg:left-[25%] lg:right-auto lg:w-full lg:max-w-[min(420px,100%)] lg:h-full
         animate-in slide-in-from-left-4 duration-200"
       role="dialog"
       aria-modal="true"

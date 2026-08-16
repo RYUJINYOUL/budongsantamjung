@@ -1731,22 +1731,6 @@ function HomePageContent() {
                 </div>
               )}
 
-              {/* Lite 단지 플로팅 패널 — 지도 위에 떠 있음 (사이드바·지도 레이아웃 유지) */}
-              {litePanelPropId && activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
-                <R114LiteFloatingPanel
-                  key={litePanelPropId}
-                  r114PropId={litePanelPropId}
-                  initialDealMode={discoverFilters.dealMode}
-                  latestReportId={litePanelReportId}
-                  reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
-                  onClose={closeLitePanel}
-                  onAnalyzeClick={handleLiteAnalyze}
-                  onCompareClick={handleLiteCompare}
-                  compareNotice={liteCompareNotice}
-                  onCompareNoticeTap={handleLiteCompareNoticeTap}
-                />
-              )}
-
               {/* 상급지 비교 결과 오버레이 — 지도 위에 전체를 덮음 (항상 마운트, hidden으로 가시성 제어) */}
               {activePanel === 'compare' && (
                 <div className={`absolute inset-0 z-30 ${showCompareResult ? '' : 'hidden'}`} id="compare-result-portal" />
@@ -1964,6 +1948,22 @@ function HomePageContent() {
             </div>
           </div>
         </div>
+
+        {/* Lite 단지 패널 — 모바일 리스트·지도 공통 (지도 컬럼 hidden 시에도 표시) */}
+        {litePanelPropId && activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && (
+          <R114LiteFloatingPanel
+            key={litePanelPropId}
+            r114PropId={litePanelPropId}
+            initialDealMode={discoverFilters.dealMode}
+            latestReportId={litePanelReportId}
+            reportTitle={analyses.find((a) => a.r114PropId === litePanelPropId)?.propertyTitle}
+            onClose={closeLitePanel}
+            onAnalyzeClick={handleLiteAnalyze}
+            onCompareClick={handleLiteCompare}
+            compareNotice={liteCompareNotice}
+            onCompareNoticeTap={handleLiteCompareNoticeTap}
+          />
+        )}
       </div>
       {/* 앱 다운로드 안내 배너 팝업 (PC 전용) */}
       {!isMobile && activePanel === 'analyze' && showBanner && (
