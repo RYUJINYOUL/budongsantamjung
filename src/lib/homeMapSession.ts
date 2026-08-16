@@ -1,4 +1,6 @@
 /** 홈(/) 지도·탭 상태 — 다른 페이지 이동 후 복귀용 */
+import { HOME_INITIAL_ZOOM_LEVEL } from './timelineGeo';
+
 export type HomeMapSession = {
   lat: number;
   lng: number;
@@ -26,7 +28,7 @@ export function readHomeMapSession(): HomeMapSession | null {
     return {
       lat: parsed.lat,
       lng: parsed.lng,
-      zoomLevel: typeof parsed.zoomLevel === 'number' ? parsed.zoomLevel : 9,
+      zoomLevel: typeof parsed.zoomLevel === 'number' ? parsed.zoomLevel : HOME_INITIAL_ZOOM_LEVEL,
       category: typeof parsed.category === 'string' ? parsed.category : 'all',
       tab: parsed.tab === 'list' ? 'list' : 'map',
     };
@@ -42,7 +44,7 @@ export function writeHomeMapSession(partial: Partial<HomeMapSession>): void {
     const next: HomeMapSession = {
       lat: partial.lat ?? prev?.lat ?? 37.5665,
       lng: partial.lng ?? prev?.lng ?? 126.978,
-      zoomLevel: partial.zoomLevel ?? prev?.zoomLevel ?? 9,
+      zoomLevel: partial.zoomLevel ?? prev?.zoomLevel ?? HOME_INITIAL_ZOOM_LEVEL,
       category: partial.category ?? prev?.category ?? 'all',
       tab: partial.tab ?? prev?.tab ?? 'map',
     };

@@ -18,10 +18,16 @@ const ZOOM_TO_RADIUS_KM: Record<number, number> = {
 
 export const TIMELINE_LIMIT = 100;
 
+/** 홈 첫 진입 — 서울시청 기준 약 1km 반경 */
+export const HOME_INITIAL_ZOOM_LEVEL = 4;
+
+/** 장소·키워드 검색 이동 — 카카오 지도 화면 기준 약 50m */
+export const SEARCH_NAVIGATION_ZOOM_LEVEL = 3;
+
 export const DEFAULT_MAP_POSITION = {
   lat: 37.5665,
   lng: 126.9780,
-  zoomLevel: 9,
+  zoomLevel: HOME_INITIAL_ZOOM_LEVEL,
 };
 
 export function zoomLevelToRadiusKm(zoomLevel: number): number {

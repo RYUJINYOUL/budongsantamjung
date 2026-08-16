@@ -42,6 +42,7 @@ import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   DEFAULT_MAP_POSITION,
+  SEARCH_NAVIGATION_ZOOM_LEVEL,
   TIMELINE_LIMIT,
   zoomLevelToRadiusKm,
   type MapPosition,
@@ -64,6 +65,12 @@ import {
   mapR114LiteDiscoverToFeedItem,
   mergeDiscoverWithR114Lite,
 } from '../lib/fetchR114LiteDiscover';
+import {
+  analysisMatchesListSearch,
+  findBestAnalysisMatchForSearch,
+  sortAnalysesForSearchAnchor,
+  type ListSearchAnchor,
+} from '../lib/listSearchUtils';
 
 interface Analysis {
   id: string;
@@ -196,9 +203,13 @@ function HomePageContent() {
   const aptAddressFetchedRef = useRef<Set<string>>(new Set());
   /** aptSeq → 대표 전용㎡; null=평형 구간 밖(제외) */
   const [aptAreaCenterM2, setAptAreaCenterM2] = useState<Record<string, number | null>>({});
+  const showMobileMapRef = useRef(showMobileMap);
   const selectedCategoryRef = useRef(selectedCategory);
   const discoverFiltersRef = useRef(discoverFilters);
   const prevSelectedCategoryRef = useRef(selectedCategory);
+  useEffect(() => {
+    showMobileMapRef.current = showMobileMap;
+  }, [showMobileMap]);
   useEffect(() => {
     selectedCategoryRef.current = selectedCategory;
   }, [selectedCategory]);
@@ -727,6 +738,19 @@ function HomePageContent() {
     }, 500);
   }, [syncHomeUrl]);
 
+  const navigateMapToLocation = useCallback((
+    lat: number,
+    lng: number,
+    zoomLevel: number = SEARCH_NAVIGATION_ZOOM_LEVEL,
+  ) => {
+    mapPositionRef.current = { lat, lng, zoomLevel };
+    appliedUrlGeoRef.current = `${lat},${lng},${zoomLevel}`;
+    setMapCenter({ lat, lng });
+    setMapPosition({ lat, lng, zoomLevel });
+    writeHomeMapSession({ lat, lng, zoomLevel });
+    scheduleSyncHomeUrl({ lat, lng, zoomLevel });
+  }, [scheduleSyncHomeUrl]);
+
   const handleCategoryChange = useCallback((cat: string) => {
     setSelectedCategory(cat);
     setDisplayCount(isMobile ? 15 : 20);
@@ -817,8 +841,10 @@ function HomePageContent() {
       syncHomeUrlRef.current = null;
     }
 
+    const onListTab = !showMobileMapRef.current;
     const params = new URLSearchParams(window.location.search);
     params.set('lite', r114PropId);
+    params.set('tab', onListTab ? 'list' : 'map');
     if (options?.latestReportId) {
       params.set('liteReport', String(options.latestReportId));
     } else {
@@ -830,6 +856,13 @@ function HomePageContent() {
       appliedUrlGeoRef.current = `${coords.lat},${coords.lng},${mapPosition.zoomLevel}`;
       setMapCenter({ lat: coords.lat, lng: coords.lng });
     }
+    if (onListTab) setShowMobileMap(false);
+    writeHomeMapSession({
+      tab: onListTab ? 'list' : 'map',
+      ...(coords?.lat != null && coords?.lng != null
+        ? { lat: coords.lat, lng: coords.lng }
+        : {}),
+    });
     router.replace(`/?${params.toString()}`, { scroll: false });
   }, [router, mapPosition.zoomLevel]);
 
@@ -840,8 +873,10 @@ function HomePageContent() {
       syncHomeUrlRef.current = null;
     }
     const params = new URLSearchParams(window.location.search);
+    const onListTab = params.get('tab') === 'list' || !showMobileMapRef.current;
     params.delete('lite');
     params.delete('liteReport');
+    params.set('tab', onListTab ? 'list' : 'map');
     const geo = mapPosition?.lat != null && mapPosition?.lng != null
       ? { lat: mapPosition.lat, lng: mapPosition.lng, zoom: mapPosition.zoomLevel }
       : mapCenter
@@ -853,6 +888,11 @@ function HomePageContent() {
       params.set('zoom', String(geo.zoom));
       appliedUrlGeoRef.current = `${geo.lat},${geo.lng},${geo.zoom}`;
     }
+    if (onListTab) setShowMobileMap(false);
+    writeHomeMapSession({
+      tab: onListTab ? 'list' : 'map',
+      ...(geo ? { lat: geo.lat, lng: geo.lng, zoomLevel: geo.zoom } : {}),
+    });
     const qs = params.toString();
     router.replace(qs ? `/?${qs}` : '/', { scroll: false });
   }, [router, mapPosition, mapCenter]);
@@ -1048,7 +1088,21 @@ function HomePageContent() {
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
   const [listSearchQuery, setListSearchQuery] = useState('');
   const [listSearchResults, setListSearchResults] = useState<any[]>([]);
+  const [listSearchAnchor, setListSearchAnchor] = useState<ListSearchAnchor | null>(null);
   const ignoreSearchRef = useRef(false);
+
+  const navigateFromListSearch = useCallback((
+    lat: number,
+    lng: number,
+    label: string,
+  ) => {
+    const trimmed = label.trim();
+    setListSearchAnchor({ lat, lng, label: trimmed });
+    setListSearchQuery(trimmed);
+    ignoreSearchRef.current = true;
+    setListSearchResults([]);
+    navigateMapToLocation(lat, lng);
+  }, [navigateMapToLocation]);
 
   useEffect(() => {
     if (ignoreSearchRef.current) {
@@ -1075,15 +1129,14 @@ function HomePageContent() {
   }, [listSearchQuery]);
 
   const searchFilteredAnalyses = useMemo(() => {
-    const q = listSearchQuery.trim().toLowerCase();
+    const q = listSearchQuery.trim();
     if (!q) return filteredAnalyses;
-    return filteredAnalyses.filter(a =>
-      (a.propertyTitle || '').toLowerCase().includes(q) ||
-      (a.location?.name || '').toLowerCase().includes(q) ||
-      (a.location?.address || '').toLowerCase().includes(q) ||
-      (a.detectiveNote || '').toLowerCase().includes(q)
-    );
-  }, [filteredAnalyses, listSearchQuery]);
+    const matched = filteredAnalyses.filter((a) => analysisMatchesListSearch(a, q));
+    if (matched.length > 0) return matched;
+    // 장소 검색 직후 — feed 이름과 불일치해도 주변 목록은 거리순으로 표시
+    if (listSearchAnchor) return filteredAnalyses;
+    return matched;
+  }, [filteredAnalyses, listSearchQuery, listSearchAnchor]);
 
   const getAptCenterM2 = useCallback(
     (a: Analysis): number | null | undefined => {
@@ -1185,6 +1238,10 @@ function HomePageContent() {
   );
 
   const listAnalysesForDisplay = useMemo(() => {
+    const applySearchOrder = (list: Analysis[]) => (
+      listSearchAnchor ? sortAnalysesForSearchAnchor(list, listSearchAnchor) : list
+    );
+
     let list = searchFilteredAnalyses;
     if (selectedCategory === '아파트') {
       if (apartmentTabDiscover) {
@@ -1199,7 +1256,7 @@ function HomePageContent() {
           if (!a.aptSeq || centerM2 == null) return undefined;
           return aptCardCache[analysisCardCacheKey(String(a.aptSeq), centerM2)];
         });
-        return list;
+        return applySearchOrder(list);
       }
       list = list.filter((a) => {
         if (!isApartmentAnalysis(a)) return true;
@@ -1219,7 +1276,7 @@ function HomePageContent() {
         return key ? aptCardCache[key] : undefined;
       });
     }
-    return list;
+    return applySearchOrder(list);
   }, [
     searchFilteredAnalyses,
     selectedCategory,
@@ -1228,7 +1285,15 @@ function HomePageContent() {
     aptCardCache,
     aptAreaCenterM2,
     cardKeyForAnalysis,
+    listSearchAnchor,
+    apartmentTabDiscover,
   ]);
+
+  useEffect(() => {
+    if (!listSearchAnchor) return;
+    const match = findBestAnalysisMatchForSearch(filteredAnalyses, listSearchAnchor);
+    if (match) setSelectedProperty(match);
+  }, [filteredAnalyses, listSearchAnchor]);
 
   useEffect(() => {
     if (!useApartmentDiscoverFeed) return;
@@ -1400,15 +1465,17 @@ function HomePageContent() {
     const query = listSearchQuery.trim();
     if (!query) return;
 
-    // 1. 먼저 현재 필터링된 최근 분석 리스트에서 매칭되는 항목이 있는지 확인
-    const localMatch = listAnalysesForDisplay.find(a => a.lat && a.lng);
-    if (localMatch && localMatch.lat && localMatch.lng) {
-      setMapCenter({ lat: localMatch.lat, lng: localMatch.lng });
+    // 1. 현재 feed에서 검색어와 이름이 맞는 단지
+    const localMatch = filteredAnalyses.find(
+      (a) => a.lat != null && a.lng != null && analysisMatchesListSearch(a, query),
+    );
+    if (localMatch?.lat != null && localMatch.lng != null) {
+      navigateFromListSearch(localMatch.lat, localMatch.lng, query);
       setSelectedProperty(localMatch);
       return;
     }
 
-    // 2. 만약 최근 분석 리스트에 매칭되는 항목이 없다면, Kakao Maps API를 사용하여 주소/키워드 검색 후 지도 이동
+    // 2. Kakao 장소 검색 후 지도·목록 이동
     if (typeof window !== 'undefined' && window.kakao?.maps?.services) {
       const { kakao } = window;
       const geocoder = new kakao.maps.services.Geocoder();
@@ -1418,8 +1485,8 @@ function HomePageContent() {
           const first = result[0];
           const lat = parseFloat(first.y);
           const lng = parseFloat(first.x);
-          setMapCenter({ lat, lng });
-          setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
+          const label = first.address_name || first.road_address?.address_name || query;
+          navigateFromListSearch(lat, lng, label);
         } else {
           const ps = new kakao.maps.services.Places();
           ps.keywordSearch(query, (data: any, status: any) => {
@@ -1427,8 +1494,7 @@ function HomePageContent() {
               const first = data[0];
               const lat = parseFloat(first.y);
               const lng = parseFloat(first.x);
-              setMapCenter({ lat, lng });
-              setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
+              navigateFromListSearch(lat, lng, first.place_name || query);
             }
           });
         }
@@ -1486,10 +1552,18 @@ function HomePageContent() {
                 </div>
               )}
               <div className="pointer-events-auto flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200">
-                <button onClick={() => setShowMobileMap(true)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <button onClick={() => {
+                  setShowMobileMap(true);
+                  writeHomeMapSession({ tab: 'map' });
+                  scheduleSyncHomeUrl({ tab: 'map' });
+                }} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                   지도
                 </button>
-                <button onClick={() => setShowMobileMap(false)} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <button onClick={() => {
+                  setShowMobileMap(false);
+                  writeHomeMapSession({ tab: 'list' });
+                  scheduleSyncHomeUrl({ tab: 'list' });
+                }} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                   {activePanel === 'analyze' ? '매물분석' : '목록'}
                 </button>
               </div>
@@ -1585,13 +1659,20 @@ function HomePageContent() {
                       type="text"
                       placeholder="매물명, 지역, 키워드 검색..."
                       value={listSearchQuery}
-                      onChange={e => setListSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setListSearchQuery(e.target.value);
+                        setListSearchAnchor(null);
+                      }}
                       className={PANEL_INPUT}
                     />
                     {listSearchQuery && (
                       <button
                         type="button"
-                        onClick={() => { setListSearchQuery(''); setListSearchResults([]); }}
+                        onClick={() => {
+                          setListSearchQuery('');
+                          setListSearchResults([]);
+                          setListSearchAnchor(null);
+                        }}
                         className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
                         aria-label="검색어 지우기"
                       >
@@ -1613,10 +1694,11 @@ function HomePageContent() {
                             onClick={() => {
                               const lat = parseFloat(result.y);
                               const lng = parseFloat(result.x);
-                              ignoreSearchRef.current = true;
-                              setMapCenter({ lat, lng });
-                              setListSearchQuery(''); // 검색창 비우기 (이동 후 해당 지역 매물이 바로 보이도록)
-                              setListSearchResults([]);
+                              navigateFromListSearch(
+                                lat,
+                                lng,
+                                result.place_name || result.address_name || listSearchQuery,
+                              );
                             }}
                             className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50 transition-colors border-b border-slate-100 last:border-0 group flex flex-col gap-0.5"
                           >
@@ -1804,7 +1886,7 @@ function HomePageContent() {
                 <KakaoMap
                   properties={mapProperties}
                   selectedProperty={selectedMapProperty}
-                  navigationZoomLevel={mapPosition.zoomLevel}
+                  navigationZoomLevel={SEARCH_NAVIGATION_ZOOM_LEVEL}
                   initialCenter={mapCenter}
                   initialZoomLevel={mapPosition.zoomLevel}
                   restoreSavedCenter={false}
