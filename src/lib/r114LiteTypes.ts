@@ -138,6 +138,37 @@ export interface R114LiteResolveAptSeqResponse {
   };
 }
 
+export interface R114LiteVariantItem {
+  r114PropId: string;
+  title: string;
+  propFamily: string;
+  variantRole: 'apartment' | 'officetel' | 'unknown';
+  variantRoleLabel: string;
+  householdCount?: number | null;
+  exclusiveAreaM2?: number | null;
+  pyeongApprox?: number | null;
+  avgPrice1m?: number | null;
+  saleCount6m: number;
+  tradeSparse: boolean;
+  isDefault: boolean;
+}
+
+export interface R114LiteVariantsResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    anchorPropId: string;
+    defaultPropId: string;
+    variantCount: number;
+    title: string;
+    address?: string | null;
+    gu?: string | null;
+    dong?: string | null;
+    jibun?: string | null;
+    variants: R114LiteVariantItem[];
+  };
+}
+
 export interface R114LiteDetailResponse {
   success: boolean;
   data?: {

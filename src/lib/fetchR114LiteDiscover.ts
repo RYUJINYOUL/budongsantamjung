@@ -32,6 +32,8 @@ export type R114LiteDiscoverItem = {
   hasReport?: boolean;
   latestReportId?: string | null;
   riskScore?: string | null;
+  variantCount?: number;
+  defaultPropId?: string | null;
 };
 
 export async function fetchR114LiteDiscover(
@@ -137,6 +139,7 @@ function enrichAnalyzedWithLiteR114<T extends MergeFeedItem>(
     return {
       ...item,
       r114PropId: match.r114PropId,
+      variantCount: (match as { variantCount?: number }).variantCount ?? (item as { variantCount?: number }).variantCount,
       lat: match.lat ?? item.lat,
       lng: match.lng ?? item.lng,
     };
@@ -151,6 +154,7 @@ export function mapR114LiteDiscoverToFeedItem(item: R114LiteDiscoverItem) {
   return {
     id: hasReport ? String(item.latestReportId) : `lite-${item.r114PropId}`,
     r114PropId: item.r114PropId,
+    variantCount: item.variantCount ?? 1,
     category: '아파트',
     propertyTitle: item.title,
     lat: item.lat ?? undefined,

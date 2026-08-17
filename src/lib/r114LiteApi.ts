@@ -6,6 +6,7 @@ import type {
   R114LiteTradesPageResponse,
   R114LiteResolveAptSeqRequest,
   R114LiteResolveAptSeqResponse,
+  R114LiteVariantsResponse,
   R114TradeType,
 } from './r114LiteTypes';
 import type { ApartmentAreaOption } from './apartmentCompareAreas';
@@ -236,4 +237,12 @@ export async function fetchR114LiteAreaOptions(r114PropId: string): Promise<{
     areas,
     error: areas.length === 0 ? '등록된 평형이 없습니다.' : null,
   };
+}
+
+export async function fetchR114ComplexVariants(r114PropId: string): Promise<R114LiteVariantsResponse> {
+  const id = String(r114PropId || '').trim();
+  const res = await fetchWithRetry(`/api/r114/complex/${encodeURIComponent(id)}/variants`, {
+    cache: 'no-store',
+  });
+  return res.json() as Promise<R114LiteVariantsResponse>;
 }

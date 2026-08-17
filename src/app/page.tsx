@@ -57,6 +57,8 @@ import {
   PAGE_STICKY_HEADER,
 } from '../components/analyzePanelFormStyles';
 import R114LiteFloatingPanel from '../components/R114LiteFloatingPanel';
+import R114VariantPickModal, { type R114VariantPickContext } from '../components/R114VariantPickModal';
+import type { R114LiteVariantItem } from '../lib/r114LiteTypes';
 import MyHomeHeaderButton from '../components/MyHomeHeaderButton';
 import { fetchR114LiteComplex, LITE_INITIAL_TRADE_LIMIT } from '../lib/r114LiteApi';
 import { buildLiteCardDisplay } from '../lib/r114LiteCardDisplay';
@@ -98,6 +100,8 @@ interface Analysis {
   area?: number | null;
   /** Lite 단지 (discover merge · r114 SSOT) */
   r114PropId?: string | null;
+  /** G/A 동지번 — 2 이상이면 picker */
+  variantCount?: number;
   liteBadge?: boolean;
   householdCount?: number | null;
   tradeSparse?: boolean;
@@ -329,6 +333,7 @@ function HomePageContent() {
   const [compareToast, setCompareToast] = useState<string | null>(null);
   const [liteCompareNotice, setLiteCompareNotice] = useState<string | null>(null);
   const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
+  const [variantPickPending, setVariantPickPending] = useState<R114VariantPickContext | null>(null);
 
   useEffect(() => {
     setDiscoverFilters(loadApartmentDiscoverFilters());
@@ -871,6 +876,35 @@ function HomePageContent() {
     router.replace(`/?${params.toString()}`, { scroll: false });
   }, [router, mapPosition.zoomLevel]);
 
+  const openLitePanelFromAnalysis = useCallback((analysis: Analysis) => {
+    if (!analysis.r114PropId) return;
+    const coords = analysis.lat != null && analysis.lng != null
+      ? { lat: analysis.lat, lng: analysis.lng }
+      : null;
+    const options = litePanelOptionsFromAnalysis(analysis);
+    if ((analysis.variantCount ?? 1) >= 2) {
+      setVariantPickPending({
+        anchorPropId: analysis.r114PropId,
+        propertyTitle: analysis.propertyTitle,
+        coords,
+        latestReportId: options.latestReportId ?? null,
+      });
+      return;
+    }
+    openLitePanel(analysis.r114PropId, coords, options);
+  }, [openLitePanel]);
+
+  const handleVariantPickSelect = useCallback((
+    variant: R114LiteVariantItem,
+    ctx: R114VariantPickContext,
+  ) => {
+    setVariantPickPending(null);
+    openLitePanel(variant.r114PropId, ctx.coords ?? null, {
+      latestReportId: variant.isDefault ? ctx.latestReportId ?? undefined : undefined,
+      propertyTitle: variant.title,
+    });
+  }, [openLitePanel]);
+
   const closeLitePanel = useCallback(() => {
     setLiteCompareNotice(null);
     if (syncHomeUrlRef.current) {
@@ -968,7 +1002,7 @@ function HomePageContent() {
 
     /** 아파트 — r114_prop_id 있으면 Lite 패널 (분석완료·미분석 공통) */
     if (shouldOpenLitePanelOnMapClick(analysis)) {
-      openLitePanel(analysis.r114PropId!, coords, litePanelOptionsFromAnalysis(analysis));
+      openLitePanelFromAnalysis(analysis);
       return;
     }
 
@@ -1005,7 +1039,7 @@ function HomePageContent() {
     }
 
     router.push(`/analyze/${analysis.id}?return=${encodeURIComponent(returnQs)}`);
-  }, [router, buildDiscoverReturnParams, aptAddressById, openLitePanel]);
+  }, [router, buildDiscoverReturnParams, aptAddressById, openLitePanelFromAnalysis]);
 
   const showCompareToast = useCallback((message: string) => {
     setCompareToast(message);
@@ -1922,13 +1956,7 @@ function HomePageContent() {
                     if (!analysis) return;
                     if (shouldOpenLitePanelOnMapClick(analysis)) {
                       setSelectedProperty(null);
-                      openLitePanel(
-                        analysis.r114PropId!,
-                        analysis.lat != null && analysis.lng != null
-                          ? { lat: analysis.lat, lng: analysis.lng }
-                          : null,
-                        litePanelOptionsFromAnalysis(analysis),
-                      );
+                      openLitePanelFromAnalysis(analysis);
                       return;
                     }
                     setSelectedProperty(analysis);
@@ -2173,6 +2201,11 @@ function HomePageContent() {
           setDiscoverFilters(f);
           saveApartmentDiscoverFilters(f);
         }}
+      />
+      <R114VariantPickModal
+        pending={variantPickPending}
+        onClose={() => setVariantPickPending(null)}
+        onSelect={handleVariantPickSelect}
       />
       <ApartmentAreaPickModal
         pending={comparePickPending}
