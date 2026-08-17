@@ -1,3 +1,5 @@
+'use client';
+
 import MyHomeWeeklyReportDetailClient from '../../../../components/my-home/weekly-report/MyHomeWeeklyReportDetailClient';
 
 type Props = {
