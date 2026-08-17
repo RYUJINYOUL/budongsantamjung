@@ -47,16 +47,16 @@ export async function fetchMergedApartmentDiscoverFeed(
 /** 홈 mapProperties와 동일한 discover/Lite 마커 */
 export function discoverFeedItemToMapMarker(item: MyHomeDiscoverFeedItem): MapMarkerProperty | null {
   if (item.lat == null || item.lng == null) return null;
-  const riskScore = parseFloat(item.propertyGrade?.riskScore || '0');
   return {
     id: item.id,
     address: item.location?.address || item.location?.name || '',
     propertyTitle: item.propertyTitle,
     category: item.category || 'apartment',
-    riskScore,
-    pendingAi: riskScore <= 0,
+    riskScore: 0,
+    pendingAi: false,
     lat: item.lat,
     lng: item.lng,
+    markerKind: 'myHomeApartment',
   };
 }
 
@@ -100,10 +100,11 @@ export function registrationToMapMarker(
     lat?: number | null;
     lng?: number | null;
   },
+  role: 'home' | 'compare',
   idPrefix: string,
 ): MapMarkerProperty | null {
   if (reg.lat == null || reg.lng == null) return null;
-  const id = reg.r114PropId || reg.rtmsAptSeq || reg.masterId || `${idPrefix}-home`;
+  const id = reg.r114PropId || reg.rtmsAptSeq || reg.masterId || `${idPrefix}-${role}`;
   return {
     id: `${idPrefix}:${id}`,
     address: reg.complexName,

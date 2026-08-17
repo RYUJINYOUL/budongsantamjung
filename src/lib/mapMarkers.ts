@@ -10,7 +10,7 @@ export interface MapMarkerProperty {
   /** AI 분석 미완료 타임라인 매물 — 0.svg + 00 배지 (분양 등은 설정하지 않음) */
   pendingAi?: boolean;
   /** 분양 지도 마커 — by.svg + D-day 배지(있을 때만) */
-  markerKind?: 'presale' | 'myHomeApartment' | 'myHomeRegistered' | 'myHomeWorkplace' | 'myHomeInsight';
+  markerKind?: 'presale' | 'myHomeApartment' | 'myHomeRegistered' | 'myHomeCompare' | 'myHomeWorkplace' | 'myHomeInsight';
   presaleDDay?: number | null;
 }
 
@@ -20,6 +20,9 @@ const MY_HOME_MARKER_ICON = '/myhome.png';
 const MY_HOME_JOB_ICON = '/job.png';
 const MY_HOME_REGISTERED_BG = '#34d399';
 const MY_HOME_REGISTERED_TAIL = '#10b981';
+const MY_HOME_COMPARE_BG = '#475569';
+const MY_HOME_COMPARE_TAIL = '#334155';
+const MY_HOME_COMPARE_ICON = '/apart.svg';
 const MY_HOME_WORKPLACE_BG = '#6366f1';
 const MY_HOME_WORKPLACE_TAIL = '#4f46e5';
 const MY_HOME_INSIGHT_BG = '#10b981';
@@ -153,6 +156,171 @@ function appendMarkerTail(root: HTMLDivElement, color: string) {
   root.appendChild(tail);
 }
 
+type MyHomeApartmentMarkerVariant = 'home' | 'compare' | 'pick';
+
+function appendMyHomeApartmentMarker(
+  root: HTMLDivElement,
+  property: MapMarkerProperty,
+  selected: boolean,
+  size: number,
+  variant: MyHomeApartmentMarkerVariant,
+) {
+  const spec = {
+    home: {
+      bg: MY_HOME_REGISTERED_BG,
+      tail: MY_HOME_REGISTERED_TAIL,
+      icon: MY_HOME_MARKER_ICON,
+      alt: '우리집',
+      whiteIcon: true,
+      title: property.propertyTitle || property.address || '우리집',
+    },
+    compare: {
+      bg: MY_HOME_COMPARE_BG,
+      tail: MY_HOME_COMPARE_TAIL,
+      icon: MY_HOME_COMPARE_ICON,
+      alt: '비교 아파트',
+      whiteIcon: true,
+      title: property.propertyTitle || property.address || '비교 아파트',
+    },
+    pick: {
+      bg: MY_HOME_APARTMENT_BG,
+      tail: MY_HOME_APARTMENT_TAIL,
+      icon: MY_HOME_MARKER_ICON,
+      alt: '아파트',
+      whiteIcon: false,
+      title: property.propertyTitle || property.address || '아파트',
+    },
+  }[variant];
+
+  const body = document.createElement('div');
+  body.style.cssText = `
+    width:${size}px;height:${size}px;border-radius:50%;
+    background:${spec.bg};border:3px solid ${selected ? '#10b981' : '#fff'};
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:${selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
+  `;
+  const img = document.createElement('img');
+  img.src = publicAssetUrl(spec.icon);
+  img.alt = spec.alt;
+  img.decoding = 'async';
+  const houseIconSize = Math.round(size * 0.55);
+  img.width = houseIconSize;
+  img.height = houseIconSize;
+  img.style.cssText = [
+    'object-fit:contain',
+    'pointer-events:none',
+    'display:block',
+    spec.whiteIcon
+      ? 'filter:brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,0.15))'
+      : 'filter:brightness(0) opacity(0.82) drop-shadow(0 1px 1px rgba(255,255,255,0.35))',
+  ].join(';');
+  img.onerror = () => {
+    img.onerror = null;
+    img.src = publicAssetUrl('/apart.svg');
+    img.style.filter = spec.whiteIcon
+      ? 'brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,0.15))'
+      : 'none';
+  };
+  body.appendChild(img);
+  root.appendChild(body);
+  appendMarkerTail(root, spec.tail);
+  root.title = spec.title;
+  attachMarkerHover(root, selected);
+}
+
+/** 분양·우리집 지도 전용 markerKind — 점수 마커와 분리 */
+function renderDedicatedMarkerKind(
+  root: HTMLDivElement,
+  property: MapMarkerProperty,
+  options: { selected: boolean },
+  size: number,
+): HTMLDivElement | null {
+  const kind = property.markerKind;
+  if (!kind) return null;
+
+  if (kind === 'presale') {
+    const badgeLabel = formatPresaleMarkerBadge(property.presaleDDay);
+    if (badgeLabel) {
+      appendMapBadge(root, badgeLabel, {
+        bg: PRESALE_DDAY_BADGE_BG,
+        textColor: '#ffffff',
+        title: `${badgeLabel} · ${property.propertyTitle || '분양'}`,
+        fontSize: badgeLabel.length > 4 ? 10 : 11,
+      });
+    }
+    appendIconMarkerBody(root, size, PRESALE_MARKER_ICON, '분양', options.selected);
+    appendMarkerTail(root, PRESALE_TAIL_COLOR);
+    root.title = property.propertyTitle || property.address || '분양';
+    attachMarkerHover(root, options.selected);
+    return root;
+  }
+
+  if (kind === 'myHomeWorkplace') {
+    const body = document.createElement('div');
+    body.style.cssText = `
+      width:${size}px;height:${size}px;border-radius:50%;
+      background:${MY_HOME_WORKPLACE_BG};border:3px solid ${options.selected ? '#10b981' : '#fff'};
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
+    `;
+    const img = document.createElement('img');
+    img.src = publicAssetUrl(MY_HOME_JOB_ICON);
+    img.alt = '직장';
+    img.decoding = 'async';
+    const jobIconSize = Math.round(size * 0.55);
+    img.width = jobIconSize;
+    img.height = jobIconSize;
+    img.style.cssText = [
+      'object-fit:contain',
+      'pointer-events:none',
+      'display:block',
+      'filter:brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,0.15))',
+    ].join(';');
+    img.onerror = () => {
+      img.onerror = null;
+      body.innerHTML = `<svg width="${Math.round(size * 0.45)}" height="${Math.round(size * 0.45)}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><rect x="4" y="8" width="16" height="12" rx="1"/><path d="M9 8V6a3 3 0 016 0v2"/></svg>`;
+    };
+    body.appendChild(img);
+    root.appendChild(body);
+    appendMarkerTail(root, MY_HOME_WORKPLACE_TAIL);
+    root.title = property.propertyTitle || property.address || '직장 · 목적지';
+    attachMarkerHover(root, options.selected);
+    return root;
+  }
+
+  if (kind === 'myHomeInsight') {
+    const dotSize = Math.max(14, Math.round(size * 0.38));
+    const body = document.createElement('div');
+    body.style.cssText = `
+      width:${dotSize}px;height:${dotSize}px;border-radius:50%;
+      background:${MY_HOME_INSIGHT_BG};
+      border:2.5px solid ${options.selected ? '#fff' : MY_HOME_INSIGHT_RING};
+      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.45)' : '0 2px 8px rgba(16,185,129,0.35)'};
+    `;
+    root.appendChild(body);
+    root.title = property.propertyTitle || '동네 호재';
+    attachMarkerHover(root, options.selected);
+    return root;
+  }
+
+  if (kind === 'myHomeRegistered') {
+    appendMyHomeApartmentMarker(root, property, options.selected, size, 'home');
+    return root;
+  }
+
+  if (kind === 'myHomeCompare') {
+    appendMyHomeApartmentMarker(root, property, options.selected, size, 'home');
+    return root;
+  }
+
+  if (kind === 'myHomeApartment') {
+    appendMyHomeApartmentMarker(root, property, options.selected, size, 'pick');
+    return root;
+  }
+
+  return null;
+}
+
 export function hasValidCoords(p: MapMarkerProperty): boolean {
   return p.lat != null && p.lng != null && !Number.isNaN(p.lat) && !Number.isNaN(p.lng);
 }
@@ -227,6 +395,10 @@ export function createMarkerElement(
     return root;
   }
 
+  // 우리집 지도 전용 — 점수·pendingAi 마커보다 먼저 처리 (discover 피드 포함)
+  const dedicated = renderDedicatedMarkerKind(root, property, options, size);
+  if (dedicated) return dedicated;
+
   const catKey = resolveCategoryKey(property.category);
   const cat = CATEGORY_STYLES[catKey];
   const score = getScoreColors(property.riskScore);
@@ -275,111 +447,6 @@ export function createMarkerElement(
       root.style.transform = options.selected ? 'scale(1.18)' : 'scale(1)';
     });
 
-    return root;
-  }
-
-  if (property.markerKind === 'presale') {
-    const badgeLabel = formatPresaleMarkerBadge(property.presaleDDay);
-    if (badgeLabel) {
-      appendMapBadge(root, badgeLabel, {
-        bg: PRESALE_DDAY_BADGE_BG,
-        textColor: '#ffffff',
-        title: `${badgeLabel} · ${property.propertyTitle || '분양'}`,
-        fontSize: badgeLabel.length > 4 ? 10 : 11,
-      });
-    }
-    appendIconMarkerBody(root, size, PRESALE_MARKER_ICON, '분양', options.selected);
-    appendMarkerTail(root, PRESALE_TAIL_COLOR);
-    root.title = property.propertyTitle || property.address || '분양';
-    attachMarkerHover(root, options.selected);
-    return root;
-  }
-
-  if (property.markerKind === 'myHomeWorkplace') {
-    const body = document.createElement('div');
-    body.style.cssText = `
-      width:${size}px;height:${size}px;border-radius:50%;
-      background:${MY_HOME_WORKPLACE_BG};border:3px solid ${options.selected ? '#10b981' : '#fff'};
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
-    `;
-    const img = document.createElement('img');
-    img.src = publicAssetUrl(MY_HOME_JOB_ICON);
-    img.alt = '직장';
-    img.decoding = 'async';
-    const jobIconSize = Math.round(size * 0.55);
-    img.width = jobIconSize;
-    img.height = jobIconSize;
-    img.style.cssText = [
-      'object-fit:contain',
-      'pointer-events:none',
-      'display:block',
-      'filter:brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,0.15))',
-    ].join(';');
-    img.onerror = () => {
-      img.onerror = null;
-      body.innerHTML = `<svg width="${Math.round(size * 0.45)}" height="${Math.round(size * 0.45)}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2"><rect x="4" y="8" width="16" height="12" rx="1"/><path d="M9 8V6a3 3 0 016 0v2"/></svg>`;
-    };
-    body.appendChild(img);
-    root.appendChild(body);
-    appendMarkerTail(root, MY_HOME_WORKPLACE_TAIL);
-    root.title = property.propertyTitle || property.address || '직장 · 목적지';
-    attachMarkerHover(root, options.selected);
-    return root;
-  }
-
-  if (property.markerKind === 'myHomeInsight') {
-    const dotSize = Math.max(14, Math.round(size * 0.38));
-    const body = document.createElement('div');
-    body.style.cssText = `
-      width:${dotSize}px;height:${dotSize}px;border-radius:50%;
-      background:${MY_HOME_INSIGHT_BG};
-      border:2.5px solid ${options.selected ? '#fff' : MY_HOME_INSIGHT_RING};
-      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.45)' : '0 2px 8px rgba(16,185,129,0.35)'};
-    `;
-    root.appendChild(body);
-    root.title = property.propertyTitle || '동네 호재';
-    attachMarkerHover(root, options.selected);
-    return root;
-  }
-
-  if (property.markerKind === 'myHomeApartment' || property.markerKind === 'myHomeRegistered') {
-    const isRegistered = property.markerKind === 'myHomeRegistered';
-    const bg = isRegistered ? MY_HOME_REGISTERED_BG : MY_HOME_APARTMENT_BG;
-    const tail = isRegistered ? MY_HOME_REGISTERED_TAIL : MY_HOME_APARTMENT_TAIL;
-    const body = document.createElement('div');
-    body.style.cssText = `
-      width:${size}px;height:${size}px;border-radius:50%;
-      background:${bg};border:3px solid ${options.selected ? '#10b981' : '#fff'};
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
-    `;
-    const img = document.createElement('img');
-    img.src = publicAssetUrl(MY_HOME_MARKER_ICON);
-    img.alt = isRegistered ? '우리집' : '아파트';
-    img.decoding = 'async';
-    const houseIconSize = Math.round(size * 0.55);
-    img.width = houseIconSize;
-    img.height = houseIconSize;
-    // myhome.png는 흰색 실루엣 — 노란/에메랄드 배경에서 대비를 위해 필터 적용
-    img.style.cssText = [
-      'object-fit:contain',
-      'pointer-events:none',
-      'display:block',
-      isRegistered
-        ? 'filter:brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,0.15))'
-        : 'filter:brightness(0) opacity(0.82) drop-shadow(0 1px 1px rgba(255,255,255,0.35))',
-    ].join(';');
-    img.onerror = () => {
-      img.onerror = null;
-      img.src = publicAssetUrl('/apart.svg');
-      img.style.filter = 'none';
-    };
-    body.appendChild(img);
-    root.appendChild(body);
-    appendMarkerTail(root, tail);
-    root.title = property.propertyTitle || property.address || (isRegistered ? '우리집' : '아파트');
-    attachMarkerHover(root, options.selected);
     return root;
   }
 

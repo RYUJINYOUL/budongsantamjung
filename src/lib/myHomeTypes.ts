@@ -39,13 +39,30 @@ export type MyHomeConfig = {
   updatedAtMs: number;
 };
 
+export type MyHomeWeeklyPeriod = {
+  start?: string;
+  end?: string;
+};
+
+/** Firestore `weeklyHighlights` — digest 스냅샷 (byItem, shared) */
+export type MyHomeWeeklyHighlights = Record<string, unknown>;
+
 export type MyHomeWeeklyReport = {
+  schemaVersion?: number;
   weekKey: string;
   createdAtMs: number;
   summaryLines: string[];
   homeComplexName?: string | null;
   compareComplexNames: string[];
+  snapshotHash?: string | null;
+  digestHash?: string | null;
+  hasWeeklyChanges?: boolean | null;
+  period?: MyHomeWeeklyPeriod | null;
+  weeklyHighlights?: MyHomeWeeklyHighlights | null;
+  tableSnapshot?: Record<string, unknown> | null;
   skippedAi?: boolean;
+  reason?: string | null;
+  model?: string | null;
   tableText?: string | null;
 };
 

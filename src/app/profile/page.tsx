@@ -7,7 +7,11 @@ import { auth } from '../../lib/firebase';
 import { onAuthStateChanged, updateProfile, User } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import SideNav from '../../components/SideNav';
+import MyHomeWeeklyReportList from '../../components/my-home/MyHomeWeeklyReportList';
 import { makeAnalyzeSlug } from '../../lib/slug';
+import { fetchMyHomeWeeklyReports } from '../../lib/myHomeFirestore';
+import { saveLastSeen } from '../../lib/myHomeReportUnread';
+import type { MyHomeWeeklyReport } from '../../lib/myHomeTypes';
 import PropertyCard from '../../components/PropertyCard';
 import ApartmentCompareBasketBars, { ApartmentCompareBasketBar, useCompareBasketKeys } from '../../components/ApartmentCompareBasket';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../../components/ApartmentAreaPickModal';
@@ -235,6 +239,9 @@ function ProfilePageContent() {
     const [myDiscoveries, setMyDiscoveries] = useState<any[]>([]);
     const [discLoading, setDiscLoading] = useState(false);
 
+    const [weeklyReports, setWeeklyReports] = useState<MyHomeWeeklyReport[]>([]);
+    const [weeklyReportsLoading, setWeeklyReportsLoading] = useState(false);
+
     const isAdmin = isAdminUser(user?.uid);
     const initialKst = todayKstDateParts();
     const [adminYear, setAdminYear] = useState(initialKst.year);
@@ -292,6 +299,8 @@ function ProfilePageContent() {
             loadMyAnalyses();
         } else if (activeTab === 'my-discoveries') {
             loadMyDiscoveries();
+        } else if (activeTab === 'my-home') {
+            loadWeeklyReports();
         } else if (activeTab === 'admin-analyses' && isAdmin) {
             loadAdminAnalyses(adminPage);
         }
@@ -456,6 +465,22 @@ function ProfilePageContent() {
             setMyDiscoveries([]);
         } finally {
             setDiscLoading(false);
+        }
+    };
+
+    const loadWeeklyReports = async () => {
+        if (!user) return;
+        setWeeklyReportsLoading(true);
+        try {
+            const reps = await fetchMyHomeWeeklyReports(user.uid, 12);
+            setWeeklyReports(reps);
+            if (reps.length > 0) {
+                saveLastSeen(reps[0].weekKey, reps[0].createdAtMs);
+            }
+        } catch {
+            setWeeklyReports([]);
+        } finally {
+            setWeeklyReportsLoading(false);
         }
     };
 
@@ -702,14 +727,28 @@ function ProfilePageContent() {
                         {/* 우리집 · 주간 리포트 */}
                         {activeTab === 'my-home' && (
                             <div className="space-y-4">
-                                <div className="text-center py-8 bg-white border border-slate-200/80 rounded-2xl shadow-sm px-5">
-                                    <p className="text-slate-900 font-bold text-sm mb-2">우리집 · 주간 AI 리포트</p>
+                                <MyHomeWeeklyReportList
+                                    reports={weeklyReports}
+                                    loading={weeklyReportsLoading}
+                                    title="우리집 · 주간 AI 리포트"
+                                />
+
+                                {!weeklyReportsLoading && weeklyReports.length === 0 && (
+                                    <div className="text-center py-12 bg-white border border-slate-200/80 rounded-2xl shadow-sm px-5">
+                                        <p className="text-slate-900 font-bold text-sm mb-2">주간 AI 리포트가 없어요</p>
+                                        <p className="text-[11px] text-slate-500 font-semibold leading-relaxed max-w-xs mx-auto mb-4">
+                                            우리집을 등록하면 매주 AI 주간 리포트를 받을 수 있어요.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="text-center py-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm px-5">
                                     <p className="text-[11px] text-slate-500 font-semibold leading-relaxed max-w-xs mx-auto mb-4">
-                                        우리집 등록, 비교 단지, 주간 리포트는 우리집 페이지에서 관리합니다.
+                                        우리집 등록, 비교 단지 설정은 우리집 페이지에서 관리합니다.
                                     </p>
                                     <Link
                                         href="/my-home"
-                                        className="inline-block px-5 py-2.5 bg-sky-500 hover:bg-sky-600 text-white text-[11px] font-extrabold rounded-xl transition-all shadow-sm"
+                                        className="inline-block px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-extrabold rounded-xl transition-all shadow-sm shadow-emerald-500/20"
                                     >
                                         우리집 페이지 열기
                                     </Link>

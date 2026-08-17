@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MapPin, Plus } from 'lucide-react';
 import { defaultApartmentDiscoverFilters } from '../../lib/apartmentDiscoverFilters';
 import {
   discoverFeedItemToMapMarker,
@@ -20,7 +20,9 @@ import {
   type MyHomeInsightItem,
 } from '../../lib/myHomeInsightMarkers';
 import type { MyApartmentRegistration, MyHomeCompareItem, MyHomeCompareSlot, MyHomeWorkplace } from '../../lib/myHomeTypes';
+import { MY_HOME_COMPARE_MAX } from '../../lib/myHomeTypes';
 import MyHomeInsightSheet from './MyHomeInsightSheet';
+import MyHomeMapDiscoverHintSheet from './MyHomeMapDiscoverHintSheet';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../ApartmentAreaPickModal';
 
 const KakaoMap = dynamic(() => import('../KakaoMap'), {
@@ -51,6 +53,8 @@ type Props = {
     reportId?: string | null;
   }) => void;
   onPickModeClear?: () => void;
+  onStartPickHome?: () => void;
+  onStartPickCompare?: () => void;
 };
 
 export default function MyHomeMapPanel({
@@ -61,6 +65,8 @@ export default function MyHomeMapPanel({
   workplace = {},
   onPick,
   onPickModeClear,
+  onStartPickHome,
+  onStartPickCompare,
 }: Props) {
   const [mapCenter, setMapCenter] = useState(() => ({
     lat: registration?.lat ?? DEFAULT_MAP_POSITION.lat,
@@ -75,6 +81,7 @@ export default function MyHomeMapPanel({
   const [pickedReportId, setPickedReportId] = useState<string | null>(null);
   const [pickedCoords, setPickedCoords] = useState<{ lat?: number | null; lng?: number | null }>({});
   const [selectedInsight, setSelectedInsight] = useState<MyHomeInsightItem | null>(null);
+  const [discoverHintName, setDiscoverHintName] = useState<string | null>(null);
   const itemByIdRef = useRef<Map<string, MyHomeDiscoverFeedItem>>(new Map());
   const insightByIdRef = useRef<Map<string, MyHomeInsightItem>>(new Map());
 
@@ -88,7 +95,21 @@ export default function MyHomeMapPanel({
     }
   }, [registration?.lat, registration?.lng]);
 
+  /** 우리집 등록 완료 + 선택 모드 아님 → 저장된 마커(우리집·비교·직장)만 표시 */
+  const savedOnlyMode = !!registration && pickMode == null;
+  /** 우리집·비교 미등록 — discover 마커 탭 시 안내 */
+  const showDiscoverHint = !registration && !pickMode;
+
+  useEffect(() => {
+    if (!showDiscoverHint) setDiscoverHintName(null);
+  }, [showDiscoverHint]);
+
+  useEffect(() => {
+    if (pickMode) setDiscoverHintName(null);
+  }, [pickMode]);
+
   const loadDiscoverFeed = useCallback(async (lat: number, lng: number, zoomLevel: number) => {
+    if (savedOnlyMode) return;
     if (discoverAbortRef.current) {
       discoverAbortRef.current.abort();
     }
@@ -117,41 +138,53 @@ export default function MyHomeMapPanel({
         setLoadingDiscover(false);
       }
     }
-  }, []);
+  }, [savedOnlyMode]);
 
   const scheduleDiscoverFeedLoad = useCallback(
     (lat: number, lng: number, zoomLevel: number) => {
+      if (savedOnlyMode) return;
       if (discoverDebounceRef.current) clearTimeout(discoverDebounceRef.current);
       discoverDebounceRef.current = setTimeout(() => {
         void loadDiscoverFeed(lat, lng, zoomLevel);
       }, 600);
     },
-    [loadDiscoverFeed],
+    [loadDiscoverFeed, savedOnlyMode],
   );
 
   useEffect(() => {
+    if (savedOnlyMode) {
+      if (discoverDebounceRef.current) clearTimeout(discoverDebounceRef.current);
+      discoverAbortRef.current?.abort();
+      setDiscoverFeed([]);
+      itemByIdRef.current = new Map();
+      setLoadingDiscover(false);
+      return;
+    }
     scheduleDiscoverFeedLoad(mapCenter.lat, mapCenter.lng, mapCenter.zoomLevel);
     return () => {
       if (discoverDebounceRef.current) clearTimeout(discoverDebounceRef.current);
       discoverAbortRef.current?.abort();
     };
+    // savedOnlyMode 전환 시에만 discover 로드/해제 (지도 이동은 handleMapIdle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [savedOnlyMode, scheduleDiscoverFeedLoad]);
 
   const handleMapIdle = useCallback(
     (pos: { lat: number; lng: number; zoomLevel: number }) => {
       setMapCenter(pos);
-      scheduleDiscoverFeedLoad(pos.lat, pos.lng, pos.zoomLevel);
+      if (!savedOnlyMode) {
+        scheduleDiscoverFeedLoad(pos.lat, pos.lng, pos.zoomLevel);
+      }
     },
-    [scheduleDiscoverFeedLoad],
+    [scheduleDiscoverFeedLoad, savedOnlyMode],
   );
 
   const savedMarkers = useMemo(() => {
     const markers: MapMarkerProperty[] = [];
-    const homeMarker = registration ? registrationToMapMarker(registration, 'home') : null;
+    const homeMarker = registration ? registrationToMapMarker(registration, 'home', 'home') : null;
     if (homeMarker) markers.push(homeMarker);
     compareSlots.forEach((slot, i) => {
-      const m = registrationToMapMarker(slot, `cmp-${i}`);
+      const m = registrationToMapMarker(slot, 'compare', `cmp-${i}`);
       if (m) markers.push({ ...m, propertyTitle: `[비교] ${slot.complexName}` });
     });
     const workMarker = workplaceToMapMarker(workplace);
@@ -184,10 +217,10 @@ export default function MyHomeMapPanel({
     return markers;
   }, [discoverFeed]);
 
-  const mapProperties = useMemo(
-    () => [...discoverMarkers, ...savedMarkers, ...insightMarkers],
-    [discoverMarkers, savedMarkers, insightMarkers],
-  );
+  const mapProperties = useMemo(() => {
+    if (savedOnlyMode) return savedMarkers;
+    return [...discoverMarkers, ...savedMarkers, ...insightMarkers];
+  }, [savedOnlyMode, discoverMarkers, savedMarkers, insightMarkers]);
 
   const handlePropertySelect = useCallback(
     (property: MapMarkerProperty) => {
@@ -210,13 +243,26 @@ export default function MyHomeMapPanel({
       if (insightKey) {
         const insight = insightByIdRef.current.get(insightKey);
         setSelectedInsight(insight ?? null);
+        return;
+      }
+
+      if (showDiscoverHint) {
+        const item = itemByIdRef.current.get(property.id);
+        if (item) {
+          setSelectedInsight(null);
+          setDiscoverHintName(item.propertyTitle || '아파트');
+        }
       }
     },
-    [pickMode],
+    [pickMode, showDiscoverHint],
   );
 
   const pickLabel =
     pickMode === 'home' ? '우리집 · 평형 선택' : pickMode === 'compare' ? '비교 단지 · 평형 선택' : '';
+
+  const canAddCompare = compareSlots.length < MY_HOME_COMPARE_MAX;
+  const showMapRegisterCta =
+    !pickMode && (!registration ? !!onStartPickHome : canAddCompare && !!onStartPickCompare);
 
   return (
     <div className="relative w-full h-full min-h-[280px]">
@@ -224,7 +270,7 @@ export default function MyHomeMapPanel({
         properties={mapProperties}
         compactUi={false}
         disableRegionMarkers
-        hideMarkerStats={false}
+        hideMarkerStats={savedOnlyMode}
         searchBarTopClass="top-14 left-4 right-4 lg:top-4"
         initialCenter={{ lat: mapCenter.lat, lng: mapCenter.lng }}
         initialZoomLevel={mapCenter.zoomLevel}
@@ -232,8 +278,32 @@ export default function MyHomeMapPanel({
         navigationZoomLevel={mapCenter.zoomLevel}
         onMapIdle={handleMapIdle}
         onPropertySelect={handlePropertySelect}
-        fitAllPropertiesOnChange={false}
+        fitAllPropertiesOnChange={savedOnlyMode}
       />
+
+      {showMapRegisterCta && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 max-w-[92%] pointer-events-none">
+          {!registration ? (
+            <button
+              type="button"
+              onClick={onStartPickHome}
+              className="pointer-events-auto inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold px-5 py-3 rounded-2xl shadow-lg shadow-emerald-500/30 transition-colors active:scale-[0.98]"
+            >
+              <MapPin className="w-4 h-4 shrink-0" />
+              우리집 등록
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onStartPickCompare}
+              className="pointer-events-auto inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold px-5 py-3 rounded-2xl shadow-lg shadow-emerald-500/30 transition-colors active:scale-[0.98]"
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              비교 아파트 등록
+            </button>
+          )}
+        </div>
+      )}
 
       {pickMode && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 max-w-[92%] pointer-events-none">
@@ -256,7 +326,7 @@ export default function MyHomeMapPanel({
         </div>
       )}
 
-      {loadingDiscover && (
+      {loadingDiscover && !savedOnlyMode && (
         <div
           className={`absolute right-4 z-30 bg-white/90 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-bold text-slate-500 flex items-center gap-1.5 ${
             pickMode ? 'bottom-20' : 'bottom-6'
@@ -267,7 +337,7 @@ export default function MyHomeMapPanel({
         </div>
       )}
 
-      {!pickMode && insightItems.length > 0 && !selectedInsight && (
+      {!pickMode && !savedOnlyMode && insightItems.length > 0 && !selectedInsight && !showMapRegisterCta && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
           <div className="px-3 py-1.5 rounded-full bg-white/90 backdrop-blur border border-emerald-200 text-[10px] font-bold text-emerald-700 shadow-sm">
             녹색 점 · 동네 호재 · 탭하여 보기
@@ -276,6 +346,12 @@ export default function MyHomeMapPanel({
       )}
 
       <MyHomeInsightSheet item={selectedInsight} onClose={() => setSelectedInsight(null)} />
+
+      <MyHomeMapDiscoverHintSheet
+        complexName={discoverHintName}
+        onClose={() => setDiscoverHintName(null)}
+        className={showMapRegisterCta ? 'bottom-[4.75rem]' : undefined}
+      />
 
       <ApartmentAreaPickModal
         pending={pickPending}

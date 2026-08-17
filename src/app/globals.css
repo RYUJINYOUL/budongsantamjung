@@ -619,3 +619,27 @@ body {
 .kakao-map--my-home .control_scale {
   display: none !important;
 }
+
+/* 우리집 · 미확인 리포트 테두리 반짝임 */
+@keyframes my-home-unread-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(52, 211, 153, 0.45),
+      0 0 6px rgba(52, 211, 153, 0.2);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(52, 211, 153, 0.95),
+      0 0 14px rgba(52, 211, 153, 0.55),
+      0 0 22px rgba(52, 211, 153, 0.25);
+  }
+}
+
+.my-home-unread-pulse {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 0.875rem;
+  animation: my-home-unread-pulse 1.2s ease-in-out infinite;
+}

@@ -90,6 +90,80 @@ export async function saveMyHomeConfig(uid: string, config: MyHomeConfig): Promi
   );
 }
 
+function isTableLikeLine(line: string): boolean {
+  const t = line.trim();
+  if (!t) return true;
+  if (/^\[.+\]$/.test(t)) return true;
+  if (t.startsWith('---') || t.startsWith('항목 |')) return true;
+  if (t.includes(' | ') && t.split('|').length >= 2) return true;
+  return false;
+}
+
+export function parseMyHomeWeeklyReport(id: string, data: Record<string, unknown>): MyHomeWeeklyReport {
+  const linesRaw = data.summaryLines;
+  const summaryLines = Array.isArray(linesRaw)
+    ? linesRaw
+        .map((l) => String(l).trim())
+        .filter((t) => t && !isTableLikeLine(t))
+    : [];
+
+  const compareRaw = data.compareComplexNames;
+  const compareComplexNames = Array.isArray(compareRaw)
+    ? compareRaw.map((l) => String(l).trim()).filter(Boolean)
+    : [];
+
+  const periodRaw = data.period;
+  const period =
+    periodRaw && typeof periodRaw === 'object'
+      ? {
+          start: (periodRaw as Record<string, unknown>).start?.toString(),
+          end: (periodRaw as Record<string, unknown>).end?.toString(),
+        }
+      : null;
+
+  const highlightsRaw = data.weeklyHighlights;
+  const weeklyHighlights =
+    highlightsRaw && typeof highlightsRaw === 'object'
+      ? (highlightsRaw as MyHomeWeeklyReport['weeklyHighlights'])
+      : null;
+
+  const tableSnapshotRaw = data.tableSnapshot;
+  const tableSnapshot =
+    tableSnapshotRaw && typeof tableSnapshotRaw === 'object'
+      ? (tableSnapshotRaw as Record<string, unknown>)
+      : null;
+
+  return {
+    schemaVersion: Number(data.schemaVersion) || 1,
+    weekKey: data.weekKey?.toString() || id,
+    createdAtMs: Number(data.createdAtMs) || 0,
+    summaryLines,
+    homeComplexName: data.homeComplexName?.toString() ?? null,
+    compareComplexNames,
+    snapshotHash: data.snapshotHash?.toString() ?? null,
+    digestHash: data.digestHash?.toString() ?? null,
+    hasWeeklyChanges: typeof data.hasWeeklyChanges === 'boolean' ? data.hasWeeklyChanges : null,
+    period,
+    weeklyHighlights,
+    tableSnapshot,
+    skippedAi: data.skippedAi === true,
+    reason: data.reason?.toString() ?? null,
+    model: data.model?.toString() ?? null,
+    tableText: data.tableText?.toString() ?? null,
+  };
+}
+
+export async function fetchMyHomeWeeklyReport(
+  uid: string,
+  weekKey: string,
+): Promise<MyHomeWeeklyReport | null> {
+  const snap = await getDoc(doc(db, 'users', uid, 'weeklyReports', weekKey));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  if (!data) return null;
+  return parseMyHomeWeeklyReport(snap.id, data as Record<string, unknown>);
+}
+
 export async function fetchMyHomeWeeklyReports(uid: string, max = 12): Promise<MyHomeWeeklyReport[]> {
   const q = query(
     collection(db, 'users', uid, 'weeklyReports'),
@@ -97,24 +171,5 @@ export async function fetchMyHomeWeeklyReports(uid: string, max = 12): Promise<M
     limit(max),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
-    const data = d.data();
-    const linesRaw = data.summaryLines;
-    const summaryLines = Array.isArray(linesRaw)
-      ? linesRaw.map((l) => String(l).trim()).filter(Boolean)
-      : [];
-    const compareRaw = data.compareComplexNames;
-    const compareComplexNames = Array.isArray(compareRaw)
-      ? compareRaw.map((l) => String(l).trim()).filter(Boolean)
-      : [];
-    return {
-      weekKey: data.weekKey?.toString() || d.id,
-      createdAtMs: Number(data.createdAtMs) || 0,
-      summaryLines,
-      homeComplexName: data.homeComplexName?.toString() ?? null,
-      compareComplexNames,
-      skippedAi: data.skippedAi === true,
-      tableText: data.tableText?.toString() ?? null,
-    };
-  });
+  return snap.docs.map((d) => parseMyHomeWeeklyReport(d.id, d.data() as Record<string, unknown>));
 }

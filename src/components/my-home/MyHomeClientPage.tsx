@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, MapPin, Sparkles } from 'lucide-react';
+import { Loader2, MapPin } from 'lucide-react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
 import {
@@ -22,6 +22,9 @@ import type {
   MyHomeWeeklyReport,
 } from '../../lib/myHomeTypes';
 import { MY_HOME_COMPARE_MAX } from '../../lib/myHomeTypes';
+import MyHomeWeeklyReportList from './MyHomeWeeklyReportList';
+import MyHomeReportNavButton from './MyHomeReportNavButton';
+import { useMyHomeReportUnread } from '../../hooks/useMyHomeReportUnread';
 import SideNav from '../SideNav';
 import { PAGE_HEADER_TITLE, PAGE_STICKY_HEADER } from '../analyzePanelFormStyles';
 import MyHomeHighlightStrip from './MyHomeHighlightStrip';
@@ -55,6 +58,8 @@ export default function MyHomeClientPage() {
   const [pickMode, setPickMode] = useState<MyHomeMapPickMode>(null);
   const [leftView, setLeftView] = useState<MyHomeLeftView>('compare');
 
+  const { hasUnread: hasUnreadReport, refresh: refreshUnread } = useMyHomeReportUnread(user?.uid);
+
   const showMap = pickMode != null;
   /** PC(lg+)는 지도 항상 표시, 모바일은 pickMode일 때만 */
   const showMapMobile = showMap;
@@ -75,12 +80,13 @@ export default function MyHomeClientPage() {
       setConfig(c ?? emptyConfig());
       const reps = await fetchMyHomeWeeklyReports(uid, 6);
       setReports(reps);
+      void refreshUnread();
     } catch {
       setConfig(emptyConfig());
     } finally {
       setConfigLoading(false);
     }
-  }, []);
+  }, [refreshUnread]);
 
   useEffect(() => {
     if (!user) return;
@@ -281,14 +287,7 @@ export default function MyHomeClientPage() {
                 <div className="w-9 shrink-0 lg:hidden" />
                 <h1 className={PAGE_HEADER_TITLE}>우리집</h1>
               </div>
-              {reg && (
-                <Link
-                  href="/profile?tab=my-home"
-                  className="shrink-0 text-[11px] font-bold text-emerald-600 hover:text-emerald-700"
-                >
-                  AI기록
-                </Link>
-              )}
+              {reg && <MyHomeReportNavButton hasUnread={hasUnreadReport} />}
             </div>
           </header>
 
@@ -300,9 +299,9 @@ export default function MyHomeClientPage() {
                     우리집을 FUN하게 등록하세요.
                   </h2>
                   <p className="text-sm text-slate-600 mt-2 leading-relaxed font-medium">
-                    우리집과 희망 매물을 한눈에 비교하고,
+                    우리집 또는 희망 매물 3군데 등록하면,
                     <br />
-                    우리집 가격으로 만나는 낭만주택 매거진.
+                    일주일 1회 AI리포트 및 낭만매거진을 보내 드립니다. 
                   </p>
                 </div>
                 <button
@@ -314,9 +313,8 @@ export default function MyHomeClientPage() {
                   우리집 등록
                 </button>
                 <p className="text-[11px] text-slate-400 text-center leading-relaxed">
-                  앱 설치 시 매주 AI 주간 리포트를 푸시로 받을 수 있어요.
-                  <br />
-                  웹에서는 내기록 → 우리집 탭에서 리포트를 확인합니다.
+                  앱에서는 푸시 알림(8월 21일)을 받을 수 있습니다.
+              
                 </p>
               </section>
             )}
@@ -369,31 +367,7 @@ export default function MyHomeClientPage() {
                       onRemoveCompare={(i) => void removeCompareSlot(i)}
                     />
 
-                    {reports.length > 0 && (
-                      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-emerald-500" />
-                          <h3 className="text-sm font-black text-slate-900">주간 AI 리포트</h3>
-                        </div>
-                        <ul className="space-y-2">
-                          {reports.map((r) => (
-                            <li
-                              key={r.weekKey}
-                              className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5"
-                            >
-                              <p className="text-[10px] font-bold text-slate-400">
-                                {new Date(r.createdAtMs).toLocaleDateString('ko-KR')}
-                              </p>
-                              <p className="text-xs font-bold text-slate-800 mt-0.5">
-                                {r.skippedAi
-                                  ? '변동 없음'
-                                  : r.summaryLines[0] || `${r.homeComplexName || '우리집'} 주간 리포트`}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
-                    )}
+                    {reports.length > 0 && <MyHomeWeeklyReportList reports={reports} />}
 
                     <MyHomeReportButtons targets={reportTargets} />
 
@@ -428,6 +402,8 @@ export default function MyHomeClientPage() {
               workplace={workplace}
               onPick={handleMapPick}
               onPickModeClear={clearPickMode}
+              onStartPickHome={startPickHome}
+              onStartPickCompare={startPickCompare}
             />
           </div>
         </div>
