@@ -1,17 +1,17 @@
 /** 지도 infrastructure 레이어 스타일 */
 export const INFRA_MAP_STYLE = {
   railway: {
-    lineColor: '#1a9ba8',
+    lineColor: '#4ADE80',
     lineWeight: 3.5,
-    lineOpacity: 0.9,
-    pointBg: '#4b5563',
+    lineOpacity: 0.82,
+    pointBg: '#34D399',
     pointColor: '#ffffff',
   },
   road: {
-    lineColor: '#d97706',
+    lineColor: '#60A5FA',
     lineWeight: 2.5,
-    lineOpacity: 0.8,
-    pointBg: '#92400e',
+    lineOpacity: 0.85,
+    pointBg: '#3B82F6',
     pointColor: '#ffffff',
   },
 } as const;

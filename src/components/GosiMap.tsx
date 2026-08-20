@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import InfraRouteMiniMap from './InfraRouteMiniMap';
 import { kakaoMapsSdkUrl } from '../lib/loadKakaoMapsSdk';
 import {
@@ -28,6 +29,7 @@ interface GosiMapProps {
     lat: number;
     lng: number;
     title: string;
+    isProperty?: boolean;
     [key: string]: any;
   }[];
   initialCenter?: { lat: number; lng: number };
@@ -38,18 +40,75 @@ interface GosiMapProps {
 }
 
 const ZONE_COLORS: Record<string, { fill: string; stroke: string, label: string }> = {
-  zone_urban_development: { fill: '#3B82F6', stroke: '#1D4ED8', label: '도시개발' },
-  zone_innovation: { fill: '#8B5CF6', stroke: '#6D28D9', label: '혁신지구' },
-  zone_redevelopment: { fill: '#EF4444', stroke: '#B91C1C', label: '재개발' },
-  zone_readjustment: { fill: '#F97316', stroke: '#C2410C', label: '재정비' },
-  zone_district: { fill: '#10B981', stroke: '#047857', label: '지구단위' },
-  zone_maintenance: { fill: '#F59E0B', stroke: '#B45309', label: '정비구역' },
-  zone_scheduled_maintenance: { fill: '#FBBF24', stroke: '#D97706', label: '정비예정' },
-  zone_tourist: { fill: '#EC4899', stroke: '#BE185D', label: '관광특구' },
-  zone_industrial_complex: { fill: '#64748B', stroke: '#334155', label: '산업단지' },
-  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E', label: '택지개발' },
-  zone_public_housing: { fill: '#6366F1', stroke: '#4338CA', label: '공공주택' }
+  zone_urban_development: { fill: '#60A5FA', stroke: '#2563EB', label: '도시개발' },
+  zone_innovation: { fill: '#A78BFA', stroke: '#7C3AED', label: '혁신지구' },
+  zone_redevelopment: { fill: '#F87171', stroke: '#DC2626', label: '재개발' },
+  zone_readjustment: { fill: '#FB923C', stroke: '#EA580C', label: '재정비' },
+  zone_district: { fill: '#34D399', stroke: '#059669', label: '지구단위' },
+  zone_maintenance: { fill: '#FBBF24', stroke: '#D97706', label: '정비구역' },
+  zone_scheduled_maintenance: { fill: '#FCD34D', stroke: '#F59E0B', label: '정비예정' },
+  zone_tourist: { fill: '#F472B6', stroke: '#DB2777', label: '관광특구' },
+  zone_industrial_complex: { fill: '#93C5FD', stroke: '#3B82F6', label: '산업단지' },
+  zone_housing_land: { fill: '#60A5FA', stroke: '#2563EB', label: '택지개발' },
+  zone_public_housing: { fill: '#3B82F6', stroke: '#1D4ED8', label: '공공주택' }
 };
+
+const getZoneLabelStyle = (colors: { fill: string; stroke: string }) => `
+  padding: 4px 10px;
+  background: ${colors.stroke};
+  color: #FFFFFF;
+  border: 1.5px solid ${colors.fill};
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+`;
+
+const createPropertyMarkerElement = (title: string) => {
+  const root = document.createElement('div');
+  root.style.cssText = 'display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;';
+
+  const label = document.createElement('div');
+  label.textContent = title;
+  label.style.cssText = `
+    background:#ea580c;color:#fff;font-size:11px;font-weight:800;
+    padding:5px 10px;border-radius:8px;white-space:nowrap;max-width:180px;
+    overflow:hidden;text-overflow:ellipsis;
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);border:2px solid #fff;margin-bottom:4px;
+  `;
+
+  const pin = document.createElement('div');
+  pin.style.cssText = `
+    width:16px;height:16px;background:#ea580c;border:3px solid #fff;
+    border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.35);
+  `;
+
+  root.appendChild(label);
+  root.appendChild(pin);
+  return root;
+};
+
+const DEFAULT_ACTIVE_LAYERS: Record<string, boolean> = {
+  railway: true,
+  road: false,
+  zone_urban_development: true,
+  zone_innovation: false,
+  zone_redevelopment: false,
+  zone_readjustment: false,
+  zone_district: false,
+  zone_maintenance: false,
+  zone_scheduled_maintenance: false,
+  zone_tourist: false,
+  zone_industrial_complex: false,
+  zone_housing_land: false,
+  zone_public_housing: false,
+};
+
+type AnchorRect = { top: number; left: number; width: number; height: number };
+const EMPTY_ANCHOR: AnchorRect = { top: 0, left: 0, width: 0, height: 0 };
 
 const getPolygonCenter = (paths: any[]): any => {
   let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -70,26 +129,15 @@ let isScriptLoading = false;
 let isScriptLoaded = false;
 const scriptCallbacks: (() => void)[] = [];
 export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = false, onToggleExpand, onMarkerClick }: GosiMapProps) {
+  const anchorRef = useRef<HTMLDivElement>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<any>(null);
+  const [portalReady, setPortalReady] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<AnchorRect>(EMPTY_ANCHOR);
   const overlaysRef = useRef<any>({ clusterer: null, items: [] });
 
   // 공간 데이터 관련 상태
-  const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({
-    railway: true,
-    road: true,
-    zone_urban_development: true,
-    zone_innovation: true,
-    zone_redevelopment: true,
-    zone_readjustment: true,
-    zone_district: true,
-    zone_maintenance: true,
-    zone_scheduled_maintenance: true,
-    zone_tourist: true,
-    zone_industrial_complex: true,
-    zone_housing_land: true,
-    zone_public_housing: true,
-  });
+  const [activeLayers, setActiveLayers] = useState<Record<string, boolean>>({ ...DEFAULT_ACTIVE_LAYERS });
   const [isFetching, setIsFetching] = useState(false);
   const [zoneDataVersion, setZoneDataVersion] = useState(0);
 
@@ -127,6 +175,61 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
   selectedInfraStationRef.current = selectedInfraStation;
 
   useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    setAnchorRect((prev) => {
+      if (
+        prev.top === rect.top &&
+        prev.left === rect.left &&
+        prev.width === rect.width &&
+        prev.height === rect.height
+      ) {
+        return prev;
+      }
+      return {
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    syncAnchorRect();
+    if (isExpanded) return;
+
+    const el = anchorRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => syncAnchorRect());
+    ro.observe(el);
+    window.addEventListener('resize', syncAnchorRect);
+    window.addEventListener('scroll', syncAnchorRect, true);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', syncAnchorRect);
+      window.removeEventListener('scroll', syncAnchorRect, true);
+    };
+  }, [isExpanded, syncAnchorRect]);
+
+  useEffect(() => {
+    if (!isExpanded || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isExpanded]);
+
+  useEffect(() => {
     return () => {
       unmatchedOverlaysRef.current.forEach(ov => ov.setMap(null));
     };
@@ -143,6 +246,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (anchorRect.width <= 0 || anchorRect.height <= 0) return;
+    if (map) return;
 
     const initMap = () => {
       if (!window.kakao || !window.kakao.maps) return;
@@ -211,7 +316,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     } else {
       initMap();
     }
-  }, []);
+  }, [anchorRect.width, anchorRect.height, map, initialCenter, sigCd]);
 
   // 마커 그리기 (클러스터러 적용)
   useEffect(() => {
@@ -268,12 +373,30 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
       });
     }
 
-    markers.forEach((marker, idx) => {
+    markers.forEach((marker) => {
       if (!marker.lat || !marker.lng) return;
 
       const position = new window.kakao.maps.LatLng(marker.lat, marker.lng);
       bounds.extend(position);
       hasValidPoints = true;
+
+      if (marker.isProperty) {
+        const propertyEl = createPropertyMarkerElement(marker.title || '분석 매물');
+        const propertyOverlay = new window.kakao.maps.CustomOverlay({
+          position,
+          content: propertyEl,
+          yAnchor: 1.2,
+          zIndex: 12,
+        });
+        propertyOverlay.setMap(map);
+        customOverlays.push(propertyOverlay);
+
+        propertyEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (onMarkerClick) onMarkerClick(marker);
+        });
+        return;
+      }
 
       // 일반 마커 생성 (클러스터링용)
       // CustomOverlay 대신 일반 Marker를 써야 MarkerClusterer가 인식합니다.
@@ -668,14 +791,14 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
               path,
               strokeWeight: 2.5,
               strokeColor: colors.stroke,
-              strokeOpacity: 0.8,
+              strokeOpacity: 0.9,
               strokeStyle: 'solid',
               fillColor: colors.fill,
-              fillOpacity: 0.15,
+              fillOpacity: 0.32,
             });
 
-            window.kakao.maps.event.addListener(polygon, 'mouseover', () => polygon.setOptions({ fillOpacity: 0.4 }));
-            window.kakao.maps.event.addListener(polygon, 'mouseout', () => polygon.setOptions({ fillOpacity: 0.15 }));
+            window.kakao.maps.event.addListener(polygon, 'mouseover', () => polygon.setOptions({ fillOpacity: 0.52 }));
+            window.kakao.maps.event.addListener(polygon, 'mouseout', () => polygon.setOptions({ fillOpacity: 0.32 }));
             window.kakao.maps.event.addListener(polygon, 'click', () => {
               setSelectedInfra(null);
               setSelectedInfraStation('전체');
@@ -706,19 +829,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
               const centerLatLng = getPolygonCenter(path);
               const labelEl = document.createElement('div');
               labelEl.className = 'zone-label-tag';
-              labelEl.style.cssText = `
-                padding: 4px 10px;
-                background: rgba(31, 41, 55, 0.85);
-                color: #FFFFFF;
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 6px;
-                font-size: 11px;
-                font-weight: 800;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-                white-space: nowrap;
-                pointer-events: none;
-                transform: translate(-50%, -50%);
-              `;
+              labelEl.style.cssText = getZoneLabelStyle(colors);
               labelEl.textContent = zoneName;
 
               const labelOverlay = new window.kakao.maps.CustomOverlay({
@@ -948,11 +1059,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
     }));
   };
 
-  return (
-    <div className={`relative w-full h-full transition-all duration-300 ${isExpanded
-        ? 'fixed inset-0 z-[100] bg-white m-0 p-0 rounded-none border-none'
-        : 'rounded-xl'
-      }`}>
+  const mapUi = (
+    <div className={`relative w-full h-full transition-all duration-300 ${isExpanded ? 'bg-white' : 'rounded-xl'}`}>
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* 철도·도로 노선 클릭 시 상세 패널 */}
@@ -980,8 +1088,8 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
           <div className="text-[10px] text-slate-500 mb-3 flex items-center gap-1.5 font-bold">
             <span className={`px-2 py-0.5 rounded-md border ${
               selectedInfra.category === 'railway'
-                ? 'bg-teal-50 text-teal-700 border-teal-200'
-                : 'bg-amber-50 text-amber-700 border-amber-200'
+                ? 'bg-green-50 text-green-600 border-green-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
             }`}>
               {INFRA_CATEGORY_LABEL[selectedInfra.category as 'railway' | 'road']}
             </span>
@@ -1224,31 +1332,35 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
         </div>
       )}
 
-      {/* 크게보기 / 작게보기 버튼 (우측 상단) */}
-      <div className="absolute top-3 right-3 z-10">
-        <button
-          onClick={onToggleExpand}
-          className="flex items-center gap-1.5 bg-white/95 backdrop-blur shadow-md border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 transition-colors text-slate-700 font-bold text-[11px]"
-        >
+      {/* 크게보기 / 닫기 버튼 */}
+      {onToggleExpand && (
+        <div className={`absolute ${isExpanded ? 'top-4 right-4 z-[100]' : 'top-3 right-3 z-10'}`}>
           {isExpanded ? (
-            <>
-              {/* 작게보기 SVG */}
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V3m0 6H3m6 0L3 3m12 6h6m-6 0V3m0 6L21 3m-12 12v6m0-6H3m6 0l-6 6m12-6h6m-6 0v6m0-6l6 6" />
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              aria-label="지도 닫기"
+              className="flex items-center gap-2 bg-slate-900 text-white shadow-2xl border border-slate-700 rounded-xl px-4 py-2.5 hover:bg-slate-800 transition-colors font-black text-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
-              작게보기
-            </>
+              닫기
+            </button>
           ) : (
-            <>
-              {/* 크게보기 SVG */}
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="flex items-center gap-1.5 bg-white/95 backdrop-blur shadow-md border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 transition-colors text-slate-700 font-bold text-[11px]"
+            >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
               </svg>
               크게보기
-            </>
+            </button>
           )}
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* 호재 레이어 토글 패널 (왼쪽 하단) */}
       <div className="absolute bottom-3 left-3 z-10 bg-white/95 backdrop-blur shadow-md border border-slate-200 rounded-xl p-2.5 max-h-[80%] overflow-y-auto flex flex-col gap-1.5 w-[140px]">
@@ -1263,7 +1375,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             type="checkbox"
             checked={!!activeLayers['railway']}
             onChange={() => toggleLayer('railway')}
-            className="w-3.5 h-3.5 rounded text-teal-600 focus:ring-teal-500"
+            className="w-3.5 h-3.5 rounded text-green-500 focus:ring-green-400"
           />
           <span className="text-[11px] font-bold text-slate-700">철도망 (GTX 등)</span>
         </label>
@@ -1272,7 +1384,7 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
             type="checkbox"
             checked={!!activeLayers['road']}
             onChange={() => toggleLayer('road')}
-            className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500"
+            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500"
           />
           <span className="text-[11px] font-bold text-slate-700">도로망 (고속도로)</span>
         </label>
@@ -1293,5 +1405,41 @@ export default function GosiMap({ markers, initialCenter, sigCd, isExpanded = fa
         ))}
       </div>
     </div>
+  );
+
+  const showPortaledMap = portalReady && anchorRect.width > 0 && anchorRect.height > 0;
+
+  return (
+    <>
+      <div ref={anchorRef} className="w-full h-full min-h-0">
+        {!showPortaledMap && mapUi}
+      </div>
+      {showPortaledMap &&
+        createPortal(
+          <div
+            className={
+              isExpanded
+                ? 'fixed inset-0 z-[9999] bg-white'
+                : 'fixed z-[30] overflow-hidden rounded-xl bg-white shadow-sm'
+            }
+            style={
+              isExpanded
+                ? undefined
+                : {
+                    top: `${anchorRect.top}px`,
+                    left: `${anchorRect.left}px`,
+                    width: `${anchorRect.width}px`,
+                    height: `${anchorRect.height}px`,
+                  }
+            }
+            role={isExpanded ? 'dialog' : undefined}
+            aria-modal={isExpanded || undefined}
+            aria-label={isExpanded ? '고시 위치 지도' : undefined}
+          >
+            {mapUi}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

@@ -207,44 +207,119 @@ function PriceBenchmarkCard({ bench }: { bench?: Record<string, any> }) {
   );
 }
 
+function describeRankInterpretation(
+  rank: number,
+  total: number,
+  kind: 'proximity' | 'volume',
+) {
+  if (!total || rank < 1) return null;
+  const isTop = rank <= Math.ceil(total * 0.25);
+  const isBottom = rank >= Math.ceil(total * 0.75);
+
+  if (kind === 'proximity') {
+    if (isTop) {
+      return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내에서 개발 호재(교통·산업단지·개발구역 등)와 가깝고 수혜를 많이 받는 편에 속합니다.`;
+    }
+    if (isBottom) {
+      return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내 다른 지역에 비해 개발 호재와의 거리·수혜가 상대적으로 먼 편에 속합니다.`;
+    }
+    return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내 중간 수준의 호재 근접·수혜 입지입니다.`;
+  }
+
+  if (isTop) {
+    return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내 거래가 활발한 상위권 지역입니다.`;
+  }
+  if (isBottom) {
+    return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내 거래량이 상대적으로 적은 하위권 지역입니다.`;
+  }
+  return `${total}개 읍·면·동 중 ${rank}위 — 시군구 내 거래량 중간 수준 지역입니다.`;
+}
+
 function DongRankingCard({ ctx }: { ctx?: Record<string, any> }) {
   const vol = ctx?.dongRanking?.tradeVolumeRank;
   const prox = ctx?.dongRanking?.proximityRank;
   if (!vol && !prox) return null;
 
+  const dongLabel = ctx?.umdNm || '해당 지역';
+  const regionName = ctx?.guidelineContext?.regionName || ctx?.dataConfidence?.regionName || '';
+
   return (
-    <section className="bg-slate-900 border border-white/5 rounded-[32px] p-6 shadow-xl">
-      <div className="flex items-center gap-2 mb-4">
+    <section className="bg-slate-900 border border-white/5 rounded-[32px] p-6 shadow-xl space-y-4">
+      <div className="flex items-center gap-2">
         <TrendingUp className="w-5 h-5 text-teal-400" />
         <h4 className="text-sm font-black text-slate-200">동 내 상대 위치</h4>
-        {ctx?.umdNm && (
-          <span className="text-[10px] font-bold text-teal-400/80 ml-auto">{ctx.umdNm}</span>
+        {dongLabel && (
+          <span className="text-[10px] font-bold text-teal-400/80 ml-auto">{dongLabel}</span>
         )}
       </div>
+
+      <p className="text-[11px] text-slate-400 leading-relaxed">
+        이 매물이 속한 <span className="text-slate-300 font-bold">{dongLabel}</span>
+        {regionName ? `(${regionName})` : ''}이 시군구 내 다른 읍·면·동과 비교했을 때
+        거래 활성도·개발 호재 근접 측면에서 어느 정도 상대적 입지·투자 맥락에 있는지 보여주는 참고 지표입니다.
+      </p>
+
+      <div className="rounded-2xl bg-white/[0.02] border border-white/5 px-4 py-3 space-y-2 text-[11px] text-slate-400 leading-relaxed">
+        <p><span className="text-slate-300 font-bold">동 내 상대 위치</span> — 시군구 내 읍·면·동 단위로, 이 지역의 상대적 순위·점수입니다.</p>
+        <p><span className="text-slate-300 font-bold">{dongLabel}</span> — 매물이 속한 행정구역(읍·면·동) 이름입니다.</p>
+        <p><span className="text-slate-300 font-bold">호재 근접</span> — 교통, 산업단지, 개발구역 등 주변 개발 호재와의 거리·수혜를 반영한 순위입니다.</p>
+        <p><span className="text-slate-300 font-bold">거래량 순위</span> — 최근 실거래 건수 기준, 시군구 내 거래가 얼마나 활발한지 순위입니다.</p>
+        <p><span className="text-slate-300 font-bold">N/M 표기</span> — 시군구 내 비교 대상 {prox?.total || vol?.total || '-'}개 읍·면·동 중 순위입니다. <span className="text-teal-300/90 font-bold">1위가 가장 유리</span>합니다.</p>
+      </div>
+
       <div className="space-y-3 text-sm">
         {vol?.rank != null && (
-          <div className="flex justify-between">
-            <span className="text-slate-400">거래량 순위</span>
-            <span className="font-black text-slate-200">
-              {vol.rank}/{vol.total} (상위 {vol.percentile}%)
-            </span>
+          <div className="rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[11px] font-bold">거래량 순위</span>
+              <span className="font-black text-slate-200">
+                {vol.rank}/{vol.total}
+                {vol.percentile != null && (
+                  <span className="text-teal-400/80 text-[11px] ml-1.5">(상위 {vol.percentile}%)</span>
+                )}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              {describeRankInterpretation(vol.rank, vol.total, 'volume')}
+            </p>
           </div>
         )}
         {prox?.rank != null && (
-          <div className="flex justify-between">
-            <span className="text-slate-400">호재 근접</span>
-            <span className="font-black text-slate-200">
-              {prox.rank}/{prox.total}
-            </span>
+          <div className="rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[11px] font-bold">호재 근접</span>
+              <span className="font-black text-slate-200">
+                {prox.rank}/{prox.total}
+                {prox.percentile != null && (
+                  <span className="text-teal-400/80 text-[11px] ml-1.5">(상위 {prox.percentile}%)</span>
+                )}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              {describeRankInterpretation(prox.rank, prox.total, 'proximity')}
+            </p>
           </div>
         )}
         {prox?.score != null && prox.rank == null && (
-          <div className="flex justify-between">
-            <span className="text-slate-400">호재 근접 점수</span>
-            <span className="font-black text-slate-200">{prox.score}</span>
+          <div className="rounded-xl bg-white/[0.02] border border-white/5 px-4 py-3">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[11px] font-bold">호재 근접 점수</span>
+              <span className="font-black text-slate-200">{prox.score}</span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              읍·면·동 단위 호재 근접·수혜 점수입니다. 순위 산출에 필요한 비교 대상이 부족할 때 점수만 표시됩니다.
+            </p>
           </div>
         )}
       </div>
+
+      <p className="text-[10px] text-slate-500 pt-2 border-t border-white/5 leading-relaxed">
+        해석 참고: 순위는 <span className="text-slate-400">1위 = 가장 유리</span> 방식입니다.
+        {prox?.rank != null && prox.total != null && prox.rank >= Math.ceil(prox.total * 0.75) && (
+          <> 예를 들어 호재 근접 {prox.rank}/{prox.total}은 시군구 내 다른 지역 대비 호재 수혜가 상대적으로 먼 편에 해당합니다.</>
+        )}
+        {' '}개별 매물 단위가 아닌 <span className="text-slate-400">읍·면·동(지역) 단위</span> 비교이며, 가격·수익률 예측이 아닙니다.
+      </p>
     </section>
   );
 }
@@ -302,21 +377,101 @@ function BuildingLayerCard({
   );
 }
 
+function describeCsiLevel(value: number) {
+  if (value >= 100) return 'positive';
+  if (value >= 90) return 'neutral';
+  return 'negative';
+}
+
+function describeCsiVsBaseline(value: number, regionLabel: string) {
+  const level = describeCsiLevel(value);
+  if (level === 'positive') {
+    return `${regionLabel} ${value} — 기준선(100) 이상으로, 상승·개선 쪽으로 보는 사람이 더 많습니다.`;
+  }
+  if (level === 'neutral') {
+    return `${regionLabel} ${value} — 기준선(100)보다 다소 낮지만, 극단적으로 위축된 수준은 아닙니다.`;
+  }
+  return `${regionLabel} ${value} — 기준선(100)보다 낮아, 하락·악화 쪽으로 보는 사람이 더 많습니다.`;
+}
+
+function describeCsiTrend(trend?: string) {
+  if (!trend || trend === '데이터 부족') return '최근 추세를 판단하기에 데이터가 부족합니다.';
+  if (trend.includes('↑')) return '최근 3개월 흐름은 소비 심리가 오르는 상승세입니다.';
+  if (trend.includes('↓')) return '최근 3개월 흐름은 소비 심리가 내려가는 하락세입니다.';
+  return '최근 3개월 흐름은 큰 변동 없이 보합입니다.';
+}
+
 function SentimentCard({ sentiment }: { sentiment?: Record<string, any> | null }) {
   if (!sentiment?.nationwide) return null;
+
+  const nationwide = Number(sentiment.nationwide);
+  const sidoValue = sentiment.sido?.value != null ? Number(sentiment.sido.value) : null;
+  const sidoName = sentiment.sido?.name as string | undefined;
+  const asOf = sentiment.asOf as string | undefined;
+  const trend = sentiment.trend as string | undefined;
+
+  const indexLabel =
+    sentiment.indexKey === 'land'
+      ? '토지시장 CSI'
+      : sentiment.indexKey === 'housing'
+        ? '주택시장 CSI'
+        : '주택매매 CSI';
+
   return (
-    <section className="bg-slate-900 border border-white/5 rounded-[32px] p-6 shadow-xl">
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">CSI (참고)</p>
-      <p className="text-lg font-black text-slate-100">
-        전국 {sentiment.nationwide}
-        {sentiment.sido?.value != null && (
-          <span className="text-slate-400 font-bold text-sm ml-2">
-            · {sentiment.sido.name} {sentiment.sido.value}
-          </span>
+    <section className="bg-slate-900 border border-white/5 rounded-[32px] p-6 shadow-xl space-y-4">
+      <div>
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+          CSI · 소비자동향지수 (참고)
+        </p>
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          소비자가 체감하는 경기·집값·물가 등에 대한 심리를 0~200 숫자로 나타낸 통계입니다.
+          기준선 <span className="text-slate-300 font-bold">100</span>을 넘으면 긍정(상승·개선) 전망이,
+          100 미만이면 부정(하락·악화) 전망이 더 많다는 뜻입니다.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-white/[0.03] border border-white/5 px-4 py-3">
+          <p className="text-[10px] font-bold text-slate-500 mb-1">전국</p>
+          <p className={`text-2xl font-black ${
+            describeCsiLevel(nationwide) === 'positive' ? 'text-emerald-300' : 'text-slate-200'
+          }`}>
+            {nationwide}
+          </p>
+        </div>
+        {sidoValue != null && sidoName && (
+          <div className="rounded-2xl bg-white/[0.03] border border-white/5 px-4 py-3">
+            <p className="text-[10px] font-bold text-slate-500 mb-1">{sidoName}</p>
+            <p className={`text-2xl font-black ${
+              describeCsiLevel(sidoValue) === 'positive' ? 'text-emerald-300' : 'text-slate-200'
+            }`}>
+              {sidoValue}
+            </p>
+          </div>
         )}
-      </p>
-      <p className="text-xs text-slate-500 mt-1">
-        {sentiment.asOf} · {sentiment.trend || '-'}
+      </div>
+
+      <div className="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+        <p>{describeCsiVsBaseline(nationwide, '전국')}</p>
+        {sidoValue != null && sidoName && (
+          <p>
+            {describeCsiVsBaseline(sidoValue, sidoName)}
+            {sidoValue < nationwide && ' 전국 평균보다 소비 심리·경기 전망이 조금 더 위축되어 있습니다.'}
+            {sidoValue > nationwide && ' 전국 평균보다 소비 심리·경기 전망이 조금 더 낫습니다.'}
+          </p>
+        )}
+        {(asOf || trend) && (
+          <p className="text-slate-400">
+            {asOf && <span className="font-bold text-slate-300">{asOf}</span>}
+            {asOf && trend && ' · '}
+            {trend && <span className="font-bold text-sky-300/90">{trend}</span>}
+            {(asOf || trend) && ` — ${describeCsiTrend(trend)}`}
+          </p>
+        )}
+      </div>
+
+      <p className="text-[10px] text-slate-500 pt-2 border-t border-white/5">
+        {indexLabel} · KOSIS 통계 기준. 개별 매물 가격 예측이 아닌 거시 참고 지표입니다.
       </p>
     </section>
   );
@@ -370,18 +525,51 @@ export default function InvestmentInsightPanel({
       .filter(Boolean) as Array<{ lat: number; lng: number; title: string; originalTitle: string; id: string }>;
   }, [gosiItems]);
 
-  const propertyCenter = useMemo(() => {
+  const propertyLocation = useMemo(() => {
     const lat = ctx?.lat ?? rawData?.coordinates?.lat;
     const lng = ctx?.lng ?? rawData?.coordinates?.lng;
-    if (lat != null && lng != null) return { lat: Number(lat), lng: Number(lng) };
+    if (lat == null || lng == null) return null;
+    const nLat = Number(lat);
+    const nLng = Number(lng);
+    if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
+    return { lat: nLat, lng: nLng };
+  }, [ctx, rawData]);
+
+  const propertyCenter = useMemo(() => {
+    if (propertyLocation) return propertyLocation;
     if (gosiMarkers.length) return { lat: gosiMarkers[0].lat, lng: gosiMarkers[0].lng };
     return { lat: 37.5665, lng: 126.978 };
-  }, [ctx, rawData, gosiMarkers]);
+  }, [propertyLocation, gosiMarkers]);
+
+  const mapMarkers = useMemo(() => {
+    const propertyTitle = rawData?.address || rawData?.bldNm || rawData?.propertyTitle || '분석 매물';
+    const items: Array<{
+      lat: number;
+      lng: number;
+      title: string;
+      originalTitle?: string;
+      id: string;
+      isProperty?: boolean;
+    }> = [];
+
+    if (propertyLocation) {
+      items.push({
+        lat: propertyLocation.lat,
+        lng: propertyLocation.lng,
+        title: propertyTitle,
+        id: 'property-target',
+        isProperty: true,
+      });
+    }
+
+    items.push(...gosiMarkers);
+    return items;
+  }, [propertyLocation, gosiMarkers, rawData]);
 
   const gc = ctx?.guidelineContext;
   const grade = ctx?.gradeBreakdown?.grade;
   const hardwareTags = insight?.hardwareTags || [];
-  const headline = insight?.headline;
+  const summary = insight?.summary || insight?.headline;
   const tags = insight?.tags || [];
 
   if (!ctx && !insight) {
@@ -400,13 +588,27 @@ export default function InvestmentInsightPanel({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold text-teal-400/90 uppercase tracking-widest mb-2">투자 인사이트</p>
-            <h3 className="text-xl font-black text-white leading-snug">
-              {headline || '시군구 투자 맥락'}
+            <h3 className="text-lg sm:text-xl font-black text-white leading-relaxed">
+              {summary || '시군구 투자 맥락을 확인해 보세요.'}
             </h3>
+            <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+              동·시군구 거래·호재 데이터를 바탕으로 한 참고 요약입니다.
+            </p>
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {tags.map((t: string, i: number) => (
-                  <span key={i} className="text-[11px] font-bold text-slate-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-lg">
+                  <span
+                    key={i}
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                      t.includes('고평가')
+                        ? 'text-rose-300 bg-rose-500/10 border-rose-500/25'
+                        : t.includes('저평가')
+                          ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
+                          : t.includes('적정')
+                            ? 'text-sky-300 bg-sky-500/10 border-sky-500/25'
+                            : 'text-slate-300 bg-white/5 border-white/10'
+                    }`}
+                  >
                     {t}
                   </span>
                 ))}
@@ -436,7 +638,7 @@ export default function InvestmentInsightPanel({
         <p className="text-xs text-slate-400 leading-relaxed">
           {developmentEvents.length > 0 ? (
             <>
-              <span className="text-slate-200 font-bold">주변 development_events {developmentEvents.length}건</span>
+              <span className="text-slate-200 font-bold">주변 개발호재 {developmentEvents.length}건</span>
               {' '}(반경 {ctx?.developmentEvents?.radiusKm ?? 1.5}km)
               {' · '}
               <span className="text-emerald-400 font-bold">직접 {directCount}건</span>
@@ -498,16 +700,29 @@ export default function InvestmentInsightPanel({
         </section>
       )}
 
-      {/* 지도 — 좌표 있는 고시만 */}
-      {gosiMarkers.length > 0 && (
+      {/* 지도 — 분석 매물 + 좌표 있는 고시 */}
+      {mapMarkers.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
             <MapPin className="w-5 h-5 text-orange-400" />
-            <h4 className="text-sm font-black text-slate-200">고시 위치 ({gosiMarkers.length}건 지도 표시)</h4>
+            <h4 className="text-sm font-black text-slate-200">
+              호재 · 매물 지도
+              {propertyLocation && gosiMarkers.length > 0 && (
+                <span className="text-slate-400 font-bold text-xs ml-1">
+                  (매물 + 고시 {gosiMarkers.length}건)
+                </span>
+              )}
+              {propertyLocation && gosiMarkers.length === 0 && (
+                <span className="text-slate-400 font-bold text-xs ml-1">(분석 매물)</span>
+              )}
+              {!propertyLocation && gosiMarkers.length > 0 && (
+                <span className="text-slate-400 font-bold text-xs ml-1">(고시 {gosiMarkers.length}건)</span>
+              )}
+            </h4>
           </div>
-          <div className={`bg-slate-900 border border-white/5 overflow-hidden ${mapExpanded ? 'fixed inset-0 z-[200]' : 'rounded-[32px] h-[360px] relative'}`}>
+          <div className={`bg-slate-900 border border-white/5 ${mapExpanded ? 'h-[360px]' : 'rounded-[32px] h-[360px] relative overflow-hidden'}`}>
             <GosiMap
-              markers={gosiMarkers}
+              markers={mapMarkers}
               initialCenter={propertyCenter}
               sigCd={ctx?.sigunguCd || ''}
               isExpanded={mapExpanded}

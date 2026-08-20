@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Building2, ChevronDown, Loader2 } from 'lucide-react';
+import { Building2, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { makeAnalyzeSlug } from '../lib/slug';
 import {
   fetchR114LiteComplexWithTrades,
@@ -87,6 +87,68 @@ export function R114LitePanelActionButtons({
       </button>
     </div>
   );
+}
+
+function AiAnalysisPromptBanner({
+  hasReport,
+  analyzeHref,
+  onAnalyze,
+  theme = 'light',
+}: {
+  hasReport: boolean;
+  analyzeHref?: string;
+  onAnalyze?: () => void;
+  theme?: Theme;
+}) {
+  const message = hasReport
+    ? 'AI가 분석한 리포트를 꼭 확인하세요'
+    : '지금 AI로 분석해 보시겠어요?';
+
+  const boxClass =
+    theme === 'light'
+      ? 'bg-emerald-100 border-emerald-300 text-emerald-900 hover:bg-emerald-50'
+      : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/20';
+
+  const content = (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/AI/gpt.png"
+        alt=""
+        className="w-9 h-9 shrink-0 object-contain"
+      />
+      <span className="flex-1 text-sm font-black leading-snug">{message}</span>
+      <ChevronRight className="w-4 h-4 shrink-0 opacity-60" aria-hidden />
+    </>
+  );
+
+  const className = `flex w-full items-center gap-3 rounded-2xl border px-4 py-3 transition-colors ${boxClass}`;
+
+  if (hasReport && analyzeHref) {
+    return (
+      <Link href={analyzeHref} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  if (onAnalyze) {
+    return (
+      <button type="button" onClick={onAnalyze} className={className}>
+        {content}
+      </button>
+    );
+  }
+
+  if (analyzeHref) {
+    return (
+      <Link href={analyzeHref} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 export type R114LiteComplexChrome = {
@@ -194,8 +256,8 @@ function pyeongExclusiveCenterM2(p: R114LitePyeongType): number | null {
 
 function sparseBadgeLabel(dealMode: ApartmentDealMode, selectedPyeong: number | null): string {
   const modeLabel = dealMode === 'jeonse' ? '전세' : dealMode === 'wolse' ? '월세' : '매매';
-  if (selectedPyeong != null) return `이 평형 6mo ${modeLabel} 없음`;
-  return `거래 빈약 · ${modeLabel}`;
+  if (selectedPyeong != null) return `이 평형 · 최근 6개월 ${modeLabel} 없음`;
+  return `최근 6개월 · ${modeLabel} 없음`;
 }
 
 function CardStatsRow({
@@ -619,7 +681,7 @@ export default function R114LiteDetailPanel({
 
   const actionButton = resolvedReportId ? (
     <Link href={`/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex.title)}`} className={outlineBtn}>
-      리포트 보기
+      AI 리포트
     </Link>
   ) : onAnalyzeClick ? (
     <button type="button" onClick={onAnalyzeClick} className={outlineBtn}>
@@ -642,10 +704,14 @@ export default function R114LiteDetailPanel({
     ? 'pb-[calc(5.75rem+env(safe-area-inset-bottom))] lg:pb-24'
     : 'pb-24';
 
+  const analyzeHref = resolvedReportId
+    ? `/analyze/${makeAnalyzeSlug(resolvedReportId, reportTitle || complex.title)}`
+    : `/?panel=analyze&r114PropId=${encodeURIComponent(r114PropId)}`;
+
   return (
     <div className={`${t.text} flex min-h-full flex-col`}>
       {!compactHeader && (
-        <div className="px-4 pt-1 pb-3">
+        <div className="px-4 pt-1 pb-2">
           <h1 className="font-bold text-lg leading-tight">{complex.title}</h1>
           <p className={`text-xs ${t.muted} mt-0.5 truncate`}>
             {complex.address || `${complex.city || ''} ${complex.gu || ''} ${complex.dong || ''}`.trim()}
@@ -656,19 +722,23 @@ export default function R114LiteDetailPanel({
         </div>
       )}
 
+      <div className="px-4 pb-3">
+        <AiAnalysisPromptBanner
+          hasReport={hasLiteReport}
+          analyzeHref={analyzeHref}
+          onAnalyze={!resolvedReportId ? onAnalyzeClick : undefined}
+          theme={theme}
+        />
+      </div>
+
       <div className={`flex-1 px-4 space-y-5 ${contentBottomPad}`}>
-        <div className="flex flex-wrap gap-1.5">
-          {modeSparse && (
+        {modeSparse && (
+          <div className="flex flex-wrap gap-1.5">
             <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${t.badgeSparse}`}>
               {sparseBadgeLabel(tradeTab, selectedPyeong)}
             </span>
-          )}
-          {hasLiteReport && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${theme === 'light' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'}`}>
-              분석완료
-            </span>
-          )}
-        </div>
+          </div>
+        )}
 
         <CardStatsRow theme={theme} dealMode={tradeTab} statsSource={activeCardStats} />
 

@@ -1,9 +1,9 @@
 /** 지도 철도망 폴리라인·역 라벨 스타일 */
 export const RAILWAY_MAP_STYLE = {
-  lineColor: '#1a9ba8',
+  lineColor: '#4ADE80',
   lineWeight: 2.5,
-  lineOpacity: 0.85,
-  stationBg: '#4b5563',
+  lineOpacity: 0.82,
+  stationBg: '#34D399',
   stationColor: '#ffffff',
 } as const;
 

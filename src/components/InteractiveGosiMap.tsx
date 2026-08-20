@@ -32,10 +32,24 @@ const ZONE_COLORS: Record<string, { fill: string; stroke: string }> = {
   zone_maintenance: { fill: '#F59E0B', stroke: '#B45309' }, // 정비구역 (황토)
   zone_scheduled_maintenance: { fill: '#FBBF24', stroke: '#D97706' }, // 정비예정 (연주황)
   zone_tourist: { fill: '#EC4899', stroke: '#BE185D' }, // 관광특구 (분홍)
-  zone_industrial_complex: { fill: '#64748B', stroke: '#334155' }, // 산업단지 (슬레이트)
-  zone_housing_land: { fill: '#14B8A6', stroke: '#0F766E' }, // 택지개발 (틸)
-  zone_public_housing: { fill: '#6366F1', stroke: '#4338CA' } // 공공주택 (인디고)
+  zone_industrial_complex: { fill: '#93C5FD', stroke: '#3B82F6' }, // 산업단지 (파랑)
+  zone_housing_land: { fill: '#60A5FA', stroke: '#2563EB' }, // 택지개발 (파랑)
+  zone_public_housing: { fill: '#3B82F6', stroke: '#1D4ED8' } // 공공주택 (파랑)
 };
+
+const getZoneLabelStyle = (colors: { fill: string; stroke: string }) => `
+  padding: 4px 10px;
+  background: ${colors.stroke};
+  color: #FFFFFF;
+  border: 1.5px solid ${colors.fill};
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+`;
 
 // 폴리곤의 중심 좌표 구하기 (라벨 오버레이 위치용)
 const getPolygonCenter = (paths: any[]): any => {
@@ -221,19 +235,7 @@ export default function InteractiveGosiMap({
                   const centerLatLng = getPolygonCenter(path);
                   const labelEl = document.createElement('div');
                   labelEl.className = 'zone-label-tag';
-                  labelEl.style.cssText = `
-                    padding: 4px 10px;
-                    background: rgba(31, 41, 55, 0.85);
-                    color: #FFFFFF;
-                    border: 1px solid rgba(255, 255, 255, 0.2);
-                    border-radius: 6px;
-                    font-size: 11px;
-                    font-weight: 800;
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-                    white-space: nowrap;
-                    pointer-events: none;
-                    transform: translate(-50%, -50%);
-                  `;
+                  labelEl.style.cssText = getZoneLabelStyle(colors);
                   labelEl.textContent = zoneName;
 
                   const labelOverlay = new window.kakao.maps.CustomOverlay({

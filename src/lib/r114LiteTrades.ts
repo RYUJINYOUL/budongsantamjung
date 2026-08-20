@@ -8,8 +8,29 @@ export interface TradeChartPoint {
 
 const SUPPLY_TOL = 0.6;
 
-/** 평형 카드 선택 — pyeong_approx · 공급/전용㎡ 범위 매칭 */
+function normalizeApKind(raw: string | null | undefined): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const n = parseInt(s, 10);
+  if (Number.isFinite(n) && n > 0) return String(n);
+  const stripped = s.replace(/^0+/, '');
+  return stripped || null;
+}
+
+/** 평형 카드 선택 — ap_kind · pyeong_approx · 공급/전용㎡ 범위 매칭 */
 export function tradeMatchesPyeong(trade: R114LiteTrade, pyeong: R114LitePyeongType): boolean {
+  const tradeApKind = normalizeApKind(trade.apKind);
+  const pyeongApKinds = (pyeong.apKinds ?? [])
+    .map((ak) => normalizeApKind(ak))
+    .filter(Boolean) as string[];
+  if (tradeApKind && pyeongApKinds.length > 0 && pyeongApKinds.includes(tradeApKind)) {
+    return true;
+  }
+
+  if (tradeApKind == null && pyeongApKinds.length === 1 && trade.pyeongApprox === Number(pyeongApKinds[0])) {
+    return true;
+  }
+
   const approxs = pyeong.mergedPyeongApproxs?.length
     ? pyeong.mergedPyeongApproxs
     : [pyeong.pyeongApprox];

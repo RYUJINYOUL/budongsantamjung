@@ -747,7 +747,7 @@ function DiscoverDetailContent() {
                 <div className="space-y-3">
                   <div className={`bg-white border border-slate-200 transition-all duration-300 ${
                     isMapExpanded 
-                      ? 'fixed inset-0 z-[100] overflow-hidden' 
+                      ? 'h-[340px]' 
                       : 'rounded-2xl shadow-sm overflow-hidden h-[340px] relative'
                   }`}>
                     {/* @ts-ignore */}

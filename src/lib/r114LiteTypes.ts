@@ -4,6 +4,7 @@ export interface R114LiteTrade {
   contractDate: string | null;
   supplyArea: number | null;
   exclusiveArea?: number | null;
+  apKind?: string | null;
   pyeongApprox: number | null;
   /** RTMS batch ingest row only */
   floor?: string | null;
@@ -16,6 +17,8 @@ export interface R114LitePyeongType {
   pyeongApprox: number;
   /** merge된 원본 pyeong_approx (33+34 → [33,34]) */
   mergedPyeongApproxs?: number[];
+  /** R114 ap_kind 그룹 (00014 → 14평) */
+  apKinds?: string[];
   households: number;
   supplyMin: number;
   supplyMax: number;
