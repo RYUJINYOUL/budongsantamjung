@@ -43,16 +43,8 @@ function InsightBlock({ title, lines }: { title: string; lines: { label: string;
   );
 }
 
-function LegacyFallback({ summaryLines, skippedAi }: { summaryLines: string[]; skippedAi: boolean }) {
-  if (summaryLines.length === 0) {
-    return (
-      <MyHomeWeeklyReportCard>
-        <p className="text-sm font-semibold text-slate-500 leading-relaxed">
-          {skippedAi ? '이번 주 변동이 없어요.' : '표시할 분석 데이터가 없어요.'}
-        </p>
-      </MyHomeWeeklyReportCard>
-    );
-  }
+function AiSummarySection({ summaryLines, skippedAi }: { summaryLines: string[]; skippedAi: boolean }) {
+  if (summaryLines.length === 0) return null;
 
   return (
     <div className="space-y-3">
@@ -76,11 +68,27 @@ function LegacyFallback({ summaryLines, skippedAi }: { summaryLines: string[]; s
           ))}
         </div>
         <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-          가격·전세·상승률은 부동산원·공공데이터 기준으로 매주 갱신됩니다.
+          {skippedAi
+            ? '이번 주 비교 지표 변동이 없어요.'
+            : '가격·전세·상승률은 부동산원·공공데이터 기준으로 매주 갱신됩니다.'}
         </p>
       </MyHomeWeeklyReportCard>
     </div>
   );
+}
+
+function LegacyFallback({ summaryLines, skippedAi }: { summaryLines: string[]; skippedAi: boolean }) {
+  if (summaryLines.length === 0) {
+    return (
+      <MyHomeWeeklyReportCard>
+        <p className="text-sm font-semibold text-slate-500 leading-relaxed">
+          {skippedAi ? '이번 주 변동이 없어요.' : '표시할 분석 데이터가 없어요.'}
+        </p>
+      </MyHomeWeeklyReportCard>
+    );
+  }
+
+  return <AiSummarySection summaryLines={summaryLines} skippedAi={skippedAi} />;
 }
 
 export default function MyHomeWeeklyAiInsightsSection({
@@ -115,6 +123,7 @@ export default function MyHomeWeeklyAiInsightsSection({
 
   return (
     <div className="space-y-3">
+      <AiSummarySection summaryLines={summaryLines} skippedAi={skippedAi} />
       <InsightBlock
         title="1. 최근 거래"
         lines={rows.map((row) => ({ label: row.label, body: aiBriefLatestSaleText(row.item) }))}
