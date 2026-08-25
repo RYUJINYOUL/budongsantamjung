@@ -55,6 +55,9 @@ import AiAnalysisInputModal, {
 import SchoolDistrictTab from './SchoolDistrictTab';
 import ApartmentTenYearTimeline from '../../../components/ApartmentTenYearTimeline';
 import ApartmentTenYearNarrative from '../../../components/ApartmentTenYearNarrative';
+import ApartmentTenYearContextCharts from '../../../components/ApartmentTenYearContextCharts';
+import MacroContextCharts from '../../../components/MacroContextCharts';
+import { buildYearEndTimeRefs } from '@/lib/tenYearChartContext';
 import {
     buildApartmentPageUrl,
     shouldRedirectToApartmentPage,
@@ -2231,6 +2234,18 @@ export default function AnalysisDetailPage({
         return { hasChart: true, complexName, uniqueAreas, activeArea, chartData };
     }, [rawData, report, selectedQuarterlyArea]);
 
+    const tenYearSigunguContext = useMemo(() => {
+        const pnu = String(rawData?.pnu || report?.pnu || '').trim();
+        const sigunguCd = pnu.length >= 5 ? pnu.slice(0, 5) : null;
+        const address = report?.address
+            || rawData?.targetComplexInfo?.address
+            || mergedData?.address
+            || '';
+        const guMatch = address.match(/([^\s]+(?:구|군|시))/);
+        const sigunguLabel = guMatch?.[1] || (sigunguCd ? `시군구 ${sigunguCd}` : null);
+        return { sigunguCd, sigunguLabel };
+    }, [rawData, report, mergedData]);
+
     // 유틸리티 함수
     const formatPrice = (price: any) => {
         if (!price) return '정보없음';
@@ -3970,6 +3985,14 @@ export default function AnalysisDetailPage({
                                 </section>
                             )}
 
+                            {tenYearStoryChart.hasChart && tenYearSigunguContext.sigunguCd && (
+                                <ApartmentTenYearContextCharts
+                                    chartData={tenYearStoryChart.chartData}
+                                    sigunguCd={tenYearSigunguContext.sigunguCd}
+                                    sigunguLabel={tenYearSigunguContext.sigunguLabel}
+                                />
+                            )}
+
                             {tenYearStoryChart.hasChart && (
                                 <ApartmentTenYearNarrative
                                     chartData={tenYearStoryChart.chartData}
@@ -4636,6 +4659,14 @@ export default function AnalysisDetailPage({
                                                 };
                                             })();
 
+                                            const parcelSigunguCd = pnu.length >= 5 ? pnu.slice(0, 5) : null;
+                                            const parcelSigunguLabel =
+                                                parcelSigunguCd && parcelSigunguCd === sigunguCd && sigunguName
+                                                    ? sigunguName
+                                                    : parcelSigunguCd
+                                                        ? `시군구 ${parcelSigunguCd}`
+                                                        : null;
+
                                             return (
                                                 <div key={idx} className="space-y-8 pb-12 mb-12 border-b border-white/5 last:border-0 last:pb-0 last:mb-0">
                                                     <section className="bg-slate-900 border border-white/5 rounded-[40px] p-8 shadow-2xl">
@@ -4700,6 +4731,15 @@ export default function AnalysisDetailPage({
                                                             </div>
                                                         </div>
                                                     </section>
+
+                                                    {parcelSigunguCd && officialLandPrice.length > 0 && (
+                                                        <MacroContextCharts
+                                                            timeRefs={buildYearEndTimeRefs(officialLandPrice)}
+                                                            sigunguCd={parcelSigunguCd}
+                                                            sigunguLabel={parcelSigunguLabel}
+                                                            axisMode="year"
+                                                        />
+                                                    )}
                                                 </div>
                                             );
                                         })}
