@@ -42,10 +42,13 @@ export interface TenYearChartContextResponse {
 
 export const TEN_YEAR_CONTEXT_SERIES_ORDER = [
   { key: 'unsold_housing', shortTitle: '미분양 현황', subtitle: '시·군·구 미분양(호)', color: '#a855f7' },
+  { key: 'apt_trade_volume', shortTitle: '거래량', subtitle: '시·군·구 아파트 매매(건)', color: '#22c55e' },
   { key: 'loan_rate', shortTitle: '금리', subtitle: '예금은행 대출금리', color: '#f97316' },
   { key: 'm2', shortTitle: 'M2', subtitle: '통화량 말잔', color: '#eab308' },
   { key: 'csi_housing_sale', shortTitle: 'CSI', subtitle: '주택매매 소비심리', color: '#ec4899' },
   { key: 'construction_cost_index', shortTitle: '공사비', subtitle: '건설공사비지수', color: '#94a3b8' },
+  { key: 'construction_permit', shortTitle: '허가', subtitle: '공동주택 건축허가(동·연간)', color: '#0ea5e9' },
+  { key: 'construction_start', shortTitle: '착공', subtitle: '공동주택 건축착공(동·연간)', color: '#6366f1' },
 ] as const;
 
 function quarterAxisLabel(year: number, quarter: number): string {

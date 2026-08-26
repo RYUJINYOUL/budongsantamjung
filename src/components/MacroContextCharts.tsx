@@ -102,6 +102,8 @@ function chartUi(theme: MacroContextChartsTheme) {
 function formatValue(val: number | null | undefined, unit: string): string {
   if (val == null || Number.isNaN(val)) return '-';
   if (unit === '호') return `${Math.round(val).toLocaleString()}호`;
+  if (unit === '건') return `${Math.round(val).toLocaleString()}건`;
+  if (unit === '동') return `${Math.round(val).toLocaleString()}동`;
   if (Math.abs(val) >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (Math.abs(val) >= 10_000) return `${(val / 10_000).toFixed(0)}만`;
   return val % 1 === 0 ? val.toLocaleString() : val.toFixed(2);
@@ -264,7 +266,7 @@ export default function MacroContextCharts({
       <div className={`px-0.5 pb-2 border-b mb-2 ${ui.headerBorder}`}>
         <span className={`text-[10px] font-black uppercase tracking-widest ${ui.badge}`}>동시기 맥락</span>
         <h4 className={`text-sm font-bold mt-0.5 ${ui.title}`}>
-          금리 · 통화량 · 미분양 현황 · CSI · 공사비
+          금리 · 통화량 · 미분양 · 거래량 · CSI · 공사비 · 허가 · 착공
           {sigunguLabel ? (
             <span className={`font-medium text-xs ml-1 ${ui.sigungu}`}>({sigunguLabel})</span>
           ) : null}
@@ -285,10 +287,13 @@ export default function MacroContextCharts({
             const block = context.series[key];
             const rows = buildContextChartRows(context.timeAxis, context.series, key);
             const isUnsold = key === 'unsold_housing';
+            const isSigunguScoped = isUnsold || key === 'apt_trade_volume';
             const missing = block?.missing || (isUnsold && !context.unsold?.available);
-            const regionHint = isUnsold
+            const regionHint = isSigunguScoped
               ? block?.regionLabel || context.unsold?.regionLabel || sigunguLabel
-              : null;
+              : key === 'construction_permit' || key === 'construction_start'
+                ? block?.regionLabel
+                : null;
             return (
               <ContextMiniChart
                 key={key}
