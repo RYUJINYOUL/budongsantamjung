@@ -52,13 +52,11 @@ export const TEN_YEAR_CONTEXT_SERIES_ORDER = [
 export function buildYearEndTimeRefs(
   years: Array<{ year: number | string }>,
 ): TenYearChartQuarterRef[] {
-  return years
-    .map((d) => {
-      const year = Number(d.year);
-      if (!Number.isFinite(year)) return null;
-      return { year, quarter: 4, name: String(year) };
-    })
-    .filter((ref): ref is TenYearChartQuarterRef => ref != null);
+  return years.flatMap((d) => {
+    const year = Number(d.year);
+    if (!Number.isFinite(year)) return [];
+    return [{ year, quarter: 4, name: String(year) }];
+  });
 }
 
 export async function fetchTenYearChartContext(
