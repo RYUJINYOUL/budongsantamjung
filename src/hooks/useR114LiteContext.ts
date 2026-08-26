@@ -11,6 +11,7 @@ export type R114LiteContextState = {
   data: R114LiteContextResponse | null;
   details: R114LiteContextDetails | undefined;
   rows: R114LiteContextRow[];
+  sigunguCd: string | null | undefined;
   sigunguName: string | null | undefined;
 };
 
@@ -21,6 +22,7 @@ const IDLE: R114LiteContextState = {
   data: null,
   details: undefined,
   rows: [],
+  sigunguCd: null,
   sigunguName: null,
 };
 
@@ -50,6 +52,7 @@ export function useR114LiteContext(
             data: null,
             details: undefined,
             rows: [],
+            sigunguCd: null,
             sigunguName: null,
           });
           return;
@@ -61,6 +64,7 @@ export function useR114LiteContext(
           data: res,
           details: res.data?.details,
           rows: res.data?.rows ?? [],
+          sigunguCd: res.data?.sigunguCd,
           sigunguName: res.data?.sigunguName,
         });
       })
@@ -73,6 +77,7 @@ export function useR114LiteContext(
           data: null,
           details: undefined,
           rows: [],
+          sigunguCd: null,
           sigunguName: null,
         });
       });

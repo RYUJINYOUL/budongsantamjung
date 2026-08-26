@@ -37,6 +37,7 @@ import {
   moveInAgeYears,
 } from '../lib/r114LiteTrades';
 import R114LiteTradeChart from './R114LiteTradeChart';
+import MacroContextCharts from './MacroContextCharts';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
 import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
 import { useR114LiteContext } from '../hooks/useR114LiteContext';
@@ -880,6 +881,15 @@ export default function R114LiteDetailPanel({
             </>
           )}
         </section>
+
+        {contextState.sigunguCd && (
+          <MacroContextCharts
+            sigunguCd={contextState.sigunguCd}
+            sigunguLabel={contextState.sigunguName}
+            theme={theme}
+            useDefaultAxis
+          />
+        )}
 
         <R114LiteSchoolCard ctx={contextState} theme={theme} />
 

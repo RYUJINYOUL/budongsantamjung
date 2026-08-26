@@ -48,6 +48,29 @@ export const TEN_YEAR_CONTEXT_SERIES_ORDER = [
   { key: 'construction_cost_index', shortTitle: '공사비', subtitle: '건설공사비지수', color: '#94a3b8' },
 ] as const;
 
+function quarterAxisLabel(year: number, quarter: number): string {
+  const shortYear = String(year).slice(-2);
+  return `${shortYear}-${quarter}Q`;
+}
+
+/** 최근 10년 분기 축 (백엔드 buildDefaultTimeAxis와 동일) */
+export function buildDefaultQuarterTimeRefs(): TenYearChartQuarterRef[] {
+  const end = new Date();
+  end.setMonth(end.getMonth() - 1);
+  const endYear = end.getFullYear();
+  const endQuarter = Math.ceil((end.getMonth() + 1) / 3);
+  const startYear = endYear - 9;
+
+  const refs: TenYearChartQuarterRef[] = [];
+  for (let y = startYear; y <= endYear; y += 1) {
+    const qMax = y === endYear ? endQuarter : 4;
+    for (let q = 1; q <= qMax; q += 1) {
+      refs.push({ year: y, quarter: q, name: quarterAxisLabel(y, q) });
+    }
+  }
+  return refs;
+}
+
 /** 공시지가 연도 축 → API 분기 ref (연말 Q4 값) */
 export function buildYearEndTimeRefs(
   years: Array<{ year: number | string }>,
@@ -59,11 +82,15 @@ export function buildYearEndTimeRefs(
   });
 }
 
+const DEFAULT_AXIS_CACHE_SUFFIX = 'default';
+const FETCH_TIMEOUT_MS = 30_000;
+
 /** fetch 캐시 키 — 배열 참조가 아닌 축 내용만 사용 */
 export function buildTenYearChartContextCacheKey(
   sigunguCd: string,
-  quarters: TenYearChartQuarterRef[],
+  quarters?: TenYearChartQuarterRef[],
 ): string {
+  if (!quarters?.length) return `${sigunguCd}|${DEFAULT_AXIS_CACHE_SUFFIX}`;
   const axis = quarters.map((q) => `${q.year}-Q${q.quarter}`).join(',');
   return `${sigunguCd}|${axis}`;
 }
@@ -75,17 +102,17 @@ const inflightRequests = new Map<string, Promise<TenYearChartContextData | null>
 
 export function getCachedTenYearChartContext(
   sigunguCd: string,
-  quarters: TenYearChartQuarterRef[],
+  quarters?: TenYearChartQuarterRef[],
 ): TenYearChartContextData | null {
-  if (!sigunguCd || !quarters.length) return null;
+  if (!sigunguCd) return null;
   return contextCache.get(buildTenYearChartContextCacheKey(sigunguCd, quarters)) ?? null;
 }
 
 export async function fetchTenYearChartContext(
   sigunguCd: string,
-  quarters: TenYearChartQuarterRef[],
+  quarters?: TenYearChartQuarterRef[],
 ): Promise<TenYearChartContextResponse['data'] | null> {
-  if (!sigunguCd || !quarters.length) return null;
+  if (!sigunguCd) return null;
 
   const cacheKey = buildTenYearChartContextCacheKey(sigunguCd, quarters);
   const cached = contextCache.get(cacheKey);
@@ -94,19 +121,24 @@ export async function fetchTenYearChartContext(
   const pending = inflightRequests.get(cacheKey);
   if (pending) return pending;
 
-  const params = new URLSearchParams({
-    sigunguCd,
-    quarters: JSON.stringify(
-      quarters.map((q) => ({
-        year: q.year,
-        quarter: q.quarter,
-        name: q.name,
-      })),
-    ),
-  });
+  const params = new URLSearchParams({ sigunguCd });
+  if (quarters?.length) {
+    params.set(
+      'quarters',
+      JSON.stringify(
+        quarters.map((q) => ({
+          year: q.year,
+          quarter: q.quarter,
+          name: q.name,
+        })),
+      ),
+    );
+  }
 
   const request = (async () => {
-    const res = await fetch(`/api/land/detective/ten-year-chart-context?${params.toString()}`);
+    const res = await fetch(`/api/land/detective/ten-year-chart-context?${params.toString()}`, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     const json = (await res.json()) as TenYearChartContextResponse;
     if (!res.ok || !json.success || !json.data) {
       return null;
