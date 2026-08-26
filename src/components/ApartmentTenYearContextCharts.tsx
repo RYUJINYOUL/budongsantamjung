@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import MacroContextCharts from '@/components/MacroContextCharts';
 
 interface PriceQuarterRow {
@@ -20,11 +21,15 @@ export default function ApartmentTenYearContextCharts({
   sigunguCd,
   sigunguLabel,
 }: ApartmentTenYearContextChartsProps) {
-  const timeRefs = chartData.map((row) => ({
-    year: row.year,
-    quarter: row.quarter,
-    name: row.name,
-  }));
+  const timeRefs = useMemo(
+    () =>
+      chartData.map((row) => ({
+        year: row.year,
+        quarter: row.quarter,
+        name: row.name,
+      })),
+    [chartData],
+  );
 
   return (
     <MacroContextCharts

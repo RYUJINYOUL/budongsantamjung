@@ -12,7 +12,9 @@ import {
 } from 'recharts';
 import {
   buildContextChartRows,
+  buildTenYearChartContextCacheKey,
   fetchTenYearChartContext,
+  getCachedTenYearChartContext,
   TEN_YEAR_CONTEXT_SERIES_ORDER,
   type TenYearChartContextResponse,
   type TenYearChartQuarterRef,
@@ -126,10 +128,6 @@ export default function MacroContextCharts({
   sigunguLabel,
   axisMode = 'quarter',
 }: MacroContextChartsProps) {
-  const [context, setContext] = useState<TenYearChartContextResponse['data'] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const quarters = useMemo(
     () =>
       timeRefs.map((row) => ({
@@ -137,12 +135,34 @@ export default function MacroContextCharts({
         quarter: row.quarter,
         name: row.name ?? String(row.year),
       })),
-    [timeRefs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 축 내용만 비교 (배열 참조 변경 무시)
+    [timeRefs.map((row) => `${row.year}-Q${row.quarter}:${row.name ?? ''}`).join('|')],
   );
+
+  const cacheKey =
+    sigunguCd && quarters.length ? buildTenYearChartContextCacheKey(sigunguCd, quarters) : null;
+
+  const [context, setContext] = useState<TenYearChartContextResponse['data'] | null>(() =>
+    sigunguCd ? getCachedTenYearChartContext(sigunguCd, quarters) : null,
+  );
+  const [loading, setLoading] = useState(() => {
+    if (!sigunguCd || !quarters.length) return false;
+    return !getCachedTenYearChartContext(sigunguCd, quarters);
+  });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sigunguCd || !quarters.length) {
       setContext(null);
+      setLoading(false);
+      return;
+    }
+
+    const cached = getCachedTenYearChartContext(sigunguCd, quarters);
+    if (cached) {
+      setContext(cached);
+      setLoading(false);
+      setError(null);
       return;
     }
 
@@ -167,7 +187,7 @@ export default function MacroContextCharts({
     return () => {
       cancelled = true;
     };
-  }, [sigunguCd, quarters]);
+  }, [cacheKey, sigunguCd, quarters.length]);
 
   if (!sigunguCd || !timeRefs.length) return null;
 
@@ -184,14 +204,14 @@ export default function MacroContextCharts({
         <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">{AXIS_NOTES[axisMode]}</p>
       </div>
 
-      {loading && (
+      {loading && !context && (
         <p className="text-center text-[11px] text-slate-500 py-6">거시·미분양 데이터 불러오는 중…</p>
       )}
-      {error && !loading && (
+      {error && !context && !loading && (
         <p className="text-center text-[11px] text-rose-400/90 py-4">{error}</p>
       )}
 
-      {!loading && context && (
+      {context && (
         <div className="space-y-0">
           {TEN_YEAR_CONTEXT_SERIES_ORDER.map(({ key, shortTitle, subtitle, color }) => {
             const block = context.series[key];

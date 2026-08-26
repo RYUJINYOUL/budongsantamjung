@@ -59,11 +59,40 @@ export function buildYearEndTimeRefs(
   });
 }
 
+/** fetch 캐시 키 — 배열 참조가 아닌 축 내용만 사용 */
+export function buildTenYearChartContextCacheKey(
+  sigunguCd: string,
+  quarters: TenYearChartQuarterRef[],
+): string {
+  const axis = quarters.map((q) => `${q.year}-Q${q.quarter}`).join(',');
+  return `${sigunguCd}|${axis}`;
+}
+
+type TenYearChartContextData = NonNullable<TenYearChartContextResponse['data']>;
+
+const contextCache = new Map<string, TenYearChartContextData>();
+const inflightRequests = new Map<string, Promise<TenYearChartContextData | null>>();
+
+export function getCachedTenYearChartContext(
+  sigunguCd: string,
+  quarters: TenYearChartQuarterRef[],
+): TenYearChartContextData | null {
+  if (!sigunguCd || !quarters.length) return null;
+  return contextCache.get(buildTenYearChartContextCacheKey(sigunguCd, quarters)) ?? null;
+}
+
 export async function fetchTenYearChartContext(
   sigunguCd: string,
   quarters: TenYearChartQuarterRef[],
 ): Promise<TenYearChartContextResponse['data'] | null> {
   if (!sigunguCd || !quarters.length) return null;
+
+  const cacheKey = buildTenYearChartContextCacheKey(sigunguCd, quarters);
+  const cached = contextCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = inflightRequests.get(cacheKey);
+  if (pending) return pending;
 
   const params = new URLSearchParams({
     sigunguCd,
@@ -76,12 +105,20 @@ export async function fetchTenYearChartContext(
     ),
   });
 
-  const res = await fetch(`/api/land/detective/ten-year-chart-context?${params.toString()}`);
-  const json = (await res.json()) as TenYearChartContextResponse;
-  if (!res.ok || !json.success || !json.data) {
-    return null;
-  }
-  return json.data;
+  const request = (async () => {
+    const res = await fetch(`/api/land/detective/ten-year-chart-context?${params.toString()}`);
+    const json = (await res.json()) as TenYearChartContextResponse;
+    if (!res.ok || !json.success || !json.data) {
+      return null;
+    }
+    contextCache.set(cacheKey, json.data);
+    return json.data;
+  })().finally(() => {
+    inflightRequests.delete(cacheKey);
+  });
+
+  inflightRequests.set(cacheKey, request);
+  return request;
 }
 
 /** API timeAxis + series → recharts용 행 (name = 가격 차트 X축 라벨) */
