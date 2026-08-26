@@ -43,6 +43,12 @@ import NearbyInfrastructurePanel from '../../../components/NearbyInfrastructureP
 import ShortsFrameView from '../../../components/ShortsFrameView';
 import AmenitiesView from '../../../components/AmenitiesView';
 import AiAnalysisBottomBar from '../../../components/AiAnalysisBottomBar';
+import ListingRequestSheet, { ListingRequestTrigger } from '../../../components/ListingRequestSheet';
+import {
+    formatBudgetManLabel,
+    resolveUserPriceMan,
+    type ListingRequestContext,
+} from '../../../lib/listingRequest';
 import AiReportView from '../../../components/AiReportView';
 import ComparableMap from '../../../components/ComparableMap';
 import AiAnalysisInputModal, {
@@ -1963,6 +1969,7 @@ export default function AnalysisDetailPage({
 
     // AI 분석 제보용 입력 상태 (카테고리별 필드 — DetectiveSummaryView / Flutter ai_analysis_modal 기준)
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+    const [listingSheetOpen, setListingSheetOpen] = useState(false);
     const [recentAnalysisBlocked, setRecentAnalysisBlocked] = useState<RecentAnalysisBlockedState | null>(null);
     const [aiInput, setAiInput] = useState<AiAnalysisInputState>(defaultAiAnalysisInput);
     const patchAiInput = (patch: Partial<AiAnalysisInputState>) =>
@@ -2959,6 +2966,42 @@ export default function AnalysisDetailPage({
 
     const cat = (report?.category || mergedData?.category || '').toLowerCase();
     const isApartment = cat === 'apartment' || cat === '아파트' || embeddedInApartment;
+    const isLandOrBuilding = cat === 'land' || cat === '토지'
+        || cat === 'building' || cat === '건물' || cat === '빌딩';
+
+    const listingRequestContext = useMemo<ListingRequestContext | null>(() => {
+        if (!isLandOrBuilding) return null;
+        const meta = reportData?.analysisMetadata || analysisData?.analysisMetadata;
+        const userPriceMan = resolveUserPriceMan(meta, mergedData?.userSubmittedData);
+        const category: ListingRequestContext['category'] =
+            cat === 'land' || cat === '토지' ? 'land' : 'building';
+        const reportId = String(report?.id || (Array.isArray(id) ? id[0] : id) || '');
+        const hint = userPriceMan
+            ? `제시가 ${formatBudgetManLabel(userPriceMan)} · 추정가는 참고용이며 실거래 기준이 아닙니다`
+            : '희망 예산을 입력해 주세요 (제시가가 있으면 우선 반영됩니다)';
+        return {
+            category,
+            sourceType: 'analysis_detail',
+            sourceId: reportId,
+            complexName: reportData?.propertyTitle || report?.address || mergedData?.address,
+            address: report?.address || mergedData?.address,
+            defaultBudgetMan: userPriceMan,
+            referencePriceHint: hint,
+            showPyeong: false,
+            showMoveIn: false,
+        };
+    }, [
+        isLandOrBuilding,
+        reportData?.analysisMetadata,
+        reportData?.propertyTitle,
+        analysisData?.analysisMetadata,
+        mergedData?.userSubmittedData,
+        mergedData?.address,
+        report?.id,
+        report?.address,
+        cat,
+        id,
+    ]);
 
     const dashboardSummary = useMemo(() => {
         const compRisk = reportData?.['1_comprehensiveRisk'];
@@ -3621,6 +3664,18 @@ export default function AnalysisDetailPage({
                         <h1 className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">
                             {reportData?.propertyTitle || report?.address || mergedData?.address || '매물 상세'}
                         </h1>
+                        {listingRequestContext && isAiCompleted && (
+                            <div className="mt-4 pt-4 border-t border-white/[0.06]">
+                                <p className="text-[11px] text-white/45 font-medium mb-3 leading-relaxed">
+                                    조건에 맞는 실매물을 찾아드립니다. 제시가를 기준으로 소싱합니다.
+                                </p>
+                                <ListingRequestTrigger
+                                    label="이 매물 구해드릴까요?"
+                                    onClick={() => setListingSheetOpen(true)}
+                                    variant="dark"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <motion.div
@@ -6555,6 +6610,15 @@ export default function AnalysisDetailPage({
                     hasPaidToday={hasPaidToday}
                     isDevAccount={isDevAccount}
                     freeRemaining={freeRemaining}
+                />
+            )}
+
+            {listingRequestContext && (
+                <ListingRequestSheet
+                    open={listingSheetOpen}
+                    onClose={() => setListingSheetOpen(false)}
+                    context={listingRequestContext}
+                    title="이 매물 구해드릴까요?"
                 />
             )}
 

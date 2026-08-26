@@ -12,6 +12,8 @@ import PropertyCard from '../components/PropertyCard';
 import ApartmentCompareBasketBars, { ApartmentCompareBasketBar, useCompareBasketKeys } from '../components/ApartmentCompareBasket';
 import ApartmentDiscoverToolbar from '../components/ApartmentDiscoverToolbar';
 import ApartmentDiscoverFilterSheet from '../components/ApartmentDiscoverFilterSheet';
+import InvestmentDiscoverToolbar from '../components/InvestmentDiscoverToolbar';
+import InvestmentDiscoverFilterSheet from '../components/InvestmentDiscoverFilterSheet';
 import {
   loadApartmentDiscoverFilters,
   saveApartmentDiscoverFilters,
@@ -25,6 +27,17 @@ import {
   type ApartmentDiscoverFilters,
   type ApartmentCardSnapshot,
 } from '../lib/apartmentDiscoverFilters';
+import {
+  defaultInvestmentDiscoverFilters,
+  hasActiveInvestmentDiscoverFilters,
+  investmentDiscoverFilterHints,
+  isInvestmentDiscoverCategory,
+  loadInvestmentDiscoverFilters,
+  passesInvestmentDiscoverFilters,
+  saveInvestmentDiscoverFilters,
+  sortInvestmentDiscoverList,
+  type InvestmentDiscoverFilters,
+} from '../lib/investmentDiscoverFilters';
 import { fetchApartmentCardSnapshot } from '../lib/fetchApartmentDiscoverCards';
 import { fetchApartmentDiscover } from '../lib/fetchApartmentDiscover';
 import { USE_SERVER_APARTMENT_DISCOVER, useServerApartmentDiscoverForCategory } from '../lib/apartmentDiscoverFlags';
@@ -110,6 +123,8 @@ interface Analysis {
   avgJeonseDeposit1m?: number | null;
   wolseRiseRate6m?: number | null;
   avgWolseMonthlyRent1m?: number | null;
+  /** 토지·빌딩 등 — 제시가/추정가 (만원) */
+  budgetMan?: number | null;
 }
 
 function analysisCardCacheKey(
@@ -198,8 +213,11 @@ function HomePageContent() {
   const [showCompareResult, setShowCompareResult] = useState(false);
   const compareBasketKeys = useCompareBasketKeys();
   const [discoverFilters, setDiscoverFilters] = useState<ApartmentDiscoverFilters>(defaultApartmentDiscoverFilters);
+  const [investmentFilters, setInvestmentFilters] = useState<InvestmentDiscoverFilters>(defaultInvestmentDiscoverFilters);
   const [discoverSheetOpen, setDiscoverSheetOpen] = useState(false);
   const [discoverSheetSection, setDiscoverSheetSection] = useState<string | null>(null);
+  const [investmentSheetOpen, setInvestmentSheetOpen] = useState(false);
+  const [investmentSheetSection, setInvestmentSheetSection] = useState<string | null>(null);
   const [aptCardCache, setAptCardCache] = useState<Record<string, ApartmentCardSnapshot>>({});
   /** discover 아파트 — 좌표→주소 역지오코딩 캐시 */
   const [aptAddressById, setAptAddressById] = useState<Record<string, string>>({});
@@ -337,10 +355,14 @@ function HomePageContent() {
 
   useEffect(() => {
     setDiscoverFilters(loadApartmentDiscoverFilters());
+    setInvestmentFilters(loadInvestmentDiscoverFilters());
     const onDiscover = () => setDiscoverFilters(loadApartmentDiscoverFilters());
+    const onInvestment = () => setInvestmentFilters(loadInvestmentDiscoverFilters());
     window.addEventListener('apartment-discover-filters-updated', onDiscover);
+    window.addEventListener('investment-discover-filters-updated', onInvestment);
     return () => {
       window.removeEventListener('apartment-discover-filters-updated', onDiscover);
+      window.removeEventListener('investment-discover-filters-updated', onInvestment);
     };
   }, []);
 
@@ -1318,12 +1340,17 @@ function HomePageContent() {
         return key ? aptCardCache[key] : undefined;
       });
     }
+    if (isInvestmentDiscoverCategory(selectedCategory)) {
+      list = list.filter((a) => passesInvestmentDiscoverFilters(a, investmentFilters));
+      return sortInvestmentDiscoverList(list, investmentFilters);
+    }
     return list;
   }, [
     searchFilteredAnalyses,
     selectedCategory,
     useApartmentDiscoverFeed,
     discoverFilters,
+    investmentFilters,
     aptCardCache,
     aptAreaCenterM2,
     cardKeyForAnalysis,
@@ -1424,7 +1451,9 @@ function HomePageContent() {
   }, [searchFilteredAnalyses, discoverFilters, selectedCategory]);
 
   const mapAnalysesSource = useMemo(() => {
-    if (selectedCategory === '아파트') return listAnalysesForDisplay;
+    if (selectedCategory === '아파트' || isInvestmentDiscoverCategory(selectedCategory)) {
+      return listAnalysesForDisplay;
+    }
     return filteredAnalyses;
   }, [selectedCategory, filteredAnalyses, listAnalysesForDisplay]);
 
@@ -1691,6 +1720,16 @@ function HomePageContent() {
                   />
                 )}
 
+                {isInvestmentDiscoverCategory(selectedCategory) && (
+                  <InvestmentDiscoverToolbar
+                    filters={investmentFilters}
+                    onOpenSheet={(section) => {
+                      setInvestmentSheetSection(section ?? null);
+                      setInvestmentSheetOpen(true);
+                    }}
+                  />
+                )}
+
                 <form onSubmit={handleListSearchSubmit} className="w-full relative">
                   <div className={PANEL_INPUT_WRAP}>
                     <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1800,6 +1839,17 @@ function HomePageContent() {
                     && hasStrictDataFilters(discoverFilters) && (
                     <ul className="mt-3 mx-auto max-w-xs text-left text-[10px] text-amber-800/90 space-y-1 px-3">
                       {apartmentDiscoverFilterHints(discoverFilters).map((hint) => (
+                        <li key={hint} className="leading-relaxed">
+                          · {hint}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {isInvestmentDiscoverCategory(selectedCategory)
+                    && !listSearchQuery
+                    && hasActiveInvestmentDiscoverFilters(investmentFilters) && (
+                    <ul className="mt-3 mx-auto max-w-xs text-left text-[10px] text-amber-800/90 space-y-1 px-3">
+                      {investmentDiscoverFilterHints(investmentFilters).map((hint) => (
                         <li key={hint} className="leading-relaxed">
                           · {hint}
                         </li>
@@ -2200,6 +2250,19 @@ function HomePageContent() {
         onApply={(f) => {
           setDiscoverFilters(f);
           saveApartmentDiscoverFilters(f);
+        }}
+      />
+      <InvestmentDiscoverFilterSheet
+        open={investmentSheetOpen}
+        scrollSection={investmentSheetSection}
+        filters={investmentFilters}
+        onClose={() => {
+          setInvestmentSheetOpen(false);
+          setInvestmentSheetSection(null);
+        }}
+        onApply={(f) => {
+          setInvestmentFilters(f);
+          saveInvestmentDiscoverFilters(f);
         }}
       />
       <R114VariantPickModal

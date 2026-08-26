@@ -41,6 +41,8 @@ import MacroContextCharts from './MacroContextCharts';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
 import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
 import { useR114LiteContext } from '../hooks/useR114LiteContext';
+import ListingRequestSheet, { ListingRequestTrigger } from './ListingRequestSheet';
+import { formatBudgetManLabel, type ListingRequestContext } from '../lib/listingRequest';
 
 const TRADE_TABS: { key: R114TradeType; label: string }[] = [
   { key: 'sale', label: '매매' },
@@ -368,6 +370,7 @@ export default function R114LiteDetailPanel({
   const [tradeTab, setTradeTab] = useState<R114TradeType>('sale');
   const [tradeVisibleCount, setTradeVisibleCount] = useState(TRADE_PREVIEW);
   const [comparePickPending, setComparePickPending] = useState<ApartmentComparePickPayload | null>(null);
+  const [listingSheetOpen, setListingSheetOpen] = useState(false);
 
   const load = useCallback(async (requestPropId: string, cancelled: () => boolean) => {
     setLoading(true);
@@ -662,6 +665,28 @@ export default function R114LiteDetailPanel({
     return () => onFloatingActionsChange(null);
   }, [floatingChrome, onFloatingActionsChange, loading, error, floatingActions]);
 
+  const listingContext = useMemo<ListingRequestContext>(() => {
+    const c = data?.data?.complex;
+    const addressLine = c
+      ? (c.address || `${c.city || ''} ${c.gu || ''} ${c.dong || ''}`.trim())
+      : '';
+    const avgHint = activeCardStats.avgPrice1m
+      ? `최근 시세 참고: ${formatAvgPrice1mEok(activeCardStats.avgPrice1m)} (제시가 없음 · 직접 입력)`
+      : '희망 예산을 직접 입력해 주세요';
+    return {
+      category: 'apartment',
+      sourceType: 'r114_lite',
+      sourceId: r114PropId,
+      complexName: c?.title ?? '',
+      address: addressLine,
+      defaultPyeong: selectedPyeong ?? undefined,
+      defaultBudgetMan: null,
+      referencePriceHint: avgHint,
+      showPyeong: true,
+      showMoveIn: true,
+    };
+  }, [activeCardStats.avgPrice1m, data?.data?.complex, r114PropId, selectedPyeong]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -891,6 +916,17 @@ export default function R114LiteDetailPanel({
           />
         )}
 
+        <section className={`rounded-2xl p-3.5 ${t.section}`}>
+          <p className={`text-xs ${t.muted} mb-3 leading-relaxed`}>
+            조건에 맞는 실매물을 찾아드립니다. 평형·예산·입주 시기를 남겨 주세요.
+          </p>
+          <ListingRequestTrigger
+            label="이 집, 구해드릴까요?"
+            onClick={() => setListingSheetOpen(true)}
+            variant={theme === 'dark' ? 'dark' : 'primary'}
+          />
+        </section>
+
         <R114LiteSchoolCard ctx={contextState} theme={theme} />
 
         <section className={`rounded-2xl p-3.5 ${t.section}`}>
@@ -911,13 +947,26 @@ export default function R114LiteDetailPanel({
       <div
         className={`sticky bottom-0 z-10 mt-auto shrink-0 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t backdrop-blur-md shadow-[0_-8px_24px_rgba(0,0,0,0.08)] ${stickyFooterClass} ${floatingChrome ? 'max-lg:hidden' : ''}`}
       >
-        <div className="flex gap-2">
-          {actionButton}
-          <button type="button" onClick={handleCompareClick} className={compareButtonClass}>
-            비교하기
-          </button>
+        <div className="flex flex-col gap-2">
+          <ListingRequestTrigger
+            label="이 집, 구해드릴까요?"
+            onClick={() => setListingSheetOpen(true)}
+            variant={theme === 'dark' ? 'dark' : 'primary'}
+          />
+          <div className="flex gap-2">
+            {actionButton}
+            <button type="button" onClick={handleCompareClick} className={compareButtonClass}>
+              비교하기
+            </button>
+          </div>
         </div>
       </div>
+
+      <ListingRequestSheet
+        open={listingSheetOpen}
+        onClose={() => setListingSheetOpen(false)}
+        context={listingContext}
+      />
 
       {!onCompareClick && (
         <ApartmentAreaPickModal

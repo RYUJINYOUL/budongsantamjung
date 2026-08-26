@@ -18,9 +18,9 @@ import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../../
 import { compareItemKey } from '../../lib/apartmentCompareBasket';
 import { isAdminUser } from '../../lib/adminUids';
 
-type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home' | 'admin-analyses';
+type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home' | 'admin-analyses' | 'admin-sourcing';
 
-const PROFILE_TABS: Tab[] = ['favorites', 'my-analyses', 'my-discoveries', 'my-home', 'admin-analyses'];
+const PROFILE_TABS: Tab[] = ['favorites', 'my-analyses', 'my-discoveries', 'my-home', 'admin-analyses', 'admin-sourcing'];
 
 interface AnalysisCard {
     analysisId?: string;
@@ -87,7 +87,34 @@ interface AdminDigestSummary {
     adminCount: number;
 }
 
+interface ListingRequestRow {
+    id: number;
+    category: string;
+    sourceType: string;
+    sourceId?: string | null;
+    complexName?: string | null;
+    address?: string | null;
+    pyeongApprox?: number | null;
+    budgetMan?: number | null;
+    moveInTiming?: string | null;
+    contactName: string;
+    contactPhone: string;
+    prefilledPriceMan?: number | null;
+    status: string;
+    createdAt?: string;
+}
+
+interface SourcingCandidateRow {
+    reportId: string;
+    address?: string | null;
+    bldNm?: string | null;
+    budgetMan?: number | null;
+    aiScore?: number;
+}
+
 type AdminDigestFilter = 'all' | 'exclude_admin';
+type SourcingCategory = 'land' | 'building';
+type SourcingSort = 'ai_score_desc' | 'ai_score_asc' | 'price_desc' | 'price_asc';
 
 function todayKstDateParts() {
     const iso = new Intl.DateTimeFormat('en-CA', {
@@ -254,6 +281,17 @@ function ProfilePageContent() {
     const [adminPage, setAdminPage] = useState(1);
     const [adminTotalPages, setAdminTotalPages] = useState(1);
 
+    const [sourcingCategory, setSourcingCategory] = useState<SourcingCategory>('land');
+    const [sourcingSort, setSourcingSort] = useState<SourcingSort>('ai_score_desc');
+    const [listingRequests, setListingRequests] = useState<ListingRequestRow[]>([]);
+    const [listingRequestsLoading, setListingRequestsLoading] = useState(false);
+    const [listingRequestsPage, setListingRequestsPage] = useState(1);
+    const [listingRequestsTotalPages, setListingRequestsTotalPages] = useState(1);
+    const [sourcingCandidates, setSourcingCandidates] = useState<SourcingCandidateRow[]>([]);
+    const [sourcingCandidatesLoading, setSourcingCandidatesLoading] = useState(false);
+    const [sourcingCandidatesPage, setSourcingCandidatesPage] = useState(1);
+    const [sourcingCandidatesTotalPages, setSourcingCandidatesTotalPages] = useState(1);
+
     const [uploading, setUploading] = useState(false);
     const [uploadMsg, setUploadMsg] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -303,8 +341,59 @@ function ProfilePageContent() {
             loadWeeklyReports();
         } else if (activeTab === 'admin-analyses' && isAdmin) {
             loadAdminAnalyses(adminPage);
+        } else if (activeTab === 'admin-sourcing' && isAdmin) {
+            loadAdminListingRequests(listingRequestsPage);
+            loadAdminSourcingCandidates(sourcingCandidatesPage);
         }
-    }, [user, activeTab, isAdmin, adminPage, adminYear, adminMonth, adminDay, adminFilter]);
+    }, [user, activeTab, isAdmin, adminPage, adminYear, adminMonth, adminDay, adminFilter, listingRequestsPage, sourcingCandidatesPage, sourcingCategory, sourcingSort]);
+
+    const loadAdminListingRequests = async (page = 1) => {
+        if (!user || !isAdmin) return;
+        setListingRequestsLoading(true);
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch(
+                `/api/land/detective/admin/listing-requests?page=${page}&limit=20`,
+                { headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '조회 실패');
+            setListingRequests(data.requests || []);
+            setListingRequestsPage(data.page || 1);
+            setListingRequestsTotalPages(data.totalPages || 1);
+        } catch {
+            setListingRequests([]);
+        } finally {
+            setListingRequestsLoading(false);
+        }
+    };
+
+    const loadAdminSourcingCandidates = async (page = 1) => {
+        if (!user || !isAdmin) return;
+        setSourcingCandidatesLoading(true);
+        try {
+            const idToken = await user.getIdToken();
+            const params = new URLSearchParams({
+                category: sourcingCategory,
+                sortBy: sourcingSort,
+                page: String(page),
+                limit: '20',
+            });
+            const res = await fetch(
+                `/api/land/detective/admin/sourcing-candidates?${params}`,
+                { headers: { Authorization: `Bearer ${idToken}` } },
+            );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '조회 실패');
+            setSourcingCandidates(data.items || []);
+            setSourcingCandidatesPage(data.page || 1);
+            setSourcingCandidatesTotalPages(data.totalPages || 1);
+        } catch {
+            setSourcingCandidates([]);
+        } finally {
+            setSourcingCandidatesLoading(false);
+        }
+    };
 
     const loadAdminAnalyses = async (page = 1) => {
         if (!user || !isAdmin) return;
@@ -704,7 +793,10 @@ function ProfilePageContent() {
                                     { key: 'favorites' as Tab, label: '찜한 매물' },
                                     { key: 'my-analyses' as Tab, label: '내 분석 내역' },
                                     { key: 'my-discoveries' as Tab, label: '발견 기록' },
-                                    ...(isAdmin ? [{ key: 'admin-analyses' as Tab, label: 'AI 분석 현황' }] : []),
+                                    ...(isAdmin ? [
+                                        { key: 'admin-analyses' as Tab, label: 'AI 분석 현황' },
+                                        { key: 'admin-sourcing' as Tab, label: '매물 소싱' },
+                                    ] : []),
                                 ] as { key: Tab; label: string }[]).map(tab => (
                                     <button
                                         key={tab.key}
@@ -1014,6 +1106,132 @@ function ProfilePageContent() {
                                         />
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* 관리자 — 매물 소싱 */}
+                        {activeTab === 'admin-sourcing' && isAdmin && (
+                            <div className="space-y-6">
+                                <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-3">
+                                    <div>
+                                        <p className="text-xs font-black text-slate-800 mb-1">소싱 의뢰 큐</p>
+                                        <p className="text-[10px] text-slate-450 font-semibold">Lite · AI 상세 CTA에서 접수된 의뢰</p>
+                                    </div>
+                                    {listingRequestsLoading ? (
+                                        <div className="flex justify-center py-10">
+                                            <div className="w-7 h-7 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                        </div>
+                                    ) : listingRequests.length === 0 ? (
+                                        <p className="text-center text-[11px] text-slate-500 font-semibold py-8">접수된 의뢰가 없습니다</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {listingRequests.map((req) => (
+                                                <div
+                                                    key={req.id}
+                                                    className="rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-3"
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-black text-slate-900 truncate">
+                                                                {req.complexName || req.address || '매물'}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                                                                {req.category} · {req.contactName} · {req.contactPhone}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-400 font-bold mt-1">
+                                                                {formatDateTime(req.createdAt)}
+                                                                {req.budgetMan ? ` · 예산 ${formatBudget(req.budgetMan)}` : ''}
+                                                                {req.pyeongApprox ? ` · ${req.pyeongApprox}평` : ''}
+                                                                {req.moveInTiming ? ` · ${req.moveInTiming}` : ''}
+                                                            </p>
+                                                        </div>
+                                                        <span className="shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                            {req.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <Pagination
+                                                page={listingRequestsPage}
+                                                totalPages={listingRequestsTotalPages}
+                                                onPageChange={(p) => setListingRequestsPage(p)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-4">
+                                    <div>
+                                        <p className="text-xs font-black text-slate-800 mb-1">소싱 후보 (토지·빌딩)</p>
+                                        <p className="text-[10px] text-slate-450 font-semibold">AI 분석 완료 · AI점수·예산 기준</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(['land', 'building'] as SourcingCategory[]).map((cat) => (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => { setSourcingCategory(cat); setSourcingCandidatesPage(1); }}
+                                                className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition-colors ${sourcingCategory === cat ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                                            >
+                                                {cat === 'land' ? '토지' : '빌딩'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {([
+                                            { key: 'ai_score_desc' as SourcingSort, label: 'AI점수 ↓' },
+                                            { key: 'price_desc' as SourcingSort, label: '예산 ↓' },
+                                            { key: 'price_asc' as SourcingSort, label: '예산 ↑' },
+                                        ]).map((opt) => (
+                                            <button
+                                                key={opt.key}
+                                                type="button"
+                                                onClick={() => { setSourcingSort(opt.key); setSourcingCandidatesPage(1); }}
+                                                className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold border transition-colors ${sourcingSort === opt.key ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {sourcingCandidatesLoading ? (
+                                        <div className="flex justify-center py-10">
+                                            <div className="w-7 h-7 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                        </div>
+                                    ) : sourcingCandidates.length === 0 ? (
+                                        <p className="text-center text-[11px] text-slate-500 font-semibold py-8">후보가 없습니다</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {sourcingCandidates.map((item) => (
+                                                <button
+                                                    key={item.reportId}
+                                                    type="button"
+                                                    onClick={() => router.push(`/analyze/${makeAnalyzeSlug(item.reportId, item.bldNm || item.address)}`)}
+                                                    className="w-full text-left bg-slate-50/50 border border-slate-100 rounded-xl p-3 hover:border-emerald-200 transition-all"
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-black text-slate-900 truncate">{item.bldNm || item.address || '매물'}</p>
+                                                            <p className="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">{item.address}</p>
+                                                            {item.budgetMan ? (
+                                                                <p className="text-[10px] text-slate-400 font-bold mt-1">예산 {formatBudget(item.budgetMan)}</p>
+                                                            ) : null}
+                                                        </div>
+                                                        {item.aiScore != null && item.aiScore > 0 && (
+                                                            <span className={`shrink-0 text-[10px] font-black px-2 py-0.5 rounded-lg border ${getScoreBadgeClasses(String(item.aiScore))}`}>
+                                                                AI {formatScoreLabel(String(item.aiScore))}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                            <Pagination
+                                                page={sourcingCandidatesPage}
+                                                totalPages={sourcingCandidatesTotalPages}
+                                                onPageChange={(p) => setSourcingCandidatesPage(p)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
 

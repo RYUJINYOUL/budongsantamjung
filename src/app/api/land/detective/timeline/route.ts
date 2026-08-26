@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { enrichTimelineAnalysesBudgetMan } from '@/lib/analysisBudgetMan';
 
 export async function GET(request: NextRequest) {
     try {
@@ -28,6 +29,13 @@ export async function GET(request: NextRequest) {
         }
 
         const data = await response.json();
+        if (Array.isArray(data.analyses)) {
+            await enrichTimelineAnalysesBudgetMan(
+                data.analyses,
+                backendUrl,
+                authHeader,
+            );
+        }
         return NextResponse.json(data);
 
     } catch (error: any) {
