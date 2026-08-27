@@ -2712,6 +2712,18 @@ export default function AiReportView({
     const landShapesObj = ai['2_propertyAnalysis'] || ai['2_landShapeAnalysis'] || {};
     const landShapes = Array.isArray(landShapesObj) ? landShapesObj : Object.values(landShapesObj);
     const inDepth = ai['7_inDepthReport'] || {};
+    const macroOutlook = ai.macroOutlook as {
+        upsideFactors?: Array<{ label?: string; reason?: string; sources?: string[] }>;
+        downsideFactors?: Array<{ label?: string; reason?: string; sources?: string[] }>;
+        summary?: string;
+    } | undefined;
+    const hasMacroOutlook = Boolean(
+        macroOutlook && (
+            macroOutlook.summary?.trim()
+            || macroOutlook.upsideFactors?.length
+            || macroOutlook.downsideFactors?.length
+        ),
+    );
     const mustCheckObj = ai['6_mustCheckList'] || {};
     const mustCheck = Array.isArray(mustCheckObj) ? mustCheckObj : Object.values(mustCheckObj);
     const areaInfo = ai['4_areaInfo'] || {};
@@ -3739,6 +3751,64 @@ export default function AiReportView({
                                 <span className="text-white/70 text-xs leading-relaxed">{String(shape)}</span>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 8.5 동시기 거시·공급 맥락 (macroOutlook) */}
+            {isApartment && hasMacroOutlook && macroOutlook && (
+                <div className="p-6 bg-[#0f172a]/55 border border-[#bcd4e6]/20 rounded-[40px] shadow-[0_0_25px_rgba(188,212,230,0.04)]">
+                    <div className="flex items-center gap-3 mb-5">
+                        <div className="p-2 bg-[#bcd4e6]/12 border border-[#bcd4e6]/30 rounded-xl">
+                            <Activity className="w-4 h-4 text-[#bcd4e6]" />
+                        </div>
+                        <span className="text-white text-base font-bold tracking-tight">동시기 거시·공급 맥락</span>
+                    </div>
+
+                    {macroOutlook.summary?.trim() && (
+                        <p className="text-white/75 text-xs leading-relaxed mb-4 whitespace-pre-wrap">
+                            {macroOutlook.summary}
+                        </p>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        {macroOutlook.upsideFactors?.length ? (
+                            <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl">
+                                <div className="flex items-center gap-1.5 text-emerald-300 text-[11px] font-bold mb-3">
+                                    <TrendingUp className="w-3.5 h-3.5" />
+                                    <span>상승 요인</span>
+                                </div>
+                                <div className="flex flex-col gap-2.5">
+                                    {macroOutlook.upsideFactors.map((factor, i) => (
+                                        <div key={`up-${i}`} className="text-white/70 text-xs leading-relaxed">
+                                            {factor.label && (
+                                                <span className="text-emerald-200/90 font-semibold">{factor.label}: </span>
+                                            )}
+                                            {factor.reason || '-'}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {macroOutlook.downsideFactors?.length ? (
+                            <div className="p-4 bg-rose-500/5 border border-rose-500/15 rounded-2xl">
+                                <div className="flex items-center gap-1.5 text-rose-300 text-[11px] font-bold mb-3">
+                                    <TrendingDown className="w-3.5 h-3.5" />
+                                    <span>하락·부담 요인</span>
+                                </div>
+                                <div className="flex flex-col gap-2.5">
+                                    {macroOutlook.downsideFactors.map((factor, i) => (
+                                        <div key={`down-${i}`} className="text-white/70 text-xs leading-relaxed">
+                                            {factor.label && (
+                                                <span className="text-rose-200/90 font-semibold">{factor.label}: </span>
+                                            )}
+                                            {factor.reason || '-'}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             )}
