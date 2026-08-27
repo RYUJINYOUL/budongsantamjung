@@ -5,7 +5,13 @@ import { useEffect, useState } from 'react';
 import {
   INVESTMENT_PRICE_FILTER_MAX_EOK,
   INVESTMENT_PRICE_FILTER_STEP_EOK,
+  INVESTMENT_MIN_SCORE_PRESETS,
+  INVESTMENT_PRICE_MAX_PRESETS_EOK,
   INVESTMENT_SORT_OPTIONS,
+  applyInvestmentPriceMaxEok,
+  isInvestmentMinScorePresetActive,
+  isInvestmentPriceMaxPresetActive,
+  toggleInvestmentMinScorePreset,
   type InvestmentDiscoverFilters,
   type InvestmentDiscoverSort,
 } from '../lib/investmentDiscoverFilters';
@@ -160,7 +166,7 @@ export default function InvestmentDiscoverFilterSheet({
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="닫기" onClick={onClose} />
       <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 pb-8">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-black text-slate-900">토지·빌딩 필터</h3>
+          <h3 className="text-base font-black text-slate-900">매물 필터</h3>
           <button type="button" onClick={onClose} className="text-slate-400 text-sm font-bold">닫기</button>
         </div>
 
@@ -179,7 +185,24 @@ export default function InvestmentDiscoverFilterSheet({
               초기화
             </button>
           </div>
-          <p className="text-[10px] text-slate-500 mb-3">제시가 우선 · 없으면 AI 추정가 기준 · 5억 단위</p>
+          <p className="text-[10px] text-slate-500 mb-2">제시가 우선 · 없으면 AI 추정가 · 가격 정보 없는 매물 제외</p>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {INVESTMENT_PRICE_MAX_PRESETS_EOK.map((eok) => (
+              <button
+                key={eok}
+                type="button"
+                onClick={() => setDraft((d) => applyInvestmentPriceMaxEok(d, eok))}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                  isInvestmentPriceMaxPresetActive(draft, eok)
+                    ? 'bg-emerald-500 text-white border-emerald-500'
+                    : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >
+                ~{eok}억
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-400 mb-2">상세 구간 (5억 단위)</p>
           <DualRangeRow
             min={draft.priceMinEok}
             max={draft.priceMaxEok}
@@ -201,7 +224,23 @@ export default function InvestmentDiscoverFilterSheet({
               초기화
             </button>
           </div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">최소 AI 점수</label>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
+              <button
+                key={score}
+                type="button"
+                onClick={() => setDraft((d) => toggleInvestmentMinScorePreset(d, score))}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                  isInvestmentMinScorePresetActive(draft, score)
+                    ? 'bg-emerald-500 text-white border-emerald-500'
+                    : 'bg-white text-slate-600 border-slate-200'
+                }`}
+              >
+                {score}점 이상
+              </button>
+            ))}
+          </div>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">최소 AI 점수 (슬라이더)</label>
           <input
             type="range"
             min={0}

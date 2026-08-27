@@ -131,3 +131,35 @@ export function moveInAgeYears(moveIn: string | null | undefined): number | null
   if (!Number.isFinite(y) || y < 1900) return null;
   return new Date().getFullYear() - y;
 }
+
+export function parseMoveInYear(moveIn: string | null | undefined): number | null {
+  if (!moveIn || moveIn.length < 4) return null;
+  const y = parseInt(moveIn.slice(0, 4), 10);
+  if (!Number.isFinite(y) || y < 1900) return null;
+  return y;
+}
+
+/** Lite yearly bar · 대표 전용㎡ (평형 picker 무관) */
+export function resolveLiteRepresentativeAreaM2(
+  exclusiveAreaM2: number | null | undefined,
+  pyeongTypes: Array<{ households?: number; exclusiveAreaMin?: number; exclusiveAreaMax?: number }>,
+): number | null {
+  if (exclusiveAreaM2 != null && exclusiveAreaM2 > 0) return exclusiveAreaM2;
+  if (!pyeongTypes.length) return null;
+  const top = [...pyeongTypes].sort((a, b) => (b.households ?? 0) - (a.households ?? 0))[0];
+  const min = top.exclusiveAreaMin ?? 0;
+  const max = top.exclusiveAreaMax ?? 0;
+  if (min > 0 && max > 0) return Math.round(((min + max) / 2) * 100) / 100;
+  if (min > 0) return min;
+  if (max > 0) return max;
+  return null;
+}
+
+/** Lite yearly bar 섹션 배지 — 입주 연도에 맞춰 N년 표기 */
+export function liteMacroSectionBadge(moveIn: string | null | undefined): string {
+  const moveInYear = parseMoveInYear(moveIn);
+  if (!moveInYear) return '10년 변동 추이';
+  const span = new Date().getFullYear() - moveInYear + 1;
+  if (span >= 10) return '10년 변동 추이';
+  return `${Math.max(1, span)}년 변동 추이`;
+}

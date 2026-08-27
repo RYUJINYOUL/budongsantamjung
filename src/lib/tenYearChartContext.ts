@@ -87,15 +87,28 @@ export function buildYearEndTimeRefs(
 
 const DEFAULT_AXIS_CACHE_SUFFIX = 'default';
 const FETCH_TIMEOUT_MS = 30_000;
+/** 프록시 aptSeq/r114PropId 누락 버그 수정 후 캐시 무효화 */
+const CONTEXT_CACHE_VERSION = 'ctx3';
+
+export type TenYearChartFetchOptions = {
+  aptSeq?: string | null;
+  r114PropId?: string | null;
+};
 
 /** fetch 캐시 키 — 배열 참조가 아닌 축 내용만 사용 */
 export function buildTenYearChartContextCacheKey(
   sigunguCd: string,
   quarters?: TenYearChartQuarterRef[],
+  options?: TenYearChartFetchOptions,
 ): string {
-  if (!quarters?.length) return `${sigunguCd}|${DEFAULT_AXIS_CACHE_SUFFIX}`;
+  const priceKey = options?.aptSeq
+    ? `apt:${options.aptSeq}`
+    : options?.r114PropId
+      ? `r114:${options.r114PropId}`
+      : 'sigunguPrice';
+  if (!quarters?.length) return `${sigunguCd}|${DEFAULT_AXIS_CACHE_SUFFIX}|${priceKey}|${CONTEXT_CACHE_VERSION}`;
   const axis = quarters.map((q) => `${q.year}-Q${q.quarter}`).join(',');
-  return `${sigunguCd}|${axis}`;
+  return `${sigunguCd}|${axis}|${priceKey}|${CONTEXT_CACHE_VERSION}`;
 }
 
 type TenYearChartContextData = NonNullable<TenYearChartContextResponse['data']>;
@@ -106,18 +119,20 @@ const inflightRequests = new Map<string, Promise<TenYearChartContextData | null>
 export function getCachedTenYearChartContext(
   sigunguCd: string,
   quarters?: TenYearChartQuarterRef[],
+  options?: TenYearChartFetchOptions,
 ): TenYearChartContextData | null {
   if (!sigunguCd) return null;
-  return contextCache.get(buildTenYearChartContextCacheKey(sigunguCd, quarters)) ?? null;
+  return contextCache.get(buildTenYearChartContextCacheKey(sigunguCd, quarters, options)) ?? null;
 }
 
 export async function fetchTenYearChartContext(
   sigunguCd: string,
   quarters?: TenYearChartQuarterRef[],
+  options?: TenYearChartFetchOptions,
 ): Promise<TenYearChartContextResponse['data'] | null> {
   if (!sigunguCd) return null;
 
-  const cacheKey = buildTenYearChartContextCacheKey(sigunguCd, quarters);
+  const cacheKey = buildTenYearChartContextCacheKey(sigunguCd, quarters, options);
   const cached = contextCache.get(cacheKey);
   if (cached) return cached;
 
@@ -137,6 +152,8 @@ export async function fetchTenYearChartContext(
       ),
     );
   }
+  if (options?.aptSeq) params.set('aptSeq', options.aptSeq);
+  if (options?.r114PropId) params.set('r114PropId', options.r114PropId);
 
   const request = (async () => {
     const res = await fetch(`/api/land/detective/ten-year-chart-context?${params.toString()}`, {

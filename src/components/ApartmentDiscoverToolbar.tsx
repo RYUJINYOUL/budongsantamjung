@@ -3,6 +3,12 @@
 import {
   type ApartmentDiscoverFilters,
   type ApartmentDealMode,
+  APARTMENT_RISE_5Y_MIN,
+  clearApartmentLongTermRiseFilters,
+  isApartmentRise10yDoubledActive,
+  isApartmentRise5y30Active,
+  toggleApartmentRise10yDoubled,
+  toggleApartmentRise5y30,
 } from '../lib/apartmentDiscoverFilters';
 import { formatPyeongFilterLabel, isPyeongFilterActive } from '../lib/aptDiscoverArea';
 import { formatPriceFilterLabel, isPriceFilterActive } from '../lib/aptDiscoverPrice';
@@ -10,6 +16,7 @@ import { formatPriceFilterLabel, isPriceFilterActive } from '../lib/aptDiscoverP
 type Props = {
   filters: ApartmentDiscoverFilters;
   onOpenSheet: (section?: string) => void;
+  onApply: (f: ApartmentDiscoverFilters) => void;
 };
 
 const DEAL_LABEL: Record<ApartmentDealMode, string> = {
@@ -27,6 +34,24 @@ function pill(active: boolean) {
   ].join(' ');
 }
 
+function risePresetPill(active: boolean) {
+  return [
+    'shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all',
+    active
+      ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+      : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-800',
+  ].join(' ');
+}
+
+function clearBtnClass(active: boolean) {
+  return [
+    'shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all',
+    active
+      ? 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
+      : 'bg-white border-slate-200 text-slate-400 pointer-events-none opacity-50',
+  ].join(' ');
+}
+
 function Chevron() {
   return (
     <svg className="w-2.5 h-2.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -35,7 +60,11 @@ function Chevron() {
   );
 }
 
-const CHIPS: { section: string; label: (f: ApartmentDiscoverFilters) => string; active: (f: ApartmentDiscoverFilters) => boolean }[] = [
+const SHEET_CHIPS: {
+  section: string;
+  label: (f: ApartmentDiscoverFilters) => string;
+  active: (f: ApartmentDiscoverFilters) => boolean;
+}[] = [
   { section: 'deal', label: (f) => DEAL_LABEL[f.dealMode], active: () => true },
   {
     section: 'price',
@@ -68,20 +97,47 @@ const CHIPS: { section: string; label: (f: ApartmentDiscoverFilters) => string; 
   },
 ];
 
-export default function ApartmentDiscoverToolbar({ filters, onOpenSheet }: Props) {
+export default function ApartmentDiscoverToolbar({ filters, onOpenSheet, onApply }: Props) {
+  const riseActive = filters.minRiseRate5y != null || filters.minRiseRate10y != null;
+
   return (
-    <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
-      {CHIPS.map((c) => (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
         <button
-          key={c.section}
           type="button"
-          className={pill(c.active(filters))}
-          onClick={() => onOpenSheet(c.section)}
+          className={risePresetPill(isApartmentRise10yDoubledActive(filters))}
+          onClick={() => onApply(toggleApartmentRise10yDoubled(filters))}
         >
-          {c.label(filters)}
-          <Chevron />
+          10년 2배+
         </button>
-      ))}
+        <button
+          type="button"
+          className={risePresetPill(isApartmentRise5y30Active(filters))}
+          onClick={() => onApply(toggleApartmentRise5y30(filters))}
+        >
+          5년 {APARTMENT_RISE_5Y_MIN}%+
+        </button>
+        <button
+          type="button"
+          className={clearBtnClass(riseActive)}
+          onClick={() => onApply(clearApartmentLongTermRiseFilters(filters))}
+        >
+          상승 해제
+        </button>
+      </div>
+      <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
+        {SHEET_CHIPS.map((c) => (
+          <button
+            key={c.section}
+            type="button"
+            className={pill(c.active(filters))}
+            onClick={() => onOpenSheet(c.section)}
+          >
+            {c.label(filters)}
+            <Chevron />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

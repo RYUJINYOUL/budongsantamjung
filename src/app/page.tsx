@@ -1330,7 +1330,12 @@ function HomePageContent() {
         }
         const key = cardKeyForAnalysis(a);
         return passesApartmentDiscoverFilters(
-          { category: a.category, avgPrice1m: a.avgPrice1m },
+          {
+            category: a.category,
+            avgPrice1m: a.avgPrice1m,
+            riseRate5y: (a as { riseRate5y?: number | null }).riseRate5y,
+            riseRate10y: (a as { riseRate10y?: number | null }).riseRate10y,
+          },
           key ? aptCardCache[key] : undefined,
           discoverFilters,
         );
@@ -1717,6 +1722,10 @@ function HomePageContent() {
                       setDiscoverSheetSection(section ?? null);
                       setDiscoverSheetOpen(true);
                     }}
+                    onApply={(f) => {
+                      setDiscoverFilters(f);
+                      saveApartmentDiscoverFilters(f);
+                    }}
                   />
                 )}
 
@@ -1726,6 +1735,10 @@ function HomePageContent() {
                     onOpenSheet={(section) => {
                       setInvestmentSheetSection(section ?? null);
                       setInvestmentSheetOpen(true);
+                    }}
+                    onApply={(f) => {
+                      setInvestmentFilters(f);
+                      saveInvestmentDiscoverFilters(f);
                     }}
                   />
                 )}

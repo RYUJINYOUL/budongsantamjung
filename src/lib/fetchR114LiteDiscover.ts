@@ -18,6 +18,8 @@ export type R114LiteDiscoverItem = {
   exclusiveAreaM2?: number | null;
   saleCount6m: number;
   riseRate6m?: number | null;
+  riseRate5y?: number | null;
+  riseRate10y?: number | null;
   avgPrice1m?: number | null;
   avgPriceMonth?: string | null;
   latestSaleMan?: number | null;
@@ -165,6 +167,8 @@ export function mapR114LiteDiscoverToFeedItem(item: R114LiteDiscoverItem) {
     householdCount: item.householdCount ?? null,
     avgPrice1m: item.avgPrice1m ?? item.latestSaleMan ?? null,
     riseRate6m: item.riseRate6m ?? null,
+    riseRate5y: item.riseRate5y ?? null,
+    riseRate10y: item.riseRate10y ?? null,
     exclusiveArea: item.exclusiveAreaM2 ?? null,
     area: item.exclusiveAreaM2 ?? null,
     jeonseRiseRate6m: item.jeonseRiseRate6m ?? null,

@@ -20,6 +20,8 @@ export type ApartmentDiscoverItem = {
   category: string;
   avgPrice1m?: number | null;
   riseRate6m?: number | null;
+  riseRate5y?: number | null;
+  riseRate10y?: number | null;
   exclusiveArea?: number | null;
   area?: number | null;
   centerM2?: number | null;
@@ -65,6 +67,8 @@ export function discoverFiltersToSearchParams(
   }
   if (f.entranceTypes.length) params.set('entranceTypes', f.entranceTypes.join(','));
   if (f.heatingTypes.length) params.set('heatingTypes', f.heatingTypes.join(','));
+  if (f.minRiseRate5y != null) params.set('minRiseRate5y', '1');
+  if (f.minRiseRate10y != null) params.set('minRiseRate10y', '1');
   if (options?.analyzedOnly !== false) {
     params.set('analyzedOnly', '1');
   }

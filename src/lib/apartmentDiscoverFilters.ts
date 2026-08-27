@@ -30,6 +30,10 @@ export type ApartmentDiscoverFilters = {
   budgetFilterMinEok?: number;
   budgetFilterMaxEok?: number | null;
   sortBy: ApartmentDiscoverSort;
+  /** 5년 +30% 이상 (단지 전체 quarterly SSOT) */
+  minRiseRate5y: number | null;
+  /** 10년 +100%(2배) 이상 */
+  minRiseRate10y: number | null;
   minJeonseRatePercent: number | null;
   maxJeonseRatePercent: number | null;
   minGapMan: number | null;
@@ -43,7 +47,11 @@ export type ApartmentDiscoverFilters = {
   heatingTypes: string[];
 };
 
-export const APARTMENT_DISCOVER_FILTERS_KEY = 'apartment_discover_filters_v3';
+export const APARTMENT_DISCOVER_FILTERS_KEY = 'apartment_discover_filters_v4';
+
+/** 장기 상승률 프리셋 (%) */
+export const APARTMENT_RISE_5Y_MIN = 30;
+export const APARTMENT_RISE_10Y_MIN = 100;
 
 export const ENTRANCE_OPTIONS = ['계단식', '복도식', '복합식'];
 export const HEATING_OPTIONS = ['지역난방', '개별난방', '중앙난방'];
@@ -66,6 +74,8 @@ export function defaultApartmentDiscoverFilters(): ApartmentDiscoverFilters {
     priceMinEok: 0,
     priceMaxEok: PRICE_FILTER_MAX_EOK,
     sortBy: 'default',
+    minRiseRate5y: null,
+    minRiseRate10y: null,
     minJeonseRatePercent: null,
     maxJeonseRatePercent: null,
     minGapMan: null,
@@ -84,6 +94,7 @@ export function loadApartmentDiscoverFilters(): ApartmentDiscoverFilters {
   if (typeof window === 'undefined') return defaultApartmentDiscoverFilters();
   try {
     const raw = localStorage.getItem(APARTMENT_DISCOVER_FILTERS_KEY)
+      ?? localStorage.getItem('apartment_discover_filters_v3')
       ?? localStorage.getItem('apartment_discover_filters_v2');
     const prof = loadCompareProfile();
     const withProfile = {
@@ -117,6 +128,8 @@ export function loadApartmentDiscoverFilters(): ApartmentDiscoverFilters {
     }
     if (merged.pyeongMin == null) merged.pyeongMin = 0;
     if (merged.pyeongMax == null) merged.pyeongMax = PYEONG_FILTER_MAX;
+    if (merged.minRiseRate5y == null) merged.minRiseRate5y = null;
+    if (merged.minRiseRate10y == null) merged.minRiseRate10y = null;
     delete (merged as { budgetFilterEnabled?: boolean }).budgetFilterEnabled;
     return merged;
   } catch {
@@ -133,6 +146,8 @@ export function saveApartmentDiscoverFilters(f: ApartmentDiscoverFilters) {
 export type ApartmentCardSnapshot = {
   exclusiveAreaM2?: number | null;
   riseRate6m?: number | null;
+  riseRate5y?: number | null;
+  riseRate10y?: number | null;
   avgPrice1m?: number | null;
   tradeCount6m?: number;
   gapPriceMan?: number | null;
@@ -195,6 +210,8 @@ export function passesApartmentDiscoverFilters(
   item: {
     category?: string;
     avgPrice1m?: number | null;
+    riseRate5y?: number | null;
+    riseRate10y?: number | null;
   },
   card: ApartmentCardSnapshot | undefined,
   filters: ApartmentDiscoverFilters,
@@ -256,6 +273,15 @@ export function passesApartmentDiscoverFilters(
     const row = card?.optional?.rows?.find((r) => r.id === 'heating');
     const heatRaw = row?.value?.trim() || null;
     if (!heatingMatchesFilter(heatRaw, filters.heatingTypes)) return false;
+  }
+
+  if (filters.minRiseRate5y != null) {
+    const v = card?.riseRate5y ?? item.riseRate5y;
+    if (v == null || v < filters.minRiseRate5y) return false;
+  }
+  if (filters.minRiseRate10y != null) {
+    const v = card?.riseRate10y ?? item.riseRate10y;
+    if (v == null || v < filters.minRiseRate10y) return false;
   }
 
   return true;
@@ -384,6 +410,8 @@ export function buildApartmentCardDisplay(
 export function discoverFiltersActiveCount(f: ApartmentDiscoverFilters): number {
   let n = 0;
   if (isPriceFilterActive(f.priceMinEok, f.priceMaxEok)) n += 1;
+  if (f.minRiseRate5y != null) n += 1;
+  if (f.minRiseRate10y != null) n += 1;
   if (f.pyeongMin > 0 || f.pyeongMax < PYEONG_FILTER_MAX) n += 1;
   if (f.minJeonseRatePercent != null || f.maxJeonseRatePercent != null) n += 1;
   if (f.minGapMan != null || f.maxGapMan != null) n += 1;
@@ -400,6 +428,12 @@ export function discoverFiltersActiveCount(f: ApartmentDiscoverFilters): number 
 /** 필터 시트·빈 목록 안내 — 데이터 NULL 제외 정책 설명 */
 export function apartmentDiscoverFilterHints(filters: ApartmentDiscoverFilters): string[] {
   const hints: string[] = [];
+  if (filters.minRiseRate5y != null) {
+    hints.push(`5년 +${filters.minRiseRate5y}% 이상 — 장기 시세 데이터가 없는 단지는 제외됩니다.`);
+  }
+  if (filters.minRiseRate10y != null) {
+    hints.push(`10년 2배(+${filters.minRiseRate10y}%) 이상 — 장기 시세 데이터가 없는 단지는 제외됩니다.`);
+  }
   if (filters.minJeonseRatePercent != null || filters.maxJeonseRatePercent != null) {
     hints.push('전세가율·갭은 최근 6개월 매매·전세 batch로 추정합니다. 값이 없는 단지는 목록에서 제외됩니다.');
   }
@@ -416,9 +450,39 @@ export function apartmentDiscoverFilterHints(filters: ApartmentDiscoverFilters):
 
 export function hasStrictDataFilters(filters: ApartmentDiscoverFilters): boolean {
   return (
-    filters.minJeonseRatePercent != null
+    filters.minRiseRate5y != null
+    || filters.minRiseRate10y != null
+    || filters.minJeonseRatePercent != null
     || filters.maxJeonseRatePercent != null
     || filters.minGapMan != null
     || filters.maxGapMan != null
   );
+}
+
+export function isApartmentRise5y30Active(filters: ApartmentDiscoverFilters): boolean {
+  return filters.minRiseRate5y === APARTMENT_RISE_5Y_MIN;
+}
+
+export function isApartmentRise10yDoubledActive(filters: ApartmentDiscoverFilters): boolean {
+  return filters.minRiseRate10y === APARTMENT_RISE_10Y_MIN;
+}
+
+export function toggleApartmentRise5y30(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (isApartmentRise5y30Active(filters)) {
+    return { ...filters, minRiseRate5y: null };
+  }
+  return { ...filters, minRiseRate5y: APARTMENT_RISE_5Y_MIN };
+}
+
+export function toggleApartmentRise10yDoubled(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (isApartmentRise10yDoubledActive(filters)) {
+    return { ...filters, minRiseRate10y: null };
+  }
+  return { ...filters, minRiseRate10y: APARTMENT_RISE_10Y_MIN };
+}
+
+export function clearApartmentLongTermRiseFilters(
+  filters: ApartmentDiscoverFilters,
+): ApartmentDiscoverFilters {
+  return { ...filters, minRiseRate5y: null, minRiseRate10y: null };
 }

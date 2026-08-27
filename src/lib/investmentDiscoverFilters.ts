@@ -1,9 +1,17 @@
 import { PRICE_FILTER_MAX_EOK } from './aptDiscoverPrice';
 
-/** 토지·빌딩 예산 필터 상한 (억) */
+/** 토지·빌딩·주택·상가 예산 필터 상한 (억) */
 export const INVESTMENT_PRICE_FILTER_MAX_EOK = 1000;
 /** 슬라이더 1칸 = 5억 */
 export const INVESTMENT_PRICE_FILTER_STEP_EOK = 5;
+
+/** 홈 툴바 — 예산 상한 프리셋 (억) */
+export const INVESTMENT_PRICE_MAX_PRESETS_EOK = [1, 2, 5, 10, 15, 20, 50, 100] as const;
+
+/** 홈 툴바 — AI 최소 점수 프리셋 */
+export const INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
+
+const INVESTMENT_DISCOVER_CATEGORIES = ['토지', '빌딩', '주택', '상가'] as const;
 
 export function isInvestmentPriceFilterActive(priceMinEok: number, priceMaxEok: number): boolean {
   return priceMinEok > 0 || priceMaxEok < INVESTMENT_PRICE_FILTER_MAX_EOK;
@@ -80,7 +88,74 @@ export function saveInvestmentDiscoverFilters(f: InvestmentDiscoverFilters) {
 }
 
 export function isInvestmentDiscoverCategory(category: string): boolean {
-  return category === '토지' || category === '빌딩';
+  return (INVESTMENT_DISCOVER_CATEGORIES as readonly string[]).includes(category);
+}
+
+export function isInvestmentPriceMaxPresetActive(
+  filters: InvestmentDiscoverFilters,
+  maxEok: number,
+): boolean {
+  return filters.priceMinEok === 0
+    && filters.priceMaxEok === maxEok
+    && maxEok < INVESTMENT_PRICE_FILTER_MAX_EOK;
+}
+
+export function isInvestmentMinScorePresetActive(
+  filters: InvestmentDiscoverFilters,
+  minScore: number,
+): boolean {
+  return filters.minAiScore === minScore && filters.maxAiScore == null;
+}
+
+/** 예산 상한 프리셋 — 같은 칩 재탭 시 해제 */
+export function toggleInvestmentPriceMaxPreset(
+  filters: InvestmentDiscoverFilters,
+  maxEok: number,
+): InvestmentDiscoverFilters {
+  if (isInvestmentPriceMaxPresetActive(filters, maxEok)) {
+    return { ...filters, priceMinEok: 0, priceMaxEok: INVESTMENT_PRICE_FILTER_MAX_EOK };
+  }
+  return { ...filters, priceMinEok: 0, priceMaxEok: maxEok };
+}
+
+/** AI 최소 점수 프리셋 — 같은 칩 재탭 시 해제 */
+export function toggleInvestmentMinScorePreset(
+  filters: InvestmentDiscoverFilters,
+  minScore: number,
+): InvestmentDiscoverFilters {
+  if (isInvestmentMinScorePresetActive(filters, minScore)) {
+    return { ...filters, minAiScore: null, maxAiScore: null };
+  }
+  return { ...filters, minAiScore: minScore, maxAiScore: null };
+}
+
+export function clearInvestmentPriceFilter(
+  filters: InvestmentDiscoverFilters,
+): InvestmentDiscoverFilters {
+  return { ...filters, priceMinEok: 0, priceMaxEok: INVESTMENT_PRICE_FILTER_MAX_EOK };
+}
+
+export function clearInvestmentAiScoreFilter(
+  filters: InvestmentDiscoverFilters,
+): InvestmentDiscoverFilters {
+  return { ...filters, minAiScore: null, maxAiScore: null };
+}
+
+/** ~N억 이하 상한 적용 (칩·입력창 공통) */
+export function applyInvestmentPriceMaxEok(
+  filters: InvestmentDiscoverFilters,
+  maxEok: number,
+): InvestmentDiscoverFilters {
+  const clamped = Math.min(Math.max(Math.round(maxEok), 1), INVESTMENT_PRICE_FILTER_MAX_EOK);
+  return { ...filters, priceMinEok: 0, priceMaxEok: clamped };
+}
+
+/** 입력창 표시용 — 상한만 걸린 경우 N, 그 외 빈 문자열 */
+export function investmentPriceInputValue(filters: InvestmentDiscoverFilters): string {
+  if (filters.priceMinEok !== 0) return '';
+  if (!isInvestmentPriceFilterActive(filters.priceMinEok, filters.priceMaxEok)) return '';
+  if (filters.priceMaxEok >= INVESTMENT_PRICE_FILTER_MAX_EOK) return '';
+  return String(filters.priceMaxEok);
 }
 
 export function resolveAnalysisAiScore(item: {

@@ -38,6 +38,7 @@ import {
 } from '../lib/r114LiteTrades';
 import R114LiteTradeChart from './R114LiteTradeChart';
 import MacroContextCharts from './MacroContextCharts';
+import { liteMacroSectionBadge, parseMoveInYear, resolveLiteRepresentativeAreaM2 } from '@/lib/r114LiteTrades';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
 import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
 import { useR114LiteContext } from '../hooks/useR114LiteContext';
@@ -438,6 +439,11 @@ export default function R114LiteDetailPanel({
   const trades = tradePages;
   const resolvedReportId = latestReportId ?? data?.latestReportId ?? null;
   const hasLiteReport = !!resolvedReportId;
+
+  const liteRepresentativeAreaM2 = useMemo(
+    () => resolveLiteRepresentativeAreaM2(stats?.exclusiveAreaM2, pyeongTypes),
+    [stats?.exclusiveAreaM2, pyeongTypes],
+  );
 
   const statsByPyeong = useMemo(
     () => new Map(pyeongAreaStats.map((s) => [s.pyeongApprox, s])),
@@ -913,6 +919,13 @@ export default function R114LiteDetailPanel({
             sigunguLabel={contextState.sigunguName}
             theme={theme}
             useDefaultAxis
+            layoutMode="yearlyBars"
+            sectionBadge={liteMacroSectionBadge(complex?.moveIn)}
+            axisNote=""
+            aptSeq={complex?.rtmsAptSeq ?? undefined}
+            r114PropId={r114PropId}
+            minDisplayYear={parseMoveInYear(complex?.moveIn)}
+            representativeAreaM2={liteRepresentativeAreaM2}
           />
         )}
 

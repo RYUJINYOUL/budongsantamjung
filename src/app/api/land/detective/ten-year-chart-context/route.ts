@@ -12,6 +12,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const sigunguCd = searchParams.get('sigunguCd');
     const quarters = searchParams.get('quarters');
+    const aptSeq = searchParams.get('aptSeq') || searchParams.get('apt_seq');
+    const r114PropId = searchParams.get('r114PropId') || searchParams.get('r114_prop_id');
 
     if (!sigunguCd) {
       return NextResponse.json({ success: false, message: 'sigunguCd required' }, { status: 400 });
@@ -19,6 +21,8 @@ export async function GET(request: Request) {
 
     const params = new URLSearchParams({ sigunguCd });
     if (quarters) params.set('quarters', quarters);
+    if (aptSeq) params.set('aptSeq', aptSeq);
+    if (r114PropId) params.set('r114PropId', r114PropId);
 
     const response = await fetch(`${backendUrl}/api/land/detective/ten-year-chart-context?${params.toString()}`, {
       signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
