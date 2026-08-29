@@ -67,6 +67,8 @@ export function discoverFiltersToSearchParams(
   }
   if (f.entranceTypes.length) params.set('entranceTypes', f.entranceTypes.join(','));
   if (f.heatingTypes.length) params.set('heatingTypes', f.heatingTypes.join(','));
+  if (f.minRiseRate1y != null) params.set('minRiseRate1y', '1');
+  if (f.minRiseRate3y != null) params.set('minRiseRate3y', '1');
   if (f.minRiseRate5y != null) params.set('minRiseRate5y', '1');
   if (f.minRiseRate10y != null) params.set('minRiseRate10y', '1');
   if (options?.analyzedOnly !== false) {

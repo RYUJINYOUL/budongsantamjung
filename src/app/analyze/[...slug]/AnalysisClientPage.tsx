@@ -1890,6 +1890,11 @@ export default function AnalysisDetailPage({
 
     const goBack = useCallback(() => {
         if (returnQs) {
+            const decoded = decodeURIComponent(returnQs);
+            if (decoded.startsWith('/')) {
+                router.push(decoded);
+                return;
+            }
             // returnQs가 '?'로 시작하는 경우 (/??panel=ranking... 이중 ? 방지)
             const cleanQs = returnQs.startsWith('?') ? returnQs.slice(1) : returnQs;
             router.push(`/?${cleanQs}`);

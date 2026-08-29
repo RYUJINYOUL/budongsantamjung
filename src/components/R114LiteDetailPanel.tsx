@@ -38,6 +38,7 @@ import {
 } from '../lib/r114LiteTrades';
 import R114LiteTradeChart from './R114LiteTradeChart';
 import MacroContextCharts from './MacroContextCharts';
+import LoanCalculatorSection from './lite/LoanCalculatorSection';
 import { liteMacroSectionBadge, parseMoveInYear, resolveLiteRepresentativeAreaM2 } from '@/lib/r114LiteTrades';
 import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from './ApartmentAreaPickModal';
 import { R114LiteRegionSection, R114LiteSchoolCard } from './R114LiteContextSection';
@@ -929,16 +930,27 @@ export default function R114LiteDetailPanel({
           />
         )}
 
-        <section className={`rounded-2xl p-3.5 ${t.section}`}>
-          <p className={`text-xs ${t.muted} mb-3 leading-relaxed`}>
-            조건에 맞는 실매물을 찾아드립니다. 평형·예산·입주 시기를 남겨 주세요.
-          </p>
-          <ListingRequestTrigger
-            label="이 집, 구해드릴까요?"
-            onClick={() => setListingSheetOpen(true)}
-            variant={theme === 'dark' ? 'dark' : 'primary'}
+        {tradeTab === 'sale' && activeCardStats.avgPrice1m != null && activeCardStats.avgPrice1m > 0 && (
+          <LoanCalculatorSection
+            key={`loan-sale-${selectedPyeong ?? 'all'}-${Math.round(activeCardStats.avgPrice1m)}`}
+            r114PropId={r114PropId}
+            loanKind="mortgage"
+            basisMan={activeCardStats.avgPrice1m}
+            pyeongLabel={selectedPyeong != null ? `${selectedPyeong}타입` : null}
+            theme={theme}
           />
-        </section>
+        )}
+
+        {tradeTab === 'jeonse' && activeCardStats.avgJeonseDeposit1m != null && activeCardStats.avgJeonseDeposit1m > 0 && (
+          <LoanCalculatorSection
+            key={`loan-rent-${selectedPyeong ?? 'all'}-${Math.round(activeCardStats.avgJeonseDeposit1m)}`}
+            r114PropId={r114PropId}
+            loanKind="rent"
+            basisMan={activeCardStats.avgJeonseDeposit1m}
+            pyeongLabel={selectedPyeong != null ? `${selectedPyeong}타입` : null}
+            theme={theme}
+          />
+        )}
 
         <R114LiteSchoolCard ctx={contextState} theme={theme} />
 

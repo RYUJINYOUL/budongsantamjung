@@ -5,6 +5,7 @@ import {
   PRICE_FILTER_MAX_EOK,
   isPriceFilterActive,
 } from './aptDiscoverPrice';
+import type { MapFeedScope } from './homeMapSession';
 
 export type ApartmentDealMode = 'sale' | 'jeonse' | 'wolse';
 
@@ -30,7 +31,11 @@ export type ApartmentDiscoverFilters = {
   budgetFilterMinEok?: number;
   budgetFilterMaxEok?: number | null;
   sortBy: ApartmentDiscoverSort;
-  /** 5년 +30% 이상 (단지 전체 quarterly SSOT) */
+  /** 1년 +20% 이상 (단지 전체 quarterly SSOT) */
+  minRiseRate1y: number | null;
+  /** 3년 +30% 이상 */
+  minRiseRate3y: number | null;
+  /** 5년 +50% 이상 (단지 전체 quarterly SSOT) */
   minRiseRate5y: number | null;
   /** 10년 +100%(2배) 이상 */
   minRiseRate10y: number | null;
@@ -48,9 +53,33 @@ export type ApartmentDiscoverFilters = {
 };
 
 export const APARTMENT_DISCOVER_FILTERS_KEY = 'apartment_discover_filters_v4';
+export const APARTMENT_DISCOVER_FILTERS_RECOM_KEY = 'apartment_discover_filters_recom_v1';
 
-/** 장기 상승률 프리셋 (%) */
-export const APARTMENT_RISE_5Y_MIN = 30;
+function apartmentDiscoverFiltersStorageKey(scope: MapFeedScope): string {
+  return scope === 'recom' ? APARTMENT_DISCOVER_FILTERS_RECOM_KEY : APARTMENT_DISCOVER_FILTERS_KEY;
+}
+
+/** 홈 — 장기 상승률 프리셋 미사용 (추천 전용, localStorage 잔존값 제거) */
+function stripHomeLongTermRiseFilters(f: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (
+    f.minRiseRate1y == null
+    && f.minRiseRate3y == null
+    && f.minRiseRate5y == null
+    && f.minRiseRate10y == null
+  ) return f;
+  return {
+    ...f,
+    minRiseRate1y: null,
+    minRiseRate3y: null,
+    minRiseRate5y: null,
+    minRiseRate10y: null,
+  };
+}
+
+/** 장기 상승률 프리셋 (%) — 추천(/recom) 전용 */
+export const APARTMENT_RISE_1Y_MIN = 20;
+export const APARTMENT_RISE_3Y_MIN = 30;
+export const APARTMENT_RISE_5Y_MIN = 50;
 export const APARTMENT_RISE_10Y_MIN = 100;
 
 export const ENTRANCE_OPTIONS = ['계단식', '복도식', '복합식'];
@@ -74,6 +103,8 @@ export function defaultApartmentDiscoverFilters(): ApartmentDiscoverFilters {
     priceMinEok: 0,
     priceMaxEok: PRICE_FILTER_MAX_EOK,
     sortBy: 'default',
+    minRiseRate1y: null,
+    minRiseRate3y: null,
     minRiseRate5y: null,
     minRiseRate10y: null,
     minJeonseRatePercent: null,
@@ -90,12 +121,15 @@ export function defaultApartmentDiscoverFilters(): ApartmentDiscoverFilters {
   };
 }
 
-export function loadApartmentDiscoverFilters(): ApartmentDiscoverFilters {
+export function loadApartmentDiscoverFilters(scope: MapFeedScope = 'home'): ApartmentDiscoverFilters {
   if (typeof window === 'undefined') return defaultApartmentDiscoverFilters();
   try {
-    const raw = localStorage.getItem(APARTMENT_DISCOVER_FILTERS_KEY)
-      ?? localStorage.getItem('apartment_discover_filters_v3')
-      ?? localStorage.getItem('apartment_discover_filters_v2');
+    const key = apartmentDiscoverFiltersStorageKey(scope);
+    const raw = localStorage.getItem(key)
+      ?? (scope === 'home'
+        ? localStorage.getItem('apartment_discover_filters_v3')
+          ?? localStorage.getItem('apartment_discover_filters_v2')
+        : null);
     const prof = loadCompareProfile();
     const withProfile = {
       ...defaultApartmentDiscoverFilters(),
@@ -128,24 +162,45 @@ export function loadApartmentDiscoverFilters(): ApartmentDiscoverFilters {
     }
     if (merged.pyeongMin == null) merged.pyeongMin = 0;
     if (merged.pyeongMax == null) merged.pyeongMax = PYEONG_FILTER_MAX;
+    if (merged.minRiseRate1y == null) merged.minRiseRate1y = null;
+    if (merged.minRiseRate3y == null) merged.minRiseRate3y = null;
     if (merged.minRiseRate5y == null) merged.minRiseRate5y = null;
     if (merged.minRiseRate10y == null) merged.minRiseRate10y = null;
     delete (merged as { budgetFilterEnabled?: boolean }).budgetFilterEnabled;
-    return merged;
+    const result = scope === 'home' ? stripHomeLongTermRiseFilters(merged) : merged;
+    if (
+      scope === 'home'
+      && raw
+      && (
+        merged.minRiseRate1y != null
+        || merged.minRiseRate3y != null
+        || merged.minRiseRate5y != null
+        || merged.minRiseRate10y != null
+      )
+    ) {
+      localStorage.setItem(apartmentDiscoverFiltersStorageKey('home'), JSON.stringify(result));
+    }
+    return result;
   } catch {
     return defaultApartmentDiscoverFilters();
   }
 }
 
-export function saveApartmentDiscoverFilters(f: ApartmentDiscoverFilters) {
+export function saveApartmentDiscoverFilters(
+  f: ApartmentDiscoverFilters,
+  scope: MapFeedScope = 'home',
+) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(APARTMENT_DISCOVER_FILTERS_KEY, JSON.stringify(f));
-  window.dispatchEvent(new CustomEvent('apartment-discover-filters-updated'));
+  const toSave = scope === 'home' ? stripHomeLongTermRiseFilters(f) : f;
+  localStorage.setItem(apartmentDiscoverFiltersStorageKey(scope), JSON.stringify(toSave));
+  window.dispatchEvent(new CustomEvent('apartment-discover-filters-updated', { detail: { scope } }));
 }
 
 export type ApartmentCardSnapshot = {
   exclusiveAreaM2?: number | null;
   riseRate6m?: number | null;
+  riseRate1y?: number | null;
+  riseRate3y?: number | null;
   riseRate5y?: number | null;
   riseRate10y?: number | null;
   avgPrice1m?: number | null;
@@ -210,6 +265,8 @@ export function passesApartmentDiscoverFilters(
   item: {
     category?: string;
     avgPrice1m?: number | null;
+    riseRate1y?: number | null;
+    riseRate3y?: number | null;
     riseRate5y?: number | null;
     riseRate10y?: number | null;
   },
@@ -275,6 +332,14 @@ export function passesApartmentDiscoverFilters(
     if (!heatingMatchesFilter(heatRaw, filters.heatingTypes)) return false;
   }
 
+  if (filters.minRiseRate1y != null) {
+    const v = card?.riseRate1y ?? item.riseRate1y;
+    if (v == null || v < filters.minRiseRate1y) return false;
+  }
+  if (filters.minRiseRate3y != null) {
+    const v = card?.riseRate3y ?? item.riseRate3y;
+    if (v == null || v < filters.minRiseRate3y) return false;
+  }
   if (filters.minRiseRate5y != null) {
     const v = card?.riseRate5y ?? item.riseRate5y;
     if (v == null || v < filters.minRiseRate5y) return false;
@@ -410,6 +475,8 @@ export function buildApartmentCardDisplay(
 export function discoverFiltersActiveCount(f: ApartmentDiscoverFilters): number {
   let n = 0;
   if (isPriceFilterActive(f.priceMinEok, f.priceMaxEok)) n += 1;
+  if (f.minRiseRate1y != null) n += 1;
+  if (f.minRiseRate3y != null) n += 1;
   if (f.minRiseRate5y != null) n += 1;
   if (f.minRiseRate10y != null) n += 1;
   if (f.pyeongMin > 0 || f.pyeongMax < PYEONG_FILTER_MAX) n += 1;
@@ -428,6 +495,12 @@ export function discoverFiltersActiveCount(f: ApartmentDiscoverFilters): number 
 /** 필터 시트·빈 목록 안내 — 데이터 NULL 제외 정책 설명 */
 export function apartmentDiscoverFilterHints(filters: ApartmentDiscoverFilters): string[] {
   const hints: string[] = [];
+  if (filters.minRiseRate1y != null) {
+    hints.push(`1년 +${filters.minRiseRate1y}% 이상 — 장기 시세 데이터가 없는 단지는 제외됩니다.`);
+  }
+  if (filters.minRiseRate3y != null) {
+    hints.push(`3년 +${filters.minRiseRate3y}% 이상 — 장기 시세 데이터가 없는 단지는 제외됩니다.`);
+  }
   if (filters.minRiseRate5y != null) {
     hints.push(`5년 +${filters.minRiseRate5y}% 이상 — 장기 시세 데이터가 없는 단지는 제외됩니다.`);
   }
@@ -450,7 +523,9 @@ export function apartmentDiscoverFilterHints(filters: ApartmentDiscoverFilters):
 
 export function hasStrictDataFilters(filters: ApartmentDiscoverFilters): boolean {
   return (
-    filters.minRiseRate5y != null
+    filters.minRiseRate1y != null
+    || filters.minRiseRate3y != null
+    || filters.minRiseRate5y != null
     || filters.minRiseRate10y != null
     || filters.minJeonseRatePercent != null
     || filters.maxJeonseRatePercent != null
@@ -459,19 +534,60 @@ export function hasStrictDataFilters(filters: ApartmentDiscoverFilters): boolean
   );
 }
 
-export function isApartmentRise5y30Active(filters: ApartmentDiscoverFilters): boolean {
+export function isApartmentLongTermRiseActive(filters: ApartmentDiscoverFilters): boolean {
+  return (
+    filters.minRiseRate1y != null
+    || filters.minRiseRate3y != null
+    || filters.minRiseRate5y != null
+    || filters.minRiseRate10y != null
+  );
+}
+
+export function isApartmentRise1yActive(filters: ApartmentDiscoverFilters): boolean {
+  return filters.minRiseRate1y === APARTMENT_RISE_1Y_MIN;
+}
+
+export function isApartmentRise3yActive(filters: ApartmentDiscoverFilters): boolean {
+  return filters.minRiseRate3y === APARTMENT_RISE_3Y_MIN;
+}
+
+export function isApartmentRise5yActive(filters: ApartmentDiscoverFilters): boolean {
   return filters.minRiseRate5y === APARTMENT_RISE_5Y_MIN;
+}
+
+/** @deprecated use isApartmentRise5yActive */
+export function isApartmentRise5y30Active(filters: ApartmentDiscoverFilters): boolean {
+  return isApartmentRise5yActive(filters);
 }
 
 export function isApartmentRise10yDoubledActive(filters: ApartmentDiscoverFilters): boolean {
   return filters.minRiseRate10y === APARTMENT_RISE_10Y_MIN;
 }
 
-export function toggleApartmentRise5y30(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
-  if (isApartmentRise5y30Active(filters)) {
+export function toggleApartmentRise1y(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (isApartmentRise1yActive(filters)) {
+    return { ...filters, minRiseRate1y: null };
+  }
+  return { ...filters, minRiseRate1y: APARTMENT_RISE_1Y_MIN };
+}
+
+export function toggleApartmentRise3y(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (isApartmentRise3yActive(filters)) {
+    return { ...filters, minRiseRate3y: null };
+  }
+  return { ...filters, minRiseRate3y: APARTMENT_RISE_3Y_MIN };
+}
+
+export function toggleApartmentRise5y(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  if (isApartmentRise5yActive(filters)) {
     return { ...filters, minRiseRate5y: null };
   }
   return { ...filters, minRiseRate5y: APARTMENT_RISE_5Y_MIN };
+}
+
+/** @deprecated use toggleApartmentRise5y */
+export function toggleApartmentRise5y30(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
+  return toggleApartmentRise5y(filters);
 }
 
 export function toggleApartmentRise10yDoubled(filters: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
@@ -484,5 +600,21 @@ export function toggleApartmentRise10yDoubled(filters: ApartmentDiscoverFilters)
 export function clearApartmentLongTermRiseFilters(
   filters: ApartmentDiscoverFilters,
 ): ApartmentDiscoverFilters {
-  return { ...filters, minRiseRate5y: null, minRiseRate10y: null };
+  return {
+    ...filters,
+    minRiseRate1y: null,
+    minRiseRate3y: null,
+    minRiseRate5y: null,
+    minRiseRate10y: null,
+  };
+}
+
+/** recom 아파트 마커 — 가장 짧은 활성 상승률 기간 우선 */
+export function recomApartmentMarkerPeriod(
+  filters: ApartmentDiscoverFilters,
+): '1y' | '3y' | '5y' | '10y' {
+  if (isApartmentRise1yActive(filters)) return '1y';
+  if (isApartmentRise3yActive(filters)) return '3y';
+  if (isApartmentRise5yActive(filters) && !isApartmentRise10yDoubledActive(filters)) return '5y';
+  return '10y';
 }

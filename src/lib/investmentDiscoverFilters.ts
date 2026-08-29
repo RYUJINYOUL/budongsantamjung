@@ -1,15 +1,22 @@
 import { PRICE_FILTER_MAX_EOK } from './aptDiscoverPrice';
+import type { MapFeedScope } from './homeMapSession';
 
 /** 토지·빌딩·주택·상가 예산 필터 상한 (억) */
 export const INVESTMENT_PRICE_FILTER_MAX_EOK = 1000;
 /** 슬라이더 1칸 = 5억 */
 export const INVESTMENT_PRICE_FILTER_STEP_EOK = 5;
 
-/** 홈 툴바 — 예산 상한 프리셋 (억) */
-export const INVESTMENT_PRICE_MAX_PRESETS_EOK = [1, 2, 5, 10, 15, 20, 50, 100] as const;
+/** 투자 discover — 예산 상한 프리셋 (억). 직접 입력으로 그 외 금액 가능 */
+export const INVESTMENT_PRICE_MAX_PRESETS_EOK = [1, 5, 10, 30, 100] as const;
 
-/** 홈 툴바 — AI 최소 점수 프리셋 */
+/** 추천(/recom) — AI 최소 점수 (60점 제외, 70+ 통일) */
+export const RECOM_INVESTMENT_MIN_AI_SCORE = 70;
+
+/** 홈 툴바 — AI 최소 점수 프리셋 (추천은 RECOM_INVESTMENT_MIN_SCORE_PRESETS) */
 export const INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
+
+/** 추천(/recom) — AI 최소 점수 프리셋 */
+export const RECOM_INVESTMENT_MIN_SCORE_PRESETS = [70] as const;
 
 const INVESTMENT_DISCOVER_CATEGORIES = ['토지', '빌딩', '주택', '상가'] as const;
 
@@ -46,6 +53,11 @@ export type InvestmentDiscoverFilters = {
 };
 
 export const INVESTMENT_DISCOVER_FILTERS_KEY = 'investment_discover_filters_v1';
+export const INVESTMENT_DISCOVER_FILTERS_RECOM_KEY = 'investment_discover_filters_recom_v1';
+
+function investmentDiscoverFiltersStorageKey(scope: MapFeedScope): string {
+  return scope === 'recom' ? INVESTMENT_DISCOVER_FILTERS_RECOM_KEY : INVESTMENT_DISCOVER_FILTERS_KEY;
+}
 
 export const INVESTMENT_SORT_OPTIONS: { id: InvestmentDiscoverSort; label: string }[] = [
   { id: 'recent', label: '최신순' },
@@ -65,26 +77,35 @@ export function defaultInvestmentDiscoverFilters(): InvestmentDiscoverFilters {
   };
 }
 
-export function loadInvestmentDiscoverFilters(): InvestmentDiscoverFilters {
+export function loadInvestmentDiscoverFilters(scope: MapFeedScope = 'home'): InvestmentDiscoverFilters {
+  // 홈 — 투자 필터 UI 없음, recom과 분리 전 localStorage 잔존값 무시
+  if (scope === 'home') return defaultInvestmentDiscoverFilters();
   if (typeof window === 'undefined') return defaultInvestmentDiscoverFilters();
   try {
-    const raw = localStorage.getItem(INVESTMENT_DISCOVER_FILTERS_KEY);
+    const raw = localStorage.getItem(investmentDiscoverFiltersStorageKey(scope));
     if (!raw) return defaultInvestmentDiscoverFilters();
     const parsed = JSON.parse(raw) as Partial<InvestmentDiscoverFilters>;
     const merged = { ...defaultInvestmentDiscoverFilters(), ...parsed };
     if (merged.priceMinEok == null) merged.priceMinEok = 0;
     if (merged.priceMaxEok == null) merged.priceMaxEok = INVESTMENT_PRICE_FILTER_MAX_EOK;
     merged.priceMaxEok = normalizeInvestmentPriceMaxEok(merged.priceMaxEok, merged.priceMinEok);
+    if (merged.minAiScore != null && merged.minAiScore < RECOM_INVESTMENT_MIN_AI_SCORE) {
+      merged.minAiScore = null;
+    }
     return merged;
   } catch {
     return defaultInvestmentDiscoverFilters();
   }
 }
 
-export function saveInvestmentDiscoverFilters(f: InvestmentDiscoverFilters) {
+export function saveInvestmentDiscoverFilters(
+  f: InvestmentDiscoverFilters,
+  scope: MapFeedScope = 'home',
+) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(INVESTMENT_DISCOVER_FILTERS_KEY, JSON.stringify(f));
-  window.dispatchEvent(new CustomEvent('investment-discover-filters-updated'));
+  if (scope === 'home') return;
+  localStorage.setItem(investmentDiscoverFiltersStorageKey(scope), JSON.stringify(f));
+  window.dispatchEvent(new CustomEvent('investment-discover-filters-updated', { detail: { scope } }));
 }
 
 export function isInvestmentDiscoverCategory(category: string): boolean {

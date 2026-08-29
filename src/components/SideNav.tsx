@@ -13,6 +13,9 @@ const EMERALD_ICON_FILTER =
 const SLATE_ICON_FILTER =
   'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)';
 
+/** SideNav에서만 숨김 — URL·페이지 기능은 유지 (발견·분양·랭킹) */
+const HIDDEN_NAV_IDS = new Set(['discover', 'presale', 'ranking']);
+
 const NAV_ITEMS = [
   {
     id: 'home',
@@ -21,10 +24,16 @@ const NAV_ITEMS = [
     icon: '/a1.png',
   },
   {
+    id: 'recom',
+    label: '추천',
+    href: '/recom',
+    icon: '/a5.png',
+  },
+  {
     id: 'discover',
     label: '발견',
     href: '/discover',
-    icon: '/a5.png',
+    icon: '/a3.png',
   },
   {
     id: 'presale',
@@ -83,6 +92,7 @@ function SideNavInner() {
     if (href === '/') return pathname === '/' && !searchParams.get('panel');
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
     if (href === '/ranking') return pathname === '/ranking' || pathname.startsWith('/ranking/');
+    if (href === '/recom') return pathname.startsWith('/recom');
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/presale') return pathname.startsWith('/presale');
     if (href === '/profile') return pathname.startsWith('/profile');
@@ -128,7 +138,7 @@ function SideNavInner() {
         {/* 네비게이션 */}
         <nav className="flex-1 p-3 lg:p-2 overflow-y-auto">
           <ul className="space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {NAV_ITEMS.filter((item) => !HIDDEN_NAV_IDS.has(item.id)).map((item) => {
               const href = item.id === 'home' ? homeHref : item.href;
               const active = isActive(item.id === 'home' ? '/' : item.href);
               return (

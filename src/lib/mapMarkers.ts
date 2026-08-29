@@ -7,11 +7,15 @@ export interface MapMarkerProperty {
   category?: string;
   propertyTitle?: string;
   rank?: number;
-  /** AI 분석 미완료 타임라인 매물 — 0.svg + 00 배지 (분양 등은 설정하지 않음) */
+  /** AI 분석 미완료 타임라인 매물 — 00.png 마커, 점수 배지 없음 (분양 등은 설정하지 않음) */
   pendingAi?: boolean;
   /** 분양 지도 마커 — by.svg + D-day 배지(있을 때만) */
-  markerKind?: 'presale' | 'myHomeApartment' | 'myHomeRegistered' | 'myHomeCompare' | 'myHomeWorkplace' | 'myHomeInsight';
+  markerKind?: 'presale' | 'myHomeApartment' | 'myHomeRegistered' | 'myHomeCompare' | 'myHomeWorkplace' | 'myHomeInsight' | 'recomApartment';
   presaleDDay?: number | null;
+  /** /recom 아파트 — 아이콘 대신 상승률 % pill 표시 */
+  markerRiseRate?: number | null;
+  /** /recom 아파트 — 5년(노랑) / 10년(파랑) 마커 색상 구분 */
+  markerRisePeriod?: '1y' | '3y' | '5y' | '10y';
 }
 
 const MY_HOME_APARTMENT_BG = '#FFE566';
@@ -38,7 +42,8 @@ function publicAssetUrl(path: string): string {
   }
 }
 
-const PENDING_AI_MARKER_ICON = '/0.svg';
+const PENDING_AI_MARKER_ICON = '/00.png';
+const PENDING_AI_MARKER_TAIL = '#57ccfb';
 const PRESALE_MARKER_ICON = '/by.svg';
 const PRESALE_TAIL_COLOR = '#fec933';
 const PRESALE_DDAY_BADGE_BG = '#e11d48';
@@ -318,7 +323,70 @@ function renderDedicatedMarkerKind(
     return root;
   }
 
+  if (kind === 'recomApartment') {
+    const period = property.markerRisePeriod ?? '10y';
+    const colors = getRecomRiseMarkerColors(period);
+    const label = formatRecomMarkerRisePct(property.markerRiseRate);
+    const badge = document.createElement('div');
+    badge.textContent = label;
+    badge.style.cssText = `
+      background:${colors.bg};
+      border:2px solid ${options.selected ? '#10b981' : colors.border};
+      color:${colors.text};
+      font-size:11px;
+      font-weight:800;
+      padding:5px 8px;
+      border-radius:8px;
+      white-space:nowrap;
+      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35), 0 3px 8px rgba(0,0,0,0.18)' : '0 3px 6px rgba(0,0,0,0.15)'};
+      position:relative;
+      top:-4px;
+    `;
+    const tail = document.createElement('div');
+    tail.style.cssText = `
+      width:0;height:0;
+      border-left:6px solid transparent;
+      border-right:6px solid transparent;
+      border-top:7px solid ${colors.tail};
+      position:absolute;
+      bottom:-7px;
+      left:50%;
+      transform:translateX(-50%);
+    `;
+    badge.appendChild(tail);
+    root.appendChild(badge);
+    root.title = property.propertyTitle || property.address || `상승률 ${label}`;
+    attachMarkerHover(root, options.selected);
+    return root;
+  }
+
   return null;
+}
+
+function formatRecomMarkerRisePct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '-';
+  const sign = v > 0 ? '+' : '';
+  const decimals = Math.abs(v) >= 100 ? 0 : 1;
+  return `${sign}${v.toFixed(decimals)}%`;
+}
+
+function getRecomRiseMarkerColors(period: '1y' | '3y' | '5y' | '10y'): {
+  bg: string;
+  border: string;
+  text: string;
+  tail: string;
+} {
+  if (period === '1y') {
+    return { bg: '#E0F2FE', border: '#38BDF8', text: '#0369A1', tail: '#38BDF8' };
+  }
+  if (period === '3y') {
+    return { bg: '#D1FAE5', border: '#34D399', text: '#047857', tail: '#34D399' };
+  }
+  // 홈 AI 점수 마커 색상 — 5년: 우수(노랑), 10년: 보통(파랑)
+  if (period === '5y') {
+    return { bg: '#FFE566', border: '#ffca28', text: '#000000', tail: '#ffca28' };
+  }
+  return { bg: '#66DFF6', border: '#57ccfb', text: '#000000', tail: '#57ccfb' };
 }
 
 export function hasValidCoords(p: MapMarkerProperty): boolean {
@@ -406,47 +474,10 @@ export function createMarkerElement(
   const isPendingAi = property.pendingAi === true && catKey !== 'gosi';
 
   if (isPendingAi) {
-    const pendingScore = getScoreColors(0);
-    const badge = document.createElement('div');
-    badge.textContent = '00';
-    badge.title = 'AI 분석 준비 중';
-    badge.style.cssText = `
-      position:absolute;top:-6px;right:-8px;min-width:22px;height:22px;padding:0 5px;
-      border-radius:999px;background:${pendingScore.bg};color:${pendingScore.text};
-      font-size:11px;font-weight:800;line-height:22px;text-align:center;
-      border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:2;
-    `;
-    root.appendChild(badge);
-
-    const body = document.createElement('div');
-    body.style.cssText = `
-      width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;
-      border:3px solid ${options.selected ? '#10b981' : '#fff'};
-      display:flex;align-items:center;justify-content:center;
-      box-shadow:${options.selected ? '0 0 0 3px rgba(16,185,129,0.35)' : '0 2px 6px rgba(0,0,0,0.12)'};
-    `;
-    const img = document.createElement('img');
-    img.src = PENDING_AI_MARKER_ICON;
-    img.alt = pendingScore.label;
-    img.width = size;
-    img.height = size;
-    img.style.cssText = 'object-fit:cover;pointer-events:none;display:block;';
-    body.appendChild(img);
-    root.appendChild(body);
-
-    const tail = document.createElement('div');
-    tail.style.cssText = `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid ${pendingScore.bg};margin-top:-2px;`;
-    root.appendChild(tail);
-
+    appendIconMarkerBody(root, size, publicAssetUrl(PENDING_AI_MARKER_ICON), 'AI 분석 준비 중', options.selected);
+    appendMarkerTail(root, PENDING_AI_MARKER_TAIL);
     root.title = property.propertyTitle || property.address || 'AI 분석 준비 중';
-
-    root.addEventListener('mouseenter', () => {
-      if (!options.selected) root.style.transform = 'scale(1.12)';
-    });
-    root.addEventListener('mouseleave', () => {
-      root.style.transform = options.selected ? 'scale(1.18)' : 'scale(1)';
-    });
-
+    attachMarkerHover(root, options.selected);
     return root;
   }
 
@@ -548,7 +579,7 @@ export function createMarkerElement(
 }
 
 export const LEGEND_ITEMS = [
-  { icon: '/0.svg', label: '준비' },
+  { icon: '/00.png', label: '준비' },
   { icon: '/70.svg', label: '우수' },
   { icon: '/50.svg', label: '보통' },
   { icon: '/30.svg', label: '주의' },

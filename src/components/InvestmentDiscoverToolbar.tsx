@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   type InvestmentDiscoverFilters,
-  INVESTMENT_MIN_SCORE_PRESETS,
+  RECOM_INVESTMENT_MIN_SCORE_PRESETS,
   INVESTMENT_PRICE_MAX_PRESETS_EOK,
   applyInvestmentPriceMaxEok,
   clearInvestmentAiScoreFilter,
@@ -21,29 +21,33 @@ type Props = {
   filters: InvestmentDiscoverFilters;
   onOpenSheet: (section?: string) => void;
   onApply: (f: InvestmentDiscoverFilters) => void;
+  comfortable?: boolean;
 };
 
-function presetPill(active: boolean) {
+function presetPill(active: boolean, comfortable?: boolean) {
   return [
-    'shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all',
+    'shrink-0 font-bold border transition-all',
+    comfortable ? 'px-4 py-2.5 rounded-xl text-[13px]' : 'px-2 py-1 rounded-lg text-[10px]',
     active
       ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/20'
       : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-800',
   ].join(' ');
 }
 
-function clearBtnClass(active: boolean) {
+function clearBtnClass(active: boolean, comfortable?: boolean) {
   return [
-    'shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all',
+    'shrink-0 font-bold border transition-all',
+    comfortable ? 'px-3.5 py-2.5 rounded-xl text-[12px]' : 'px-2 py-1 rounded-lg text-[10px]',
     active
       ? 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
       : 'bg-white border-slate-200 text-slate-400 pointer-events-none opacity-50',
   ].join(' ');
 }
 
-function sortPill(active: boolean) {
+function sortPill(active: boolean, comfortable?: boolean) {
   return [
-    'shrink-0 inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all',
+    'shrink-0 inline-flex items-center gap-0.5 font-bold border transition-all',
+    comfortable ? 'px-3.5 py-2.5 rounded-xl text-[12px] gap-1' : 'px-2 py-1 rounded-lg text-[10px]',
     active
       ? 'bg-slate-100 border-slate-300 text-slate-900'
       : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300',
@@ -58,8 +62,20 @@ function Chevron() {
   );
 }
 
-export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onApply }: Props) {
+export default function InvestmentDiscoverToolbar({
+  filters,
+  onOpenSheet,
+  onApply,
+  comfortable = false,
+}: Props) {
   const [priceInput, setPriceInput] = useState(() => investmentPriceInputValue(filters));
+  const chipGap = comfortable ? 'gap-2' : 'gap-1';
+  const rowGap = comfortable ? 'space-y-3' : 'space-y-1.5';
+  const inputNoSpinner =
+    '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+  const inputClass = comfortable
+    ? `w-14 px-2 py-2 rounded-xl text-[12px] font-bold border border-slate-200 text-slate-800 text-center focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30 ${inputNoSpinner}`
+    : `w-11 px-1.5 py-1 rounded-lg text-[10px] font-bold border border-slate-200 text-slate-800 text-center focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30 ${inputNoSpinner}`;
 
   useEffect(() => {
     setPriceInput(investmentPriceInputValue(filters));
@@ -80,13 +96,13 @@ export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onAppl
   };
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
+    <div className={rowGap}>
+      <div className={`flex items-center flex-wrap ${chipGap} pb-0.5 -mx-0.5 px-0.5`}>
         {INVESTMENT_PRICE_MAX_PRESETS_EOK.map((eok) => (
           <button
             key={eok}
             type="button"
-            className={presetPill(isInvestmentPriceMaxPresetActive(filters, eok))}
+            className={presetPill(isInvestmentPriceMaxPresetActive(filters, eok), comfortable)}
             onClick={() => {
               setPriceInput(String(eok));
               onApply(applyInvestmentPriceMaxEok(filters, eok));
@@ -95,7 +111,7 @@ export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onAppl
             {eok}억
           </button>
         ))}
-        <div className="shrink-0 flex items-center gap-0.5 pl-0.5 border-l border-slate-200 ml-0.5">
+        <div className={`shrink-0 flex items-center gap-1 pl-1 border-l border-slate-200 ml-0.5 ${comfortable ? 'py-0.5' : ''}`}>
           <input
             type="number"
             min={1}
@@ -111,15 +127,15 @@ export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onAppl
                 applyPriceFromInput();
               }
             }}
-            className="w-11 px-1.5 py-1 rounded-lg text-[10px] font-bold border border-slate-200 text-slate-800 text-center focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/30"
+            className={inputClass}
             aria-label="예산 상한 (억)"
           />
-          <span className="text-[9px] font-bold text-slate-400 shrink-0">억↓</span>
+          <span className={`font-bold text-slate-400 shrink-0 ${comfortable ? 'text-[11px]' : 'text-[9px]'}`}>억↓</span>
         </div>
         <button
           type="button"
           disabled={!priceActive}
-          className={clearBtnClass(priceActive)}
+          className={clearBtnClass(priceActive, comfortable)}
           onClick={() => {
             setPriceInput('');
             onApply(clearInvestmentPriceFilter(filters));
@@ -129,12 +145,12 @@ export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onAppl
         </button>
       </div>
 
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
-        {INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
+      <div className={`flex items-center flex-wrap ${chipGap} pb-0.5 -mx-0.5 px-0.5`}>
+        {RECOM_INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
           <button
             key={score}
             type="button"
-            className={presetPill(isInvestmentMinScorePresetActive(filters, score))}
+            className={presetPill(isInvestmentMinScorePresetActive(filters, score), comfortable)}
             onClick={() => onApply(toggleInvestmentMinScorePreset(filters, score))}
           >
             {score}점+
@@ -143,14 +159,14 @@ export default function InvestmentDiscoverToolbar({ filters, onOpenSheet, onAppl
         <button
           type="button"
           disabled={!scoreActive}
-          className={clearBtnClass(scoreActive)}
+          className={clearBtnClass(scoreActive, comfortable)}
           onClick={() => onApply(clearInvestmentAiScoreFilter(filters))}
         >
           해제
         </button>
         <button
           type="button"
-          className={sortPill(filters.sortBy !== 'recent')}
+          className={sortPill(filters.sortBy !== 'recent', comfortable)}
           onClick={() => onOpenSheet('sort')}
         >
           {formatInvestmentSortLabel(filters.sortBy)}

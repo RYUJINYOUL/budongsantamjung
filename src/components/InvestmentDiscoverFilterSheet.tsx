@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import {
   INVESTMENT_PRICE_FILTER_MAX_EOK,
   INVESTMENT_PRICE_FILTER_STEP_EOK,
-  INVESTMENT_MIN_SCORE_PRESETS,
+  RECOM_INVESTMENT_MIN_SCORE_PRESETS,
+  RECOM_INVESTMENT_MIN_AI_SCORE,
   INVESTMENT_PRICE_MAX_PRESETS_EOK,
   INVESTMENT_SORT_OPTIONS,
   applyInvestmentPriceMaxEok,
@@ -225,7 +226,7 @@ export default function InvestmentDiscoverFilterSheet({
             </button>
           </div>
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
+            {RECOM_INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
               <button
                 key={score}
                 type="button"
@@ -243,18 +244,23 @@ export default function InvestmentDiscoverFilterSheet({
           <label className="block text-[11px] font-bold text-slate-600 mb-1">최소 AI 점수 (슬라이더)</label>
           <input
             type="range"
-            min={0}
+            min={RECOM_INVESTMENT_MIN_AI_SCORE}
             max={100}
             step={5}
-            value={draft.minAiScore ?? 0}
+            value={draft.minAiScore ?? RECOM_INVESTMENT_MIN_AI_SCORE}
             className="w-full accent-slate-900"
             onChange={(e) => {
               const v = Number(e.target.value);
-              setDraft((d) => ({ ...d, minAiScore: v <= 0 ? null : v }));
+              setDraft((d) => ({
+                ...d,
+                minAiScore: v < RECOM_INVESTMENT_MIN_AI_SCORE ? null : v,
+              }));
             }}
           />
           <p className="text-xs font-bold text-slate-700 mt-1">
-            {draft.minAiScore != null && draft.minAiScore > 0 ? `${draft.minAiScore}점 이상` : '제한 없음'}
+            {draft.minAiScore != null && draft.minAiScore >= RECOM_INVESTMENT_MIN_AI_SCORE
+              ? `${draft.minAiScore}점 이상`
+              : `${RECOM_INVESTMENT_MIN_AI_SCORE}점 이상 (기본)`}
           </p>
         </section>
 

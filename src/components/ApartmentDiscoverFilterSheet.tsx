@@ -18,6 +18,8 @@ type Props = {
   filters: ApartmentDiscoverFilters;
   onClose: () => void;
   onApply: (f: ApartmentDiscoverFilters) => void;
+  /** 추천 등 — 해당 섹션만 UI에서 숨김 (코드·로직 유지) */
+  hiddenSections?: readonly string[];
 };
 
 const DEAL_MODES: { id: ApartmentDealMode; label: string }[] = [
@@ -195,10 +197,13 @@ export default function ApartmentDiscoverFilterSheet({
   filters,
   onClose,
   onApply,
+  hiddenSections,
 }: Props) {
   const [draft, setDraft] = useState(filters);
   const [mounted, setMounted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hidden = new Set(hiddenSections ?? []);
+  const showSection = (id: string) => !hidden.has(id);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
@@ -262,6 +267,7 @@ export default function ApartmentDiscoverFilterSheet({
         </div>
 
         <div className="px-5 py-4 space-y-8 pb-32">
+          {showSection('deal') && (
           <section data-section="deal">
             <SectionHeader title="매매 · 전월세" />
             <div className="flex gap-2">
@@ -282,7 +288,9 @@ export default function ApartmentDiscoverFilterSheet({
               ))}
             </div>
           </section>
+          )}
 
+          {showSection('price') && (
           <section data-section="price">
             <SectionHeader
               title="가격"
@@ -315,7 +323,9 @@ export default function ApartmentDiscoverFilterSheet({
                 : '전체 구간 · 슬라이더를 조절하면 매매가로 필터합니다'}
             </p>
           </section>
+          )}
 
+          {showSection('area') && (
           <section data-section="area">
             <SectionHeader
               title="평형"
@@ -340,7 +350,9 @@ export default function ApartmentDiscoverFilterSheet({
               전용면적 기준 · 구간에 해당 거래가 없으면 목록에서 제외 · 넓은 구간은 구간 내 최고 평형 시세
             </p>
           </section>
+          )}
 
+          {showSection('jeonse') && (
           <section data-section="jeonse">
             <SectionHeader
               title="전세가율"
@@ -366,7 +378,9 @@ export default function ApartmentDiscoverFilterSheet({
               빠집니다.
             </p>
           </section>
+          )}
 
+          {showSection('gap') && (
           <section data-section="gap">
             <SectionHeader
               title="갭가격"
@@ -391,7 +405,9 @@ export default function ApartmentDiscoverFilterSheet({
               매매·전세 추정이 모두 있어야 갭이 계산됩니다. 갭이 없는 단지는 필터 시 제외됩니다.
             </p>
           </section>
+          )}
 
+          {showSection('households') && (
           <section data-section="households">
             <SectionHeader title="세대수" onReset={() => setDraft({ ...draft, minHouseholds: null })} />
             <input
@@ -410,7 +426,9 @@ export default function ApartmentDiscoverFilterSheet({
               {draft.minHouseholds != null ? `${draft.minHouseholds}세대 이상` : '전체'}
             </p>
           </section>
+          )}
 
+          {showSection('age') && (
           <section data-section="age">
             <SectionHeader title="입주년차" onReset={() => setDraft({ ...draft, maxBuildingAgeYears: null })} />
             <input
@@ -429,7 +447,9 @@ export default function ApartmentDiscoverFilterSheet({
               {draft.maxBuildingAgeYears != null ? `${draft.maxBuildingAgeYears}년 이하` : '전체'}
             </p>
           </section>
+          )}
 
+          {showSection('parking') && (
           <section data-section="parking">
             <SectionHeader
               title="주차공간"
@@ -453,7 +473,9 @@ export default function ApartmentDiscoverFilterSheet({
               }
             />
           </section>
+          )}
 
+          {showSection('school') && (
           <section data-section="school">
             <SectionHeader
               title="초등학교(도보)"
@@ -478,7 +500,9 @@ export default function ApartmentDiscoverFilterSheet({
               가까운 초등학교까지 도보 경로 기준입니다. discover 카드에 통학 시간이 없으면 필터가 적용되지 않을 수 있습니다.
             </p>
           </section>
+          )}
 
+          {showSection('entrance') && (
           <section data-section="entrance">
             <SectionHeader title="현관구조" onReset={() => setDraft({ ...draft, entranceTypes: [] })} />
             <TogglePills
@@ -487,7 +511,9 @@ export default function ApartmentDiscoverFilterSheet({
               onChange={(entranceTypes) => setDraft({ ...draft, entranceTypes })}
             />
           </section>
+          )}
 
+          {showSection('heating') && (
           <section data-section="heating">
             <SectionHeader title="난방방식" onReset={() => setDraft({ ...draft, heatingTypes: [] })} />
             <TogglePills
@@ -499,7 +525,9 @@ export default function ApartmentDiscoverFilterSheet({
               선택한 방식과 일치하거나, 난방 정보가 없는 단지도 포함합니다(미등록 = 모름).
             </p>
           </section>
+          )}
 
+          {showSection('sort') && (
           <section data-section="sort">
             <SectionHeader title="정렬" onReset={() => setDraft({ ...draft, sortBy: 'default' })} />
             <div className="grid grid-cols-2 gap-2">
@@ -520,6 +548,7 @@ export default function ApartmentDiscoverFilterSheet({
               ))}
             </div>
           </section>
+          )}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-slate-100 p-4 flex gap-2">

@@ -3,12 +3,19 @@
 import {
   type ApartmentDiscoverFilters,
   type ApartmentDealMode,
+  APARTMENT_RISE_1Y_MIN,
+  APARTMENT_RISE_3Y_MIN,
   APARTMENT_RISE_5Y_MIN,
   clearApartmentLongTermRiseFilters,
+  isApartmentLongTermRiseActive,
   isApartmentRise10yDoubledActive,
-  isApartmentRise5y30Active,
+  isApartmentRise1yActive,
+  isApartmentRise3yActive,
+  isApartmentRise5yActive,
   toggleApartmentRise10yDoubled,
-  toggleApartmentRise5y30,
+  toggleApartmentRise1y,
+  toggleApartmentRise3y,
+  toggleApartmentRise5y,
 } from '../lib/apartmentDiscoverFilters';
 import { formatPyeongFilterLabel, isPyeongFilterActive } from '../lib/aptDiscoverArea';
 import { formatPriceFilterLabel, isPriceFilterActive } from '../lib/aptDiscoverPrice';
@@ -17,6 +24,8 @@ type Props = {
   filters: ApartmentDiscoverFilters;
   onOpenSheet: (section?: string) => void;
   onApply: (f: ApartmentDiscoverFilters) => void;
+  /** top=추천(상단 줄), afterSort=홈(정렬 칩 바로 뒤) */
+  risePresetPlacement?: 'top' | 'afterSort';
 };
 
 const DEAL_LABEL: Record<ApartmentDealMode, string> = {
@@ -87,8 +96,8 @@ const SHEET_CHIPS: {
   {
     section: 'sort',
     label: (f) => {
-      if (f.sortBy === 'rise_desc') return '상승률↓';
-      if (f.sortBy === 'rise_asc') return '상승률↑';
+      if (f.sortBy === 'rise_desc') return '6개월↑';
+      if (f.sortBy === 'rise_asc') return '6개월↓';
       if (f.sortBy === 'trade_desc') return '거래량↓';
       if (f.sortBy === 'trade_asc') return '거래량↑';
       return '정렬';
@@ -97,45 +106,86 @@ const SHEET_CHIPS: {
   },
 ];
 
-export default function ApartmentDiscoverToolbar({ filters, onOpenSheet, onApply }: Props) {
-  const riseActive = filters.minRiseRate5y != null || filters.minRiseRate10y != null;
+function LongTermRisePresets({
+  filters,
+  onApply,
+}: {
+  filters: ApartmentDiscoverFilters;
+  onApply: (f: ApartmentDiscoverFilters) => void;
+}) {
+  const riseActive = isApartmentLongTermRiseActive(filters);
+
+  return (
+    <>
+      <button
+        type="button"
+        className={risePresetPill(isApartmentRise1yActive(filters))}
+        onClick={() => onApply(toggleApartmentRise1y(filters))}
+      >
+        1년 {APARTMENT_RISE_1Y_MIN}%+
+      </button>
+      <button
+        type="button"
+        className={risePresetPill(isApartmentRise3yActive(filters))}
+        onClick={() => onApply(toggleApartmentRise3y(filters))}
+      >
+        3년 {APARTMENT_RISE_3Y_MIN}%+
+      </button>
+      <button
+        type="button"
+        className={risePresetPill(isApartmentRise5yActive(filters))}
+        onClick={() => onApply(toggleApartmentRise5y(filters))}
+      >
+        5년 {APARTMENT_RISE_5Y_MIN}%+
+      </button>
+      <button
+        type="button"
+        className={risePresetPill(isApartmentRise10yDoubledActive(filters))}
+        onClick={() => onApply(toggleApartmentRise10yDoubled(filters))}
+      >
+        10년 2배+
+      </button>
+      <button
+        type="button"
+        className={clearBtnClass(riseActive)}
+        onClick={() => onApply(clearApartmentLongTermRiseFilters(filters))}
+      >
+        상승 해제
+      </button>
+    </>
+  );
+}
+
+export default function ApartmentDiscoverToolbar({
+  filters,
+  onOpenSheet,
+  onApply,
+  risePresetPlacement = 'top',
+}: Props) {
+  const showRiseOnTop = risePresetPlacement === 'top';
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
-        <button
-          type="button"
-          className={risePresetPill(isApartmentRise10yDoubledActive(filters))}
-          onClick={() => onApply(toggleApartmentRise10yDoubled(filters))}
-        >
-          10년 2배+
-        </button>
-        <button
-          type="button"
-          className={risePresetPill(isApartmentRise5y30Active(filters))}
-          onClick={() => onApply(toggleApartmentRise5y30(filters))}
-        >
-          5년 {APARTMENT_RISE_5Y_MIN}%+
-        </button>
-        <button
-          type="button"
-          className={clearBtnClass(riseActive)}
-          onClick={() => onApply(clearApartmentLongTermRiseFilters(filters))}
-        >
-          상승 해제
-        </button>
-      </div>
+      {showRiseOnTop && (
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
+          <LongTermRisePresets filters={filters} onApply={onApply} />
+        </div>
+      )}
       <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5 -mx-0.5 px-0.5">
         {SHEET_CHIPS.map((c) => (
-          <button
-            key={c.section}
-            type="button"
-            className={pill(c.active(filters))}
-            onClick={() => onOpenSheet(c.section)}
-          >
-            {c.label(filters)}
-            <Chevron />
-          </button>
+          <span key={c.section} className="contents">
+            <button
+              type="button"
+              className={pill(c.active(filters))}
+              onClick={() => onOpenSheet(c.section)}
+            >
+              {c.label(filters)}
+              <Chevron />
+            </button>
+            {c.section === 'sort' && !showRiseOnTop && (
+              <LongTermRisePresets filters={filters} onApply={onApply} />
+            )}
+          </span>
         ))}
       </div>
     </div>

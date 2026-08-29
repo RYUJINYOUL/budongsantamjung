@@ -1,5 +1,7 @@
-/** 홈(/) 지도·탭 상태 — 다른 페이지 이동 후 복귀용 */
+/** 홈(/) · 추천(/recom) 지도·탭 상태 — 페이지별 분리 저장 */
 import { HOME_INITIAL_ZOOM_LEVEL } from './timelineGeo';
+
+export type MapFeedScope = 'home' | 'recom';
 
 export type HomeMapSession = {
   lat: number;
@@ -9,12 +11,17 @@ export type HomeMapSession = {
   tab: 'map' | 'list';
 };
 
-const STORAGE_KEY = 'home_map_session_v1';
+const HOME_STORAGE_KEY = 'home_map_session_v1';
+const RECOM_STORAGE_KEY = 'recom_map_session_v1';
 
-export function readHomeMapSession(): HomeMapSession | null {
+function mapSessionStorageKey(scope: MapFeedScope): string {
+  return scope === 'recom' ? RECOM_STORAGE_KEY : HOME_STORAGE_KEY;
+}
+
+export function readHomeMapSession(scope: MapFeedScope = 'home'): HomeMapSession | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(mapSessionStorageKey(scope));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<HomeMapSession>;
     if (
@@ -37,18 +44,22 @@ export function readHomeMapSession(): HomeMapSession | null {
   }
 }
 
-export function writeHomeMapSession(partial: Partial<HomeMapSession>): void {
+export function writeHomeMapSession(
+  partial: Partial<HomeMapSession>,
+  scope: MapFeedScope = 'home',
+): void {
   if (typeof window === 'undefined') return;
   try {
-    const prev = readHomeMapSession();
+    const prev = readHomeMapSession(scope);
+    const defaultCategory = scope === 'recom' ? '아파트' : 'all';
     const next: HomeMapSession = {
       lat: partial.lat ?? prev?.lat ?? 37.5665,
       lng: partial.lng ?? prev?.lng ?? 126.978,
       zoomLevel: partial.zoomLevel ?? prev?.zoomLevel ?? HOME_INITIAL_ZOOM_LEVEL,
-      category: partial.category ?? prev?.category ?? 'all',
+      category: partial.category ?? prev?.category ?? defaultCategory,
       tab: partial.tab ?? prev?.tab ?? 'map',
     };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    sessionStorage.setItem(mapSessionStorageKey(scope), JSON.stringify(next));
   } catch {
     /* ignore quota */
   }
