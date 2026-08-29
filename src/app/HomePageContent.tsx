@@ -1987,8 +1987,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                   <ApartmentDiscoverToolbar
                     filters={discoverFilters}
                     risePresetPlacement={feedMode === 'recom' ? 'top' : 'afterSort'}
-                    showRisePresets={feedMode === 'recom'}
-                    hiddenSections={feedMode === 'recom' ? RECOM_HIDDEN_APT_FILTER_SECTIONS : undefined}
                     onOpenSheet={(section) => {
                       setDiscoverSheetSection(section ?? null);
                       setDiscoverSheetOpen(true);

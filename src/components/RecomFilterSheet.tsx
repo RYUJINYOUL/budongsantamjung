@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ApartmentDiscoverToolbar from './ApartmentDiscoverToolbar';
 import InvestmentDiscoverToolbar from './InvestmentDiscoverToolbar';
-import { RECOM_CATEGORIES, RECOM_HIDDEN_APT_FILTER_SECTIONS } from '../lib/recomQuickPicks';
+import { RECOM_CATEGORIES } from '../lib/recomQuickPicks';
 import { isInvestmentDiscoverCategory } from '../lib/investmentDiscoverFilters';
 import type { ApartmentDiscoverFilters } from '../lib/apartmentDiscoverFilters';
 import type { InvestmentDiscoverFilters } from '../lib/investmentDiscoverFilters';
@@ -118,8 +118,6 @@ export default function RecomFilterSheet({
               <ApartmentDiscoverToolbar
                 filters={discoverFilters}
                 risePresetPlacement="top"
-                hiddenSections={RECOM_HIDDEN_APT_FILTER_SECTIONS}
-                comfortable
                 onOpenSheet={(section) => {
                   onClose();
                   onOpenApartmentSheet(section);

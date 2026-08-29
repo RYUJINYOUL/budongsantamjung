@@ -18,6 +18,8 @@ export type R114LiteDiscoverItem = {
   exclusiveAreaM2?: number | null;
   saleCount6m: number;
   riseRate6m?: number | null;
+  riseRate1y?: number | null;
+  riseRate3y?: number | null;
   riseRate5y?: number | null;
   riseRate10y?: number | null;
   avgPrice1m?: number | null;
