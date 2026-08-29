@@ -110,6 +110,13 @@ import {
   findBestAnalysisMatchForSearch,
   type ListSearchAnchor,
 } from '../lib/listSearchUtils';
+import {
+  fetchErrorMessage,
+  HOME_FEED_FETCH_TIMEOUT_MS,
+  isFetchAbortError,
+  RECOM_FETCH_TIMEOUT_MS,
+  scheduleFetchTimeout,
+} from '../lib/fetchAbort';
 
 interface Analysis {
   id: string;
@@ -427,6 +434,14 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
+  /** 페이지 이탈(/recom ↔ /) — 진행 중 fetch 중단으로 홈·추천 연쇄 지연 방지 */
+  useEffect(() => {
+    return () => {
+      fetchAbortControllerRef.current?.abort();
+      fetchAbortControllerRef.current = null;
+    };
+  }, []);
+
   // 분석 모드 전용 필지 폴리곤 상태들
   const [primaryPolygon, setPrimaryPolygon] = useState<{ lat: number; lng: number }[] | null>(null);
   const [additionalPolygons, setAdditionalPolygons] = useState<{ lat: number; lng: number }[][]>([]);
@@ -607,6 +622,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     }
     const abortController = new AbortController();
     fetchAbortControllerRef.current = abortController;
+    const isRecomFeed = feedModeRef.current === 'recom';
+    const clearFetchTimeout = scheduleFetchTimeout(
+      abortController,
+      isRecomFeed ? RECOM_FETCH_TIMEOUT_MS : HOME_FEED_FETCH_TIMEOUT_MS,
+    );
 
     try {
       if (!silent && !hasTimelineLoadedRef.current) setLoading(true);
@@ -616,7 +636,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
 
       const category = selectedCategoryRef.current;
-      const isRecomFeed = feedModeRef.current === 'recom';
 
       if (isRecomFeed) {
         if (!auth.currentUser) {
@@ -782,10 +801,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       }));
       setAnalyses(list);
       hasTimelineLoadedRef.current = true;
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      setError(err.message);
+    } catch (err: unknown) {
+      if (isFetchAbortError(err)) return;
+      setError(fetchErrorMessage(err));
     } finally {
+      clearFetchTimeout();
       if (fetchAbortControllerRef.current === abortController) {
         setLoading(false);
       }
@@ -2219,7 +2239,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           <div className="h-full flex flex-col w-full">
             <div className="flex-1 relative">
 
-              {isMapHomePanel(activePanel) && (loading || !geoReady) && (
+              {isMapHomePanel(activePanel) && !geoReady && (
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 lg:top-4 lg:translate-y-0 z-[25] max-w-[min(100%,20rem)] pointer-events-none px-4">
                   <p className="rounded-2xl border border-emerald-200/80 bg-white/95 backdrop-blur-md px-4 py-2.5 text-center text-[12px] font-bold text-emerald-800 shadow-lg shadow-emerald-500/10 leading-snug">
                     불러오는 중…
