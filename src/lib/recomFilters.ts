@@ -9,7 +9,7 @@ export type RecomApartmentFilters = {
 };
 
 export type RecomReportFilters = {
-  minAiScore: 70;
+  minAiScore: number;
   category: '전체' | '토지' | '빌딩' | '주택' | '상가';
 };
 
@@ -25,7 +25,7 @@ export function defaultRecomApartmentFilters(): RecomApartmentFilters {
 }
 
 export function defaultRecomReportFilters(): RecomReportFilters {
-  return { minAiScore: 70, category: '전체' };
+  return { minAiScore: 60, category: '전체' };
 }
 
 export function apartmentFiltersToParams(f: RecomApartmentFilters): URLSearchParams {
@@ -39,7 +39,7 @@ export function apartmentFiltersToParams(f: RecomApartmentFilters): URLSearchPar
 
 export function reportFiltersToParams(f: RecomReportFilters): URLSearchParams {
   const params = new URLSearchParams();
-  params.set('minAiScore', '70');
+  params.set('minAiScore', String(f.minAiScore));
   if (f.category !== '전체') params.set('category', f.category);
   return params;
 }

@@ -9,14 +9,14 @@ export const INVESTMENT_PRICE_FILTER_STEP_EOK = 5;
 /** 투자 discover — 예산 상한 프리셋 (억). 직접 입력으로 그 외 금액 가능 */
 export const INVESTMENT_PRICE_MAX_PRESETS_EOK = [1, 5, 10, 30, 100] as const;
 
-/** 추천(/recom) — AI 최소 점수 (60점 제외, 70+ 통일) */
-export const RECOM_INVESTMENT_MIN_AI_SCORE = 70;
+/** 추천(/recom) — AI 최소 점수 기본·하한 */
+export const RECOM_INVESTMENT_MIN_AI_SCORE = 60;
 
 /** 홈 툴바 — AI 최소 점수 프리셋 (추천은 RECOM_INVESTMENT_MIN_SCORE_PRESETS) */
 export const INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
 
 /** 추천(/recom) — AI 최소 점수 프리셋 */
-export const RECOM_INVESTMENT_MIN_SCORE_PRESETS = [70] as const;
+export const RECOM_INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
 
 const INVESTMENT_DISCOVER_CATEGORIES = ['토지', '빌딩', '주택', '상가'] as const;
 

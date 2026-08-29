@@ -87,7 +87,7 @@ export function applyRecomApartmentQuickPick(
   };
 }
 
-/** 토지·주택·상가·빌딩 퀵픽 — AI 70점+ 만 적용 (1억·3억 등 예산은 유저가 별도 선택) */
+/** 토지·주택·상가·빌딩 퀵픽 — AI 60점+ 기본 (1억·3억 등 예산은 유저가 별도 선택) */
 export function applyRecomInvestmentQuickPick(
   filters: InvestmentDiscoverFilters,
 ): InvestmentDiscoverFilters {
