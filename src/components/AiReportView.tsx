@@ -1398,6 +1398,80 @@ const OfficialMultiplierSection = ({
 
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
+    const obs = opr?.observedRatio;
+
+    if (opr && (opr.dynamicStatus === 'cohort' || opr.dynamicStatus === 'cohort_relaxed')) {
+        const isFiltered = opr.dynamicStatus === 'cohort';
+        const accent = PRICE_METHOD_ACCENTS.comparables;
+        const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || 'cohort';
+        const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
+        const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
+        const filteredN = obs?.filteredSampleCount ?? 0;
+
+        return (
+            <PriceReasonMethodCard
+                icon={Percent}
+                title="관측 코호트 배율 (실거래 ÷ 공시)"
+                accent={accent}
+                chips={(
+                    <>
+                        {metaChip(isFiltered ? 'similarity 필터' : '코호트 전체', accent)}
+                        {metaChip(levelLabel, accent)}
+                        {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
+                        {obs?.confidenceGrade && metaChip(`신뢰 ${obs.confidenceGrade}`, accent)}
+                    </>
+                )}
+            >
+                <div
+                    className="rounded-2xl bg-white/[0.02] overflow-hidden"
+                    style={{
+                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                        boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
+                    }}
+                >
+                    <div
+                        className="mx-4 mt-3.5 mb-3 rounded-xl px-4 py-3"
+                        style={{
+                            background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                            border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                        }}
+                    >
+                        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
+                            코호트 median 추정 토지가
+                        </span>
+                        <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
+                            {formatEokCompact(estimatedTotal)}
+                        </p>
+                        {opr.appliedMultiplier > 0 && (
+                            <p className="text-[10px] text-white/35 mt-1.5">
+                                평당 {formatPrice(opr.estimatedPerPyeong)} · median {Number(opr.appliedMultiplier).toFixed(2)}배
+                                {obs?.p25Ratio != null && obs?.p75Ratio != null && (
+                                    <> · p25~p75 {Number(obs.p25Ratio).toFixed(2)}~{Number(obs.p75Ratio).toFixed(2)}배</>
+                                )}
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
+                        {obs?.cohortKey && <span>키 {obs.cohortKey}</span>}
+                        {obs?.similarityBand && <span>similarity {obs.similarityBand}</span>}
+                        {opr.targetOfficialPerSqm > 0 && targetArea > 0 && (
+                            <span>{formatSqmManwon(opr.targetOfficialPerSqm)} × {targetArea.toLocaleString()}㎡</span>
+                        )}
+                    </div>
+
+                    <div className="mx-4 mb-3 pt-3 border-t border-white/5">
+                        <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
+                            {isFiltered
+                                ? `동일 시장(용도×지목) 코호트 ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
+                                : `표본 부족으로 similarity 필터 없이 코호트 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
+                        </p>
+                    </div>
+                </div>
+            </PriceReasonMethodCard>
+        );
+    }
+
     if (opr && (opr.dynamicStatus === 'dynamic' || opr.dynamicStatus === 'fallback')) {
         const isDynamic = opr.dynamicStatus === 'dynamic';
         const accent = isDynamic ? PRICE_METHOD_ACCENTS.official : PRICE_METHOD_ACCENTS.regional;
@@ -2686,9 +2760,20 @@ export default function AiReportView({
 
     const labelMap: Record<string, string> = {
         'nearbySales': '인근 실거래가', 'tradeVolume': '거래량', 'amenities': '생활 편의시설',
-        'regulatoryOutlook': '규제 전망', 'population': '인구 현황', 'landRegulation': '토지 이용 규제',
+        'regulatoryOutlook': '규제·개발 전망', 'population': '인구 현황', 'landRegulation': '현행 용도지역',
         'landShape': '토지 형상', 'buildingAgePhoto': '건물 노후도(사진)', 'buildingAgeRegister': '건물 노후도(대장)',
-        'rentProfitability': '임대 수익성'
+        'rentProfitability': '임대 수익성',
+        '시장 대비 제시가': '시장 대비 제시가',
+        '규제·개발 전망': '규제·개발 전망',
+        '현행 용도지역': '현행 용도지역',
+        '도로접면': '도로접면',
+        '인근 실거래가': '인근 실거래가',
+        '거래량': '거래량',
+        '생활 편의시설': '생활 편의시설',
+        '인구 현황': '인구 현황',
+        '토지 이용 규제': '현행 용도지역',
+        '규제 전망': '규제·개발 전망',
+        '토지 형상': '토지 형상',
     };
 
     // const scoreItemDescriptions: Record<string, string> = {
