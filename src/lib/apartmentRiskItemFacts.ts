@@ -408,11 +408,16 @@ function factsBuildingAgeRegister(ctx: RiskItemFactsContext): string[] {
 }
 
 const KOREAN_RISK_KEY_MAP: Record<string, string> = {
+    '가격 적정성': 'marketListing',
+    '시장 대비 제시가': 'marketListing',
+    '도로접면': 'roadAccess',
     '인근 실거래가': 'nearbySales',
     '거래량': 'tradeVolume',
     '생활 편의시설': 'amenities',
+    '규제·개발 전망': 'regulatoryOutlook',
     '규제 전망': 'regulatoryOutlook',
     '인구 현황': 'population',
+    '현행 용도지역': 'landRegulation',
     '건물 노후도(대장)': 'buildingAgeRegister',
     '건물 노후도(사진)': 'buildingAgePhoto',
     '토지 이용 규제': 'landRegulation',

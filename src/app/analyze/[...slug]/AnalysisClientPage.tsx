@@ -518,16 +518,27 @@ function buildAiReportCopyText(
     // 4. 📊 세부 리스크 평가
     const scoreItems = compRisk.scoreItems || {};
     const labelMap: Record<string, string> = {
-        'nearbySales': '인근 실거래가',
+        'nearbySales': '주변 거래',
         'tradeVolume': '거래량',
-        'amenities': '생활 편의시설',
-        'regulatoryOutlook': '규제 전망',
-        'population': '인구 현황',
-        'landRegulation': '토지 이용 규제',
-        'landShape': '토지 형상',
+        'amenities': '편의시설',
+        'regulatoryOutlook': '규제·개발 전망',
+        'population': '인구',
+        'landRegulation': '용도지역',
+        'landShape': '형상',
         'buildingAgePhoto': '건물 노후도(사진)',
         'buildingAgeRegister': '건물 노후도(대장)',
-        'rentProfitability': '임대 수익성'
+        'rentProfitability': '임대 수익성',
+        '가격 적정성': '가격 적정성',
+        '시장 대비 제시가': '가격 적정성',
+        '도로접면': '도로',
+        '규제·개발 전망': '규제·개발 전망',
+        '인근 실거래가': '주변 거래',
+        '생활 편의시설': '편의시설',
+        '인구 현황': '인구',
+        '현행 용도지역': '용도지역',
+        '토지 형상': '형상',
+        '토지 이용 규제': '용도지역',
+        '규제 전망': '규제·개발 전망',
     };
 
     const riskList: string[] = [];

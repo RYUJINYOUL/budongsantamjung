@@ -1377,6 +1377,64 @@ const resolveOfficialPerSqm = (meta: any, attached: any, targetArea: number) => 
     return 0;
 };
 
+const normalizeCohortSamples = (opr: any, obs: any) => {
+    const applied = (Array.isArray(opr?.samples) && opr.samples.length > 0)
+        ? opr.samples
+        : (Array.isArray(obs?.cohortSamples) ? obs.cohortSamples : []);
+    const all = (Array.isArray(obs?.cohortSamplesAll) && obs.cohortSamplesAll.length > 0)
+        ? obs.cohortSamplesAll
+        : applied;
+    return { applied, all };
+};
+
+const CohortTradeRow = ({ trade, accent }: { trade: any; accent: string }) => {
+    const month = String(trade.dealMonth || '?').padStart(2, '0');
+    const date = trade.dealYear ? `${trade.dealYear}.${month}` : '-';
+    const dealWon = normalizeDealAmountWon(trade.dealAmount);
+    const area = Number(trade.area) || 0;
+    const addr = trade.platPlc || `${trade.sggNm || ''} ${trade.umdNm || ''}`.trim() || '주소 미상';
+    const applied = trade.inSimilarityBand !== false;
+    const ratio = trade.observedRatio != null ? Number(trade.observedRatio).toFixed(2) : '-';
+    const simBand = trade.similarityBand != null ? Number(trade.similarityBand).toFixed(2) : null;
+
+    return (
+        <div
+            className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl border"
+            style={{
+                backgroundColor: applied ? hexToRgba(accent, 0.04) : 'rgba(255,255,255,0.01)',
+                borderColor: applied ? hexToRgba(accent, 0.18) : 'rgba(255,255,255,0.06)',
+                opacity: applied ? 1 : 0.55,
+            }}
+        >
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-white/45 font-mono">{date}</span>
+                        {simBand && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/35">
+                                sim {simBand}
+                            </span>
+                        )}
+                        {!applied && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/30">필터 제외</span>
+                        )}
+                    </div>
+                    <p className="text-[11px] text-white/60 truncate mt-0.5">{addr}</p>
+                </div>
+                <span className="text-[11px] font-bold shrink-0" style={{ color: accent }}>
+                    {ratio}배
+                </span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-white/30">
+                <span>매매 {formatEokCompact(dealWon)}</span>
+                {area > 0 && <span>{area.toLocaleString()}㎡</span>}
+                {trade.officialPrice > 0 && <span>공시 {formatSqmManwon(trade.officialPrice)}</span>}
+                {trade.pricePerSqm > 0 && <span>실거래 {formatSqmManwon(trade.pricePerSqm)}</span>}
+            </div>
+        </div>
+    );
+};
+
 const OfficialMultiplierSection = ({
     attached,
     meta,
@@ -1395,6 +1453,7 @@ const OfficialMultiplierSection = ({
     onMapOpen?: (samples: any[]) => void;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
+    const [showAllCohortTrades, setShowAllCohortTrades] = React.useState(false);
 
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
@@ -1407,6 +1466,18 @@ const OfficialMultiplierSection = ({
         const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
+        const { applied: appliedSamples, all: allSamples } = normalizeCohortSamples(opr, obs);
+        const listSamples = (showAllCohortTrades ? allSamples : appliedSamples)
+            .slice()
+            .sort((a: any, b: any) => {
+                const ay = Number(a.dealYear) || 0;
+                const by = Number(b.dealYear) || 0;
+                if (by !== ay) return by - ay;
+                return (Number(b.dealMonth) || 0) - (Number(a.dealMonth) || 0);
+            });
+        const mapSamples = showAllCohortTrades ? allSamples : appliedSamples;
+        const hasMapSamples = mapSamples.some((s: any) => s.lat && s.lng);
+        const canToggleAllCohort = isFiltered && allSamples.length > appliedSamples.length;
 
         return (
             <PriceReasonMethodCard
@@ -1414,12 +1485,27 @@ const OfficialMultiplierSection = ({
                 title="관측 코호트 배율 (실거래 ÷ 공시)"
                 accent={accent}
                 chips={(
-                    <>
+                    <div className="flex flex-wrap items-center gap-2 w-full">
                         {metaChip(isFiltered ? 'similarity 필터' : '코호트 전체', accent)}
                         {metaChip(levelLabel, accent)}
                         {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
                         {obs?.confidenceGrade && metaChip(`신뢰 ${obs.confidenceGrade}`, accent)}
-                    </>
+                        {hasMapSamples && onMapOpen && (
+                            <button
+                                type="button"
+                                onClick={() => onMapOpen(mapSamples)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ml-auto"
+                                style={{
+                                    backgroundColor: hexToRgba(accent, 0.1),
+                                    border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                                    color: accent,
+                                }}
+                            >
+                                <Map className="w-3.5 h-3.5" />
+                                전체화면 지도
+                            </button>
+                        )}
+                    </div>
                 )}
             >
                 <div
@@ -1444,10 +1530,7 @@ const OfficialMultiplierSection = ({
                         </p>
                         {opr.appliedMultiplier > 0 && (
                             <p className="text-[10px] text-white/35 mt-1.5">
-                                평당 {formatPrice(opr.estimatedPerPyeong)} · median {Number(opr.appliedMultiplier).toFixed(2)}배
-                                {obs?.p25Ratio != null && obs?.p75Ratio != null && (
-                                    <> · p25~p75 {Number(obs.p25Ratio).toFixed(2)}~{Number(obs.p75Ratio).toFixed(2)}배</>
-                                )}
+                                평당 {formatPrice(opr.estimatedPerPyeong)} · median {Number(opr.appliedMultiplier).toFixed(2)}배 적용
                             </p>
                         )}
                     </div>
@@ -1455,8 +1538,11 @@ const OfficialMultiplierSection = ({
                     <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
                         {obs?.cohortKey && <span>키 {obs.cohortKey}</span>}
                         {obs?.similarityBand && <span>similarity {obs.similarityBand}</span>}
-                        {opr.targetOfficialPerSqm > 0 && targetArea > 0 && (
-                            <span>{formatSqmManwon(opr.targetOfficialPerSqm)} × {targetArea.toLocaleString()}㎡</span>
+                        {opr.targetOfficialPerSqm > 0 && targetArea > 0 && opr.appliedMultiplier > 0 && (
+                            <span>
+                                {formatSqmManwon(opr.targetOfficialPerSqm)} × {Number(opr.appliedMultiplier).toFixed(2)}배
+                                = {formatSqmManwon(opr.estimatedPerSqm)} × {targetArea.toLocaleString()}㎡
+                            </span>
                         )}
                     </div>
 
@@ -1467,6 +1553,103 @@ const OfficialMultiplierSection = ({
                                 : `표본 부족으로 similarity 필터 없이 코호트 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
                         </p>
                     </div>
+
+                    {listSamples.length > 0 && (
+                        <div className="mx-4 mb-3 pt-3 border-t border-white/5">
+                            <div className="flex items-center justify-between gap-2 mb-2.5">
+                                <div>
+                                    <p className="text-[11px] font-semibold text-white/70">코호트 실거래 근거</p>
+                                    <p className="text-[9px] text-white/30 mt-0.5">
+                                        매매가·면적·공시·배율 — median은 아래 목록의 중앙값
+                                    </p>
+                                </div>
+                                {canToggleAllCohort && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllCohortTrades(v => !v)}
+                                        className="text-[10px] font-bold px-2.5 py-1 rounded-lg border border-white/10 text-white/45 hover:text-white/70 hover:bg-white/[0.03] shrink-0"
+                                    >
+                                        {showAllCohortTrades ? `적용 ${filteredN}건만` : `전체 ${cohortN}건`}
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {hasMapSamples && (
+                                    <div className="rounded-xl overflow-hidden border border-white/10 bg-slate-900/40 min-h-[220px] h-[220px] lg:h-[280px]">
+                                        <ComparableMap
+                                            mapData={meta}
+                                            targetArea={targetArea}
+                                            customComparables={mapSamples}
+                                            fitAllMarkers
+                                            draggable={false}
+                                            className="h-full min-h-[220px]"
+                                            controlsPosition="top-right"
+                                        />
+                                    </div>
+                                )}
+                                <div
+                                    className={`flex flex-col gap-2 max-h-[280px] overflow-y-auto pr-0.5 ${hasMapSamples ? '' : 'lg:col-span-2'}`}
+                                >
+                                    {canToggleAllCohort && showAllCohortTrades && (
+                                        <p className="text-[9px] text-white/30 px-1">
+                                            ● 색 마커 = similarity 통과 · 회색 = 제외 (지도·목록 동일)
+                                        </p>
+                                    )}
+                                    {listSamples.map((trade: any, idx: number) => (
+                                        <CohortTradeRow key={`${trade.pnu || trade.platPlc || idx}-${idx}`} trade={trade} accent={accent} />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={() => setExpanded(v => !v)}
+                        className="w-full flex items-center justify-between px-4 py-2 border-t border-white/5 text-[10px] text-white/40 hover:text-white/60 hover:bg-white/[0.02] transition-colors"
+                    >
+                        <span>산출식 · 배율 상세</span>
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expanded && (
+                        <div className="px-4 pb-3.5 flex flex-col gap-1.5 border-t border-white/5 bg-black/10">
+                            {opr.targetOfficialPerSqm > 0 && (
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-white/35">개별공시지가</span>
+                                    <span className="text-white/70 font-mono">{formatSqmManwon(opr.targetOfficialPerSqm)}</span>
+                                </div>
+                            )}
+                            {targetArea > 0 && (
+                                <div className="flex justify-between text-[10px]">
+                                    <span className="text-white/35">대상 토지면적</span>
+                                    <span className="text-white/70">{targetArea.toLocaleString()}㎡</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-[10px]">
+                                <span className="text-white/35">median 배율 × 공시지가</span>
+                                <span className="font-semibold font-mono" style={{ color: accent }}>
+                                    {Number(opr.appliedMultiplier).toFixed(2)}배 → {formatEokCompact(estimatedTotal)}
+                                </span>
+                            </div>
+                            {obs?.p25Ratio != null && obs?.p75Ratio != null && (
+                                <div className="pt-1 border-t border-white/5">
+                                    <div className="flex justify-between text-[10px]">
+                                        <span className="text-white/35">코호트 배율 분포 (참고)</span>
+                                        <span className="text-white/50 font-mono">
+                                            p25 {Number(obs.p25Ratio).toFixed(2)} · median {Number(opr.appliedMultiplier).toFixed(2)} · p75 {Number(obs.p75Ratio).toFixed(2)}배
+                                        </span>
+                                    </div>
+                                    <p className="text-[9px] text-white/30 leading-relaxed mt-1">
+                                        동일 시장 실거래의 공시 대비 배율 흩어짐입니다. 위 추정가에는 median만 반영됩니다.
+                                    </p>
+                                </div>
+                            )}
+                            <p className="text-[9px] text-white/30 leading-relaxed pt-1">
+                                ※ 건물 가치는 포함되지 않은 순수 토지가치(공시지가 기준) 산출액입니다.
+                            </p>
+                        </div>
+                    )}
                 </div>
             </PriceReasonMethodCard>
         );
@@ -2759,21 +2942,22 @@ export default function AiReportView({
     }
 
     const labelMap: Record<string, string> = {
-        'nearbySales': '인근 실거래가', 'tradeVolume': '거래량', 'amenities': '생활 편의시설',
-        'regulatoryOutlook': '규제·개발 전망', 'population': '인구 현황', 'landRegulation': '현행 용도지역',
-        'landShape': '토지 형상', 'buildingAgePhoto': '건물 노후도(사진)', 'buildingAgeRegister': '건물 노후도(대장)',
+        'nearbySales': '주변 거래', 'tradeVolume': '거래량', 'amenities': '편의시설',
+        'regulatoryOutlook': '규제·개발 전망', 'population': '인구', 'landRegulation': '용도지역',
+        'landShape': '형상', 'buildingAgePhoto': '건물 노후도(사진)', 'buildingAgeRegister': '건물 노후도(대장)',
         'rentProfitability': '임대 수익성',
-        '시장 대비 제시가': '시장 대비 제시가',
+        '가격 적정성': '가격 적정성',
+        '시장 대비 제시가': '가격 적정성',
         '규제·개발 전망': '규제·개발 전망',
-        '현행 용도지역': '현행 용도지역',
-        '도로접면': '도로접면',
-        '인근 실거래가': '인근 실거래가',
+        '현행 용도지역': '용도지역',
+        '도로접면': '도로',
+        '인근 실거래가': '주변 거래',
         '거래량': '거래량',
-        '생활 편의시설': '생활 편의시설',
-        '인구 현황': '인구 현황',
-        '토지 이용 규제': '현행 용도지역',
+        '생활 편의시설': '편의시설',
+        '인구 현황': '인구',
+        '토지 이용 규제': '용도지역',
         '규제 전망': '규제·개발 전망',
-        '토지 형상': '토지 형상',
+        '토지 형상': '형상',
     };
 
     // const scoreItemDescriptions: Record<string, string> = {
@@ -3763,7 +3947,8 @@ export default function AiReportView({
                         priceSubCard(MapPin, '도심 중심업무지구(CBD) 추정', String(priceReas.cbdEstimate), PRICE_METHOD_ACCENTS.building)
                     )}
 
-                    {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier && (
+                    {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier
+                        && !['cohort', 'cohort_relaxed'].includes(ai.analysisMetadata?.officialPriceRatio?.dynamicStatus || '') && (
                         priceSubCard(Percent, '공시지가 배율 추정', String(priceReas.officialMultiplierEstimate), PRICE_METHOD_ACCENTS.official)
                     )}
 
