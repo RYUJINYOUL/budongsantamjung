@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 토지 분석 - 평택시 서정동 | 부동산탐정 프로토타입</title>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface-2: #f9f8f5;
+    --border: rgba(0,0,0,0.1);
+    --border-strong: rgba(0,0,0,0.18);
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #888780;
+    --accent: #185fa5;
+    --accent-bg: #e6f1fb;
+    --accent-text: #0c447c;
+    --success: #3b6d11;
+    --success-bg: #eaf3de;
+    --warning: #854f0b;
+    --warning-bg: #faeeda;
+    --danger: #a32d2d;
+    --danger-bg: #fcebeb;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; color: var(--text-primary); font-size: 15px; line-height: 1.6; }
+
+  .proto-banner {
+    background: #fff8e6; border-bottom: 1px solid #e8d9a0;
+    padding: 8px 16px; text-align: center; font-size: 12px; color: #6b5a1e;
+  }
+  .proto-banner a { color: var(--accent); font-weight: 600; }
+
+  .page { max-width: 900px; margin: 0 auto; padding: 24px 16px 80px; }
+
+  .header-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border);
+    padding: 20px 24px 16px;
+    margin-bottom: 12px;
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .location-badge { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .property-title { font-size: 20px; font-weight: 500; line-height: 1.3; margin-bottom: 2px; }
+  .property-sub { font-size: 13px; color: var(--text-secondary); }
+  .verdict-col { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .verdict-pill {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: var(--success-bg); border-radius: var(--radius); padding: 8px 16px; white-space: nowrap;
+  }
+  .verdict-pill .grade { font-size: 22px; font-weight: 500; color: var(--success); }
+  .verdict-pill .label { font-size: 11px; color: #3b6d11; font-weight: 500; letter-spacing: 0.3px; }
+  .risk-pill {
+    font-size: 11px; padding: 4px 10px; border-radius: 20px;
+    background: var(--accent-bg); color: var(--accent-text); font-weight: 500;
+  }
+  .header-divider { border: none; border-top: 0.5px solid var(--border); margin: 14px 0 12px; }
+  .summary-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.7; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .tag {
+    font-size: 12px; padding: 3px 10px; border-radius: 20px; border: 0.5px solid var(--border-strong);
+    color: var(--text-secondary); background: var(--surface-2);
+  }
+  .tag.warn { background: var(--warning-bg); color: var(--warning); border-color: transparent; }
+  .tag.ok { background: var(--accent-bg); color: var(--accent-text); border-color: transparent; }
+  .tag.danger { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+
+  .input-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    margin-top: 14px; border: 0.5px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .input-cell { padding: 10px 14px; border-right: 0.5px solid var(--border); background: var(--surface-2); }
+  .input-cell:last-child { border-right: none; }
+  .input-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+  .input-value { font-size: 13px; font-weight: 500; }
+
+  .section-title {
+    font-size: 13px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.5px;
+    text-transform: uppercase; margin: 24px 0 8px; padding-left: 2px;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .card-header { padding: 14px 20px 12px; border-bottom: 0.5px solid var(--border); }
+  .card-header h3 { font-size: 15px; font-weight: 500; }
+  .card-header-flex { display: flex; justify-content: space-between; align-items: center; }
+
+  .price-block-header { padding: 16px 20px 12px; border-bottom: 0.5px solid var(--border); }
+  .price-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .price-label { font-size: 13px; color: var(--text-muted); }
+  .price-value { font-size: 26px; font-weight: 500; color: var(--text-primary); }
+  .price-per { font-size: 13px; color: var(--text-secondary); }
+  .price-range-bar { position: relative; height: 6px; background: #e8e6df; border-radius: 3px; margin: 12px 0 4px; }
+  .price-range-fill { position: absolute; left: 0; top: 0; height: 100%; width: 100%; background: #c0dd97; border-radius: 3px; }
+  .price-range-marker {
+    position: absolute; top: -5px; width: 16px; height: 16px;
+    background: var(--accent); border-radius: 50%; border: 2.5px solid #fff;
+    transform: translateX(-50%); box-shadow: 0 1px 4px rgba(0,0,0,0.18); left: 20%;
+  }
+  .price-range-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .price-range-pos { font-size: 12px; color: var(--accent-text); margin-top: 4px; font-weight: 500; }
+
+  .price-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .price-method { padding: 14px 18px; border-right: 0.5px solid var(--border); }
+  .price-method:last-child { border-right: none; }
+  .pm-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .pm-value { font-size: 16px; font-weight: 500; }
+  .pm-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+  .pm-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-top: 4px; }
+  .pm-badge.c { background: var(--warning-bg); color: var(--warning); }
+
+  .notice-bar {
+    padding: 10px 18px;
+    background: var(--warning-bg);
+    border-top: 0.5px solid var(--border);
+    font-size: 12.5px;
+    color: var(--warning);
+    display: flex; align-items: flex-start; gap: 6px;
+  }
+
+  .factor-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 0.5px solid var(--border); }
+  .factor-item { padding: 10px 14px; border-right: 0.5px solid var(--border); border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  .factor-item:nth-child(3n) { border-right: none; }
+  .factor-name { color: var(--text-muted); margin-bottom: 2px; }
+  .factor-val { font-weight: 500; color: var(--text-secondary); }
+
+  .dev-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .dev-item { padding: 14px 18px; border-right: 0.5px solid var(--border); border-bottom: 0.5px solid var(--border); }
+  .dev-item:nth-child(3n) { border-right: none; }
+  .dev-item:nth-last-child(-n+3) { border-bottom: none; }
+  .dev-item-label { font-size: 12px; color: var(--text-muted); margin-bottom: 3px; }
+  .dev-item-value { font-size: 15px; font-weight: 500; }
+  .dev-item-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .gap-highlight { color: #3b6d11; }
+
+  .hosae-item { padding: 12px 20px; border-bottom: 0.5px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+  .hosae-item:last-child { border-bottom: none; }
+  .hosae-badge {
+    font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+  }
+  .hosae-badge.direct { background: var(--success-bg); color: var(--success); }
+  .hosae-badge.indirect { background: var(--surface-2); color: var(--text-muted); border: 0.5px solid var(--border-strong); }
+  .hosae-badge.fail { background: var(--danger-bg); color: var(--danger); }
+  .hosae-name { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+  .hosae-desc { font-size: 12.5px; color: var(--text-secondary); }
+  .hosae-warn { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; font-style: italic; }
+  .hosae-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  .risk-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 20px; border-bottom: 0.5px solid var(--border); }
+  .risk-row:last-child { border-bottom: none; }
+  .risk-main { flex: 1; min-width: 0; }
+  .risk-name { font-size: 13.5px; font-weight: 500; }
+  .risk-facts { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.5; }
+  .risk-facts li { margin-left: 16px; }
+  .risk-bar-wrap { width: 80px; height: 5px; background: #e8e6df; border-radius: 3px; flex-shrink: 0; margin-top: 6px; }
+  .risk-bar-fill { height: 100%; border-radius: 3px; }
+  .risk-score { font-size: 13px; font-weight: 500; min-width: 44px; text-align: right; color: var(--text-secondary); flex-shrink: 0; }
+
+  .trade-stats { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .trade-stat { padding: 14px 18px; border-right: 0.5px solid var(--border); }
+  .trade-stat:last-child { border-right: none; }
+  .trade-stat-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .trade-stat-value { font-size: 22px; font-weight: 500; }
+  .trade-stat-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .trend-arrow { font-size: 13px; color: var(--success); font-weight: 500; }
+
+  .bar-chart { padding: 14px 20px 10px; border-top: 0.5px solid var(--border); }
+  .bar-chart-title { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 60px; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; }
+  .bar-rect { width: 100%; border-radius: 3px 3px 0 0; background: #b5d4f4; min-height: 4px; }
+  .bar-rect.highlight { background: var(--accent); }
+  .bar-label { font-size: 10px; color: var(--text-muted); text-align: center; }
+
+  .trade-note { padding: 12px 20px; font-size: 13px; color: var(--text-secondary); border-top: 0.5px solid var(--border); line-height: 1.65; }
+
+  .outlook-badge { font-size: 12px; padding: 3px 10px; border-radius: 20px; background: var(--accent-bg); color: var(--accent-text); font-weight: 500; }
+  .outlook-body { padding: 16px 20px; }
+  .outlook-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .outlook-card { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; border: 0.5px solid var(--border); }
+  .outlook-card-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+  .outlook-card-value { font-size: 15px; font-weight: 500; }
+  .outlook-card-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .outlook-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.7; }
+  .outlook-disclaimer { font-size: 12px; color: var(--text-muted); margin-top: 10px; font-style: italic; }
+  .macro-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .macro-pill { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: var(--surface-2); border: 0.5px solid var(--border); color: var(--text-secondary); }
+
+  .check-item { display: flex; gap: 10px; padding: 10px 20px; border-bottom: 0.5px solid var(--border); align-items: flex-start; }
+  .check-item:last-child { border-bottom: none; }
+  .check-icon { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-strong); flex-shrink: 0; margin-top: 1px; }
+  .check-text { font-size: 13.5px; color: var(--text-secondary); line-height: 1.6; }
+  .check-text strong { color: var(--text-primary); font-weight: 500; }
+
+  .verdict-final { padding: 16px 20px; }
+  .verdict-final h4 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+  .verdict-final p { font-size: 13px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 8px; }
+
+  .land-specs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 0.5px solid var(--border); }
+  .land-spec { padding: 12px 20px; border-right: 0.5px solid var(--border); font-size: 13px; }
+  .land-spec:last-child { border-right: none; }
+  .land-spec-label { font-size: 11px; color: var(--text-muted); }
+
+  .data-footer {
+    background: var(--surface-2);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border);
+    padding: 14px 20px;
+    display: flex; gap: 16px 24px; flex-wrap: wrap; align-items: center;
+    margin-bottom: 12px;
+  }
+  .df-item { font-size: 12px; color: var(--text-muted); }
+  .df-item span { color: var(--text-secondary); font-weight: 500; }
+  .df-badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 3px; background: var(--warning-bg); color: var(--warning); font-weight: 500; }
+
+  .finance-cta {
+    background: var(--accent-bg); border: 0.5px solid #b8d4f0;
+    border-radius: var(--radius-lg); padding: 18px 20px;
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+  }
+  .finance-cta p { font-size: 13px; color: var(--accent-text); }
+  .finance-cta small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .finance-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+    padding: 10px 18px; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  }
+
+  .zoning-empty { padding: 16px 20px; text-align: center; }
+  .zoning-empty-text { font-size: 13px; color: var(--text-muted); }
+  .zoning-map-placeholder {
+    height: 140px; background: linear-gradient(135deg, #e8f0e8 0%, #d4e8d4 100%);
+    display: flex; align-items: center; justify-content: center; font-size: 12px; color: #5f7a5f;
+    border-top: 0.5px solid var(--border); text-align: center; padding: 12px;
+  }
+
+  .section-nav {
+    position: sticky; top: 33px; z-index: 40;
+    background: rgba(245,244,240,0.95); backdrop-filter: blur(8px);
+    border-bottom: 0.5px solid var(--border);
+    padding: 8px 0; margin-bottom: 4px;
+  }
+  .section-nav-inner {
+    max-width: 900px; margin: 0 auto; padding: 0 16px;
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  }
+  .section-nav-inner::-webkit-scrollbar { display: none; }
+  .section-nav a {
+    font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 20px;
+    color: var(--text-secondary); background: var(--surface);
+    border: 0.5px solid var(--border); white-space: nowrap; text-decoration: none;
+  }
+  .section-nav a:hover { color: var(--accent-text); border-color: var(--accent); background: var(--accent-bg); }
+
+  .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 0.5px solid var(--border); }
+  .macro-cell { padding: 12px 16px; border-right: 0.5px solid var(--border); border-bottom: 0.5px solid var(--border); }
+  .macro-cell:nth-child(4n) { border-right: none; }
+  .macro-cell-label { font-size: 11px; color: var(--text-muted); }
+  .macro-cell-value { font-size: 14px; font-weight: 500; margin-top: 2px; }
+  .macro-cell-trend { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  @media (max-width: 640px) {
+    .input-grid { grid-template-columns: 1fr 1fr; }
+    .input-cell:nth-child(2n) { border-right: none; }
+    .price-methods, .dev-grid, .factor-grid { grid-template-columns: 1fr 1fr; }
+    .trade-stats { grid-template-columns: 1fr 1fr; }
+    .outlook-grid, .land-specs { grid-template-columns: 1fr; }
+    .price-method:nth-child(2) { border-right: none; }
+    .price-method:nth-child(3) { border-top: 0.5px solid var(--border); border-right: none; grid-column: 1/-1; }
+    .trade-stat:nth-child(2n) { border-right: none; }
+    .macro-grid { grid-template-columns: 1fr 1fr; }
+    .macro-cell:nth-child(2n) { border-right: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="proto-banner">
+  UI 프로토타입 v2 · report #11572 ·
+  <a href="/analyze/11572">현재 분석</a> ·
+  <a href="/prototype/land-analysis-v3.1.html">v3.1</a> ·
+  <a href="/prototype/land-analysis-v4.html">v4</a>
+</div>
+
+<nav class="section-nav" aria-label="분석 섹션">
+  <div class="section-nav-inner">
+    <a href="#sec-price">가격</a>
+    <a href="#sec-dev">개발</a>
+    <a href="#sec-hosae">호재</a>
+    <a href="#sec-zoning">용도변경</a>
+    <a href="#sec-market">거래·시장</a>
+    <a href="#sec-macro">거시</a>
+    <a href="#sec-risk">리스크</a>
+    <a href="#sec-outlook">전망</a>
+    <a href="#sec-check">체크</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <!-- ① 헤더 -->
+  <div class="header-card">
+    <div class="header-top">
+      <div>
+        <div class="location-badge">경기도 평택시 서정동 · 일반상업지역 · report #11572</div>
+        <div class="property-title">송탄출장소 인근 상가건물부지 매매</div>
+        <div class="property-sub">대지 513.7㎡ (155.4평) · 1991년 준공(35년) · 재건축 연한 도래 · 상가건물 용도</div>
+      </div>
+      <div class="verdict-col">
+        <div class="verdict-pill">
+          <span class="grade">매수 A</span>
+          <span class="label">AI 종합 판정</span>
+        </div>
+        <span class="risk-pill">AI 65점 · 양호</span>
+      </div>
+    </div>
+    <hr class="header-divider">
+    <div class="summary-text">
+      본 대상지는 평택시 서정동 송탄출장소 인근 일반상업지역에 위치하며, 법정 용적률 대비 현재 활용률이 매우 낮아 개발 잠재력이 높은 토지입니다. 35년 경과된 노후 건물은 재건축을 통해 가치를 극대화할 수 있는 기회를 제공합니다. 다만, 비교사례 부족으로 공시지가 배율법을 적용한 가격 추정은 신뢰도 C등급이며, 평택시 토지거래허가구역 재지정 등 규제 상황을 면밀히 검토해야 합니다.
+    </div>
+    <div class="tag-row">
+      <span class="tag ok">재건축 가능</span>
+      <span class="tag ok">용적률 갭 1,251.9%p</span>
+      <span class="tag ok">정방형 · 소로한면</span>
+      <span class="tag warn">토지거래허가구역</span>
+      <span class="tag warn">비행안전제6구역</span>
+      <span class="tag warn">신뢰도 C</span>
+      <span class="tag">공시지가배율</span>
+      <span class="tag">조건 완화 L4</span>
+    </div>
+
+    <!-- 입력 상세 정보 -->
+    <div class="input-grid">
+      <div class="input-cell">
+        <div class="input-label">거래 유형</div>
+        <div class="input-value">매매</div>
+      </div>
+      <div class="input-cell">
+        <div class="input-label">제시 매매가</div>
+        <div class="input-value">24억 5,000만</div>
+      </div>
+      <div class="input-cell">
+        <div class="input-label">층수 / 면적</div>
+        <div class="input-value">-층 · 전용 514.0㎡</div>
+      </div>
+      <div class="input-cell">
+        <div class="input-label">최신 공시지가</div>
+        <div class="input-value">310만 4,000원/㎡</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② 가격 분석 -->
+  <div class="section-title" id="sec-price">가격 분석 · 가치 검증</div>
+  <div class="card">
+    <div class="price-block-header">
+      <div class="price-main">
+        <span class="price-label">제시 매매가</span>
+        <span class="price-value">24억 5,000만원</span>
+        <span class="price-per">평당 약 1,578만원 · 대지 513.7㎡</span>
+      </div>
+      <div class="price-range-bar">
+        <div class="price-range-fill"></div>
+        <div class="price-range-marker"></div>
+      </div>
+      <div class="price-range-labels">
+        <span>하단 20억 7,288만</span>
+        <span>상단 39억 8,631만</span>
+      </div>
+      <div class="price-range-pos">▶ 제시가는 추정 범위 하단 (하단 +18%) — 가격 메리트 있을 수 있음</div>
+    </div>
+
+    <div class="price-methods">
+      <div class="price-method">
+        <div class="pm-label">실거래 비교</div>
+        <div class="pm-value" style="color:var(--text-muted)">산출 불가 · 0건</div>
+        <div class="pm-sub">반경 1km · 20건 탐지<br>동일 면적·지목·용도 부합 0건<br>인근 실거래 22건(지목 상이)</div>
+        <span class="pm-badge c">신뢰 C</span>
+      </div>
+      <div class="price-method">
+        <div class="pm-label">공시지가 배율 (보수적 1.8배)</div>
+        <div class="pm-value">약 29억원</div>
+        <div class="pm-sub">310만/㎡ × 513.7㎡ × 1.8배<br>평당 약 1,847만원 · 추정 28억 7,014만</div>
+        <span class="pm-badge c">신뢰 C</span>
+      </div>
+      <div class="price-method">
+        <div class="pm-label">CBD 입지 배율 (1.3~2.5배)</div>
+        <div class="pm-value">20.7억 ~ 39.9억</div>
+        <div class="pm-sub">공시지가 × 배율 · CBD 5점<br>commercial · 적용 1.8배</div>
+        <span class="pm-badge c">신뢰 C</span>
+      </div>
+    </div>
+
+    <div class="notice-bar">
+      <span>⚠</span>
+      <span>반경 1,000m · <strong>20건 탐지 → 조건 부합 0건</strong> (조건 완화 Level 4). 공시지가 배율법 적용. 유효 비교사례 없어 6개 요인 보정 모두 1.000x. 실거래·부동산원·공시지가는 상단 탭에서 확인하세요.</span>
+    </div>
+
+    <!-- 6요인 보정 (Valuation Ledger 요약) -->
+    <div class="card-header" style="border-top:0.5px solid var(--border); padding-top:12px;">
+      <h3 style="font-size:14px;font-weight:500;">프리미엄 · ㎡당 보정 요인 (6개) — 합산 1.000x</h3>
+    </div>
+    <div class="factor-grid">
+      <div class="factor-item"><div class="factor-name">① 면적</div><div class="factor-val">1.000x · 규모 유사</div></div>
+      <div class="factor-item"><div class="factor-name">② 용도</div><div class="factor-val">1.000x · 동일</div></div>
+      <div class="factor-item"><div class="factor-name">③ 도로</div><div class="factor-val">1.000x · 유사</div></div>
+      <div class="factor-item"><div class="factor-name">④ 역세권</div><div class="factor-val">1.000x · 500m 외</div></div>
+      <div class="factor-item"><div class="factor-name">⑤ 시점</div><div class="factor-val">1.000x · 부동산원 지수</div></div>
+      <div class="factor-item"><div class="factor-name">⑥ 호재</div><div class="factor-val">1.000x · 5건 참고</div></div>
+    </div>
+  </div>
+
+  <!-- ③ 개발 잠재력 -->
+  <div class="section-title" id="sec-dev">개발 잠재력 · 토지 형태</div>
+  <div class="card">
+    <div class="card-header"><h3>용적률 분석 · 재건축 · 입지</h3></div>
+    <div class="dev-grid">
+      <div class="dev-item">
+        <div class="dev-item-label">용도지역</div>
+        <div class="dev-item-value">일반상업지역</div>
+        <div class="dev-item-sub">법정 용적률 1,300%</div>
+      </div>
+      <div class="dev-item">
+        <div class="dev-item-label">현재 용적률</div>
+        <div class="dev-item-value">48.1%</div>
+        <div class="dev-item-sub">연면적 258.52㎡ / 건축 247.08㎡</div>
+      </div>
+      <div class="dev-item">
+        <div class="dev-item-label">용적률 갭</div>
+        <div class="dev-item-value gap-highlight">+1,251.9%p</div>
+        <div class="dev-item-sub">개발 잠재력 매우 높음</div>
+      </div>
+      <div class="dev-item">
+        <div class="dev-item-label">준공 · 구조</div>
+        <div class="dev-item-value">1991년 (35년)</div>
+        <div class="dev-item-sub">벽돌·(철근)콘크리트 · 내진 미적용</div>
+      </div>
+      <div class="dev-item">
+        <div class="dev-item-label">토지 형상 · 도로</div>
+        <div class="dev-item-value">정방형 · 평지</div>
+        <div class="dev-item-sub">소로한면 · 상가건물 건축 가능</div>
+      </div>
+      <div class="dev-item">
+        <div class="dev-item-label">개발 성공 시 잠재</div>
+        <div class="dev-item-value gap-highlight">공시가 3.5~5.0배</div>
+        <div class="dev-item-sub">용도변경·신축 성공 시</div>
+      </div>
+    </div>
+    <div class="trade-note">
+      대상지는 일반상업지역 내 높은 용적률 갭과 송탄출장소 앞 입지를 바탕으로 재건축·신축 시 상업시설 임대수익 및 자산가치 상승을 기대할 수 있습니다. 지하 1층 대피소 용도는 개발 시 용도 변경·활용 방안 검토가 필요합니다. 사진 미제공 — 외관·내부 노후·균열·누수는 현장 확인 필수.
+    </div>
+  </div>
+
+  <!-- ④ 호재 · 규제 · 공급 -->
+  <div class="section-title" id="sec-hosae">호재 · 규제 · 공급</div>
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <h3>주변 개발 호재 · 규제 · 아파트 공급</h3>
+      <span style="font-size:12px;color:var(--text-muted)">호재 5건 탐지 · 보정 미적용</span>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge direct">직접수혜</span>
+      <div>
+        <div class="hosae-name">송탄출장소 인근 상권 입지</div>
+        <div class="hosae-desc">행정기관 인근 유동인구 · 상업 입지 핵심 근거. 대상지 전면 직접 수혜.</div>
+      </div>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge indirect">간접</span>
+      <div>
+        <div class="hosae-name">평택당진항 원정리 관리부두 친수시설 조성공사</div>
+        <div class="hosae-desc">광역 인프라 개선으로 평택시 전반 지가 상승 기대.</div>
+        <div class="hosae-warn">⚠ 대상지 직접 수혜 제한적 — 고시문·현장 직접 확인</div>
+      </div>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge indirect">간접</span>
+      <div>
+        <div class="hosae-name">평택 가곡2지구 도시개발사업</div>
+        <div class="hosae-desc">대규모 주거·상업 개발로 수요 증가 가능.</div>
+        <div class="hosae-warn">⚠ 직접 수혜 아님 — 현장 확인 권장</div>
+      </div>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge indirect">간접·공급</span>
+      <div>
+        <div class="hosae-name">지제역 반도체밸리 대규모 아파트 공급 (3단지)</div>
+        <div class="hosae-desc">지제역 반도체밸리 제일풍경채 2블록 · 해링턴 플레이스 · 쌍용 더 플래티넘 등</div>
+        <div class="hosae-meta">상권 수요↑ 가능 · 경쟁 심화 리스크 병존</div>
+        <div class="hosae-warn">⚠ 상권 영향 미확인 — 직접 확인하세요</div>
+      </div>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge fail">규제주의</span>
+      <div>
+        <div class="hosae-name">평택시 토지거래허가구역 재지정</div>
+        <div class="hosae-desc">매수 시 관할 지자체 허가 필요. 투기 억제 정책 지속.</div>
+        <div class="hosae-warn">⚠ 반드시 지자체 직접 확인</div>
+      </div>
+    </div>
+    <div class="hosae-item">
+      <span class="hosae-badge fail">규제주의</span>
+      <div>
+        <div class="hosae-name">비행안전제6구역 (전술)</div>
+        <div class="hosae-desc">건물 높이·용도 제한 가능. 개발 규모에 직접 영향.</div>
+        <div class="hosae-warn">⚠ 인허가 가능성 사전 확인 필수</div>
+      </div>
+    </div>
+    <div class="notice-bar" style="background:var(--surface-2);color:var(--text-secondary);">
+      <span>ℹ</span>
+      <span>평택시 분양·입주 예정 <strong>19,733세대 (17곳)</strong> · 미분양 <strong>3,389세대</strong> · 공급과잉 지수 <strong>70/100</strong></span>
+    </div>
+  </div>
+
+  <!-- ⑤ 용도변경 -->
+  <div class="section-title" id="sec-zoning">용도변경 이력</div>
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <h3>인접 필지 용도변경 (5년 이내)</h3>
+      <span style="font-size:12px;color:var(--text-muted)">반경 500m · 지도+리스트</span>
+    </div>
+    <div class="zoning-empty">
+      <div class="zoning-empty-text">주변 5년 이내 상업·숙박 용도변경 이력 없음</div>
+    </div>
+    <div class="zoning-map-placeholder">
+      🗺 지도 — 대상지(●) · 호재(○) · 용도변경 필지 표시<br>
+      <span style="font-size:11px;margin-top:4px;display:block">현재 변경 이력 0건</span>
+    </div>
+  </div>
+
+  <!-- ⑥ 지역 거래량 (크게) -->
+  <div class="section-title" id="sec-market">지역 거래량 · 시장</div>
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <h3>평택시 토지 거래 · 필지수 · 미분양</h3>
+      <span class="trend-arrow">↑ 필지수 상승</span>
+    </div>
+    <div class="trade-stats">
+      <div class="trade-stat">
+        <div class="trade-stat-label">대상 반경 최근 6개월</div>
+        <div class="trade-stat-value">13건</div>
+        <div class="trade-stat-sub">거래량 증가 추세</div>
+      </div>
+      <div class="trade-stat">
+        <div class="trade-stat-label">동일유형 (1km)</div>
+        <div class="trade-stat-value" style="color:var(--text-muted)">0건</div>
+        <div class="trade-stat-sub">대+일반상업 직접비교 없음</div>
+      </div>
+      <div class="trade-stat">
+        <div class="trade-stat-label">순수토지 필지수 (5월)</div>
+        <div class="trade-stat-value">556</div>
+        <div class="trade-stat-sub">514(12월)→556 · +8.2%</div>
+      </div>
+      <div class="trade-stat">
+        <div class="trade-stat-label">미분양 (평택시)</div>
+        <div class="trade-stat-value">3,389</div>
+        <div class="trade-stat-sub">공급과잉 70/100</div>
+      </div>
+    </div>
+    <div class="bar-chart">
+      <div class="bar-chart-title">월별 순수토지 거래 필지수 (평택시)</div>
+      <div class="bars">
+        <div class="bar-col"><div class="bar-rect" style="height:40px"></div><div class="bar-label">12월<br>514</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:43px"></div><div class="bar-label">1월<br>523</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:45px"></div><div class="bar-label">2월<br>530</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:44px"></div><div class="bar-label">3월<br>527</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:47px"></div><div class="bar-label">4월<br>542</div></div>
+        <div class="bar-col"><div class="bar-rect highlight" style="height:50px"></div><div class="bar-label">5월<br>556</div></div>
+      </div>
+    </div>
+    <div class="bar-chart">
+      <div class="bar-chart-title">반경 내 거래량 추이 (2021-12 → 2026-02: 3건→3건 · 최근 활성)</div>
+      <div class="bars">
+        <div class="bar-col"><div class="bar-rect" style="height:18px"></div><div class="bar-label">21-12<br>3</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:30px"></div><div class="bar-label">23-06<br>5</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:48px"></div><div class="bar-label">24-02<br>8</div></div>
+        <div class="bar-col"><div class="bar-rect" style="height:66px"></div><div class="bar-label">25-08<br>11</div></div>
+        <div class="bar-col"><div class="bar-rect highlight" style="height:78px"></div><div class="bar-label">26-02<br>13</div></div>
+      </div>
+    </div>
+    <div class="trade-note">
+      <strong>지역 거래량 및 시장:</strong> 평택시 순수토지 거래 필지수는 2025년 12월 514필지에서 2026년 5월 556필지로 상승. 용도지역별 토지거래는 2024년 1월 49필지→2월 579필지 급증 이력. 대상 반경 내 최근 <strong>22건</strong> 실거래 탐지 — 지목 '대'·일반상업 직접 비교사례는 <strong>0건</strong>. 지가지수는 하락·보합, 필지수는 상승 → 시장 활성화 가능성과 가격 보합이 공존.
+    </div>
+  </div>
+
+  <!-- 거시 맥락 (평택시 · 전국) -->
+  <div class="section-title" id="sec-macro">거시 · 미분양 · 금리 맥락</div>
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <h3>가격 · 미분양 · 거래량 · 금리 · M2 · CSI · 공사비 · 허가 · 착공</h3>
+      <span style="font-size:12px;color:var(--text-muted)">평택시 · 전국 혼합</span>
+    </div>
+    <div class="macro-grid">
+      <div class="macro-cell"><div class="macro-cell-label">금리 (예금은행 대출)</div><div class="macro-cell-value">4.82%</div><div class="macro-cell-trend">전국 · 보합</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">M2 (말잔)</div><div class="macro-cell-value">+6.2% YoY</div><div class="macro-cell-trend">전국 · 완화</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">CSI (주택매매)</div><div class="macro-cell-value">108.4</div><div class="macro-cell-trend">전국 · 소폭 ↑</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">건설공사비지수</div><div class="macro-cell-value">118.2</div><div class="macro-cell-trend">전국 · 상승</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">건축허가 (공동주택)</div><div class="macro-cell-value">경기 ↓</div><div class="macro-cell-trend">시도 · 감소 추세</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">건축착공</div><div class="macro-cell-value">경기 →</div><div class="macro-cell-trend">시도 · 보합</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">미분양 (평택)</div><div class="macro-cell-value">3,389호</div><div class="macro-cell-trend">공급과잉 70</div></div>
+      <div class="macro-cell"><div class="macro-cell-label">부동산원 지가지수</div><div class="macro-cell-value">보합~↓</div><div class="macro-cell-trend">토지 · 필지수는 ↑</div></div>
+    </div>
+    <div class="trade-note" style="border-top:0.5px solid var(--border);margin:0;">
+      <strong>방향 판단 요약:</strong> 필지수·거래 활성화는 상승 신호, 지가지수·미분양·대규모 입주 예정(19,733세대)은 하방·보합 압력. 금리·M2·CSI는 매크로 참고 — 확정 예측 아님.
+    </div>
+  </div>
+
+  <!-- ⑦ 리스크 -->
+  <div class="section-title" id="sec-risk">항목별 리스크</div>
+  <div class="card">
+    <div class="card-header"><h3>세부 리스크 평가 (7항목)</h3></div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">규제 전망 · 7/10</div>
+        <ul class="risk-facts">
+          <li>용적률 갭 매우 큼 · 개발 잠재력 높음</li>
+          <li>준공 35년 · 재건축 연한 도래</li>
+          <li>미분양 3,389세대 · 입주예정 19,733세대(17곳) · 공급과잉 70/100</li>
+        </ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:70%;background:#fac775"></div></div>
+      <span class="risk-score">7</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">거래량 · 2/10</div>
+        <ul class="risk-facts">
+          <li>동일유형 최근 실거래 0건 · 한산</li>
+          <li>2021-12 3건 → 2026-02 3건 · 최근 6개월 13건 · 증가 추세</li>
+        </ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:20%;background:#f09595"></div></div>
+      <span class="risk-score">2</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">생활 편의시설 · 7/10</div>
+        <ul class="risk-facts">
+          <li>주요 시설 18곳 · 노브랜드 평택서정점 58m</li>
+          <li>시립힐스테이트평택더퍼스트어린이집 157m · 포스코더샵어린이공원 230m</li>
+        </ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:70%;background:#fac775"></div></div>
+      <span class="risk-score">7</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">인구 현황 · 5/10</div>
+        <ul class="risk-facts">
+          <li>서정동 -335명 (-1.4%) · 보합세</li>
+          <li>평택시 인구·세대 증가는 상업 수요에 긍정 가능</li>
+        </ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:50%;background:#fac775"></div></div>
+      <span class="risk-score">5</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">토지 이용 규제 · 9/10</div>
+        <ul class="risk-facts"><li>일반상업지역 · 통상적 활용 가치 반영</li></ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:90%;background:#97c459"></div></div>
+      <span class="risk-score">9</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">토지 형상 · 9/10</div>
+        <ul class="risk-facts"><li>정방형 · 대지 활용도 우수</li></ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:90%;background:#97c459"></div></div>
+      <span class="risk-score">9</span>
+    </div>
+    <div class="risk-row">
+      <div class="risk-main">
+        <div class="risk-name">건물 노후도 (대장/사진) · 5/10</div>
+        <ul class="risk-facts">
+          <li>1991년 준공 35년 · 재건축 전제 매입 시 철거·신축비 고려</li>
+          <li>사진 미제공 — 외관·균열·누수 현장 확인</li>
+        </ul>
+      </div>
+      <div class="risk-bar-wrap"><div class="risk-bar-fill" style="width:50%;background:#fac775"></div></div>
+      <span class="risk-score">5</span>
+    </div>
+  </div>
+
+  <!-- ⑧ 미래 전망 (크게) -->
+  <div class="section-title" id="sec-outlook">미래 가치 · 전망</div>
+  <div class="card">
+    <div class="card-header card-header-flex">
+      <h3>6개월 전망 · 장기 시나리오</h3>
+      <span class="outlook-badge">보합 ~ 약상승</span>
+    </div>
+    <div class="outlook-body">
+      <div class="macro-pills">
+        <span class="macro-pill">필지수 ↑</span>
+        <span class="macro-pill">지가지수 →~↓</span>
+        <span class="macro-pill">인구 → (동 -1.4%)</span>
+        <span class="macro-pill">미분양 3,389</span>
+        <span class="macro-pill">공급 19,733세대</span>
+      </div>
+      <div class="outlook-grid">
+        <div class="outlook-card">
+          <div class="outlook-card-label">단기 (6개월)</div>
+          <div class="outlook-card-value">보합 또는 약상승</div>
+          <div class="outlook-card-sub">필지수 상승 + 인구 보합 반영</div>
+        </div>
+        <div class="outlook-card">
+          <div class="outlook-card-label">중장기 · 개발 성공 시</div>
+          <div class="outlook-card-value">공시가 3.5~5.0배</div>
+          <div class="outlook-card-sub">신축·용도변경·재건축 시나리오</div>
+        </div>
+        <div class="outlook-card">
+          <div class="outlook-card-label">인구 · 세대</div>
+          <div class="outlook-card-value">서정동 -1.4%</div>
+          <div class="outlook-card-sub">평택시 전체 증가 추세 · 1인가구 분화 가능</div>
+        </div>
+        <div class="outlook-card">
+          <div class="outlook-card-label">공급 리스크</div>
+          <div class="outlook-card-value">19,733세대</div>
+          <div class="outlook-card-sub">17곳 분양·입주 · 경쟁 심화 주의</div>
+        </div>
+      </div>
+      <div class="outlook-text">
+        대상지는 일반상업지역 내 높은 용적률 갭과 송탄출장소 앞 입지로 개발 잠재력이 큽니다. 순수토지 거래 필지수 상승은 토지 시장 활성화 가능성을 시사하나, 지가지수 하락·보합과 대규모 아파트 공급(반도체밸리 3단지 등)은 상업 수요에 간접 압박 요인입니다. 비행안전구역·토지거래허가 해결 후 신축 계획 수립 시 용적률 갭 활용 개발 이익 현실화 가능. 직접 수혜 개발사업은 제한적 — 호재는 참고용.
+      </div>
+      <div class="outlook-disclaimer">* 본 전망은 과거 추세·공개 시장 지표 기반 AI 추론이며 확정적 예측이 아닙니다.</div>
+    </div>
+  </div>
+
+  <!-- ⑨ 체크리스트 -->
+  <div class="section-title" id="sec-check">현장 체크리스트</div>
+  <div class="card">
+    <div class="card-header"><h3>매수 전 반드시 확인 · AI 현장 체크리스트</h3></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>비행안전제6구역·토지거래허가구역</strong> — 개발 규모·용도 제한 지자체 문의</div></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>건물 물리적 하자</strong> — 외벽 균열·누수·타일 탈락·녹 · 기울기 이상</div></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>지하층 침수·습기</strong> — 유지보수 비용 가능성</div></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>임차인 명도</strong> — 위락시설(유흥주점) 계약 만료·명도 가능 여부</div></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>토지 경계</strong> — 지적도·인접 필지 분쟁 이력</div></div>
+    <div class="check-item"><div class="check-icon"></div><div class="check-text"><strong>주차</strong> — 대장 0대 · 실제 확보·주변 주차 환경</div></div>
+  </div>
+
+  <!-- ⑩ 최종 판정 · 대지 규격 -->
+  <div class="section-title">최종 판정 · 대지 정보</div>
+  <div class="card">
+    <div class="verdict-final">
+      <h4>결론: 매수 (등급 A)</h4>
+      <p><strong>분석 근거:</strong> 일반상업지역 내 높은 용적률 갭·재건축 잠재력 · 제시가가 공시지가 배율 추정 범위 하단 — 가격 메리트.</p>
+      <p><strong>전제 조건:</strong> 건물 철거·신축 계획 · 토지이용규제(비행안전·토지거래허가) 면밀 검토 · 인허가 가능성 확인 후 매수.</p>
+    </div>
+    <div class="land-specs">
+      <div class="land-spec"><div class="land-spec-label">대지 면적</div>513.7㎡ (155.4평)</div>
+      <div class="land-spec"><div class="land-spec-label">연면적 / 건축면적</div>258.52㎡ / 247.08㎡</div>
+    </div>
+  </div>
+
+  <!-- 데이터 신뢰도 -->
+  <div class="data-footer">
+    <div class="df-item">분석 방식 <span>공시지가 배율법</span></div>
+    <div class="df-item">비교사례 <span>0건 (1km · 20건 탐지)</span></div>
+    <div class="df-item">신뢰도 <span class="df-badge">C등급</span></div>
+    <div class="df-item">조건 완화 <span>Level 4</span></div>
+    <div class="df-item">추정 시세 <span>약 28.7~29억 (1.8배)</span></div>
+  </div>
+
+  <!-- 금융 CTA -->
+  <div class="finance-cta">
+    <div>
+      <p><strong>대출 상담 희망</strong> — 이 분석 맥락으로 금융 파트너 연결</p>
+      <small>참고 LTV·담보 맥락 · 승인·금리 확정 아님 (disclaimer)</small>
+    </div>
+    <button type="button" class="finance-btn">상담 연결하기</button>
+  </div>
+
+</div>
+</body>
+</html>

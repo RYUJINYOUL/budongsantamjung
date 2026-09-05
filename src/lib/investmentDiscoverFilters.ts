@@ -79,7 +79,7 @@ export function defaultInvestmentDiscoverFilters(): InvestmentDiscoverFilters {
 
 export function loadInvestmentDiscoverFilters(scope: MapFeedScope = 'home'): InvestmentDiscoverFilters {
   // 홈 — 투자 필터 UI 없음, recom과 분리 전 localStorage 잔존값 무시
-  if (scope === 'home') return defaultInvestmentDiscoverFilters();
+  if (scope === 'home' || scope === 'listings') return defaultInvestmentDiscoverFilters();
   if (typeof window === 'undefined') return defaultInvestmentDiscoverFilters();
   try {
     const raw = localStorage.getItem(investmentDiscoverFiltersStorageKey(scope));

@@ -16,6 +16,8 @@ interface Props {
     category: string;
     input: AnalysisDetailInput;
     onChange: (patch: Partial<AnalysisDetailInput>) => void;
+    /** listing — 매매만, 빌딩 임대·총임대 숨김 */
+    mode?: 'default' | 'listing';
 }
 
 function PanelNumInput({
@@ -75,10 +77,12 @@ function SubSection({ title, children }: { title: string; children: ReactNode })
     );
 }
 
-export default function AnalysisDetailInputSection({ category, input, onChange }: Props) {
+export default function AnalysisDetailInputSection({ category, input, onChange, mode = 'default' }: Props) {
     const isLand = category === 'land';
     const isStore = category === 'store';
     const isApartment = category === 'apartment';
+    const isListing = mode === 'listing';
+    const saleOnly = isListing && (isLand || category === 'building');
 
     const pricePreview = useMemo(
         () =>
@@ -93,25 +97,28 @@ export default function AnalysisDetailInputSection({ category, input, onChange }
 
     return (
         <div>
-            <SubSection title="거래 유형">
-                <div className="grid grid-cols-3 gap-1.5">
-                    {(['매매', '전세', '월세'] as const).map((type) => (
-                        <button
-                            key={type}
-                            type="button"
-                            onClick={() => onChange({ transactionType: type })}
-                            className={panelChoiceBtn(input.transactionType === type)}
-                        >
-                            {type}
-                        </button>
-                    ))}
-                </div>
-            </SubSection>
-
-            <div className={PANEL_DIVIDER} />
+            {!saleOnly && (
+                <>
+                    <SubSection title="거래 유형">
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {(['매매', '전세', '월세'] as const).map((type) => (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => onChange({ transactionType: type })}
+                                    className={panelChoiceBtn(input.transactionType === type)}
+                                >
+                                    {type}
+                                </button>
+                            ))}
+                        </div>
+                    </SubSection>
+                    <div className={PANEL_DIVIDER} />
+                </>
+            )}
 
             <SubSection title="가격 정보">
-                {input.transactionType === '매매' && (
+                {(saleOnly || input.transactionType === '매매') && (
                     <>
                         <PanelNumInput
                             value={input.salePrice}
@@ -211,7 +218,7 @@ export default function AnalysisDetailInputSection({ category, input, onChange }
                 </>
             )}
 
-            {category === 'building' && (
+            {category === 'building' && !isListing && (
                 <>
                     <div className={PANEL_DIVIDER} />
                     <SubSection title="총 보증금 / 총 월세">

@@ -314,11 +314,15 @@ export default function ComparableMap({
                     const cLng = parseFloat(c.lng);
 
                     if (!isNaN(cLat) && !isNaN(cLng)) {
+                        const isCohortExcluded = c.cohortTrade && c.inSimilarityBand === false;
+                        const markerColor = isCohortExcluded ? '#94a3b8' : '#7dd3c0';
+                        const markerOpacity = isCohortExcluded ? '0.55' : '1';
                         const contentEl = document.createElement('div');
                         contentEl.style.cursor = 'pointer';
+                        contentEl.style.opacity = markerOpacity;
                         contentEl.innerHTML = `
                             <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
-                                <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #7dd3c0; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background-color: ${markerColor}; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
                                     <span style="color: #0f172a; font-size: 12px; font-weight: 900;">${index + 1}</span>
                                 </div>
                                 <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #fff; margin-top: -1px;"></div>
@@ -804,16 +808,60 @@ export default function ComparableMap({
                             <div className="flex flex-col gap-2">
                                 <div className="flex justify-between items-start pr-6">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-teal-600 text-[10px] font-black tracking-wider uppercase">#{selectedComp.index} 비교사례</span>
+                                        <span className="text-teal-600 text-[10px] font-black tracking-wider uppercase">
+                                            {selectedComp.cohortTrade
+                                                ? (selectedComp.inSimilarityBand === false ? '동일수급권 (필터 제외)' : '동일수급권 실거래')
+                                                : `#${selectedComp.index} 비교사례`}
+                                        </span>
                                         <h4 className="text-sm font-black text-slate-900 truncate max-w-[240px]">
                                             {selectedComp.platPlc || selectedComp.platAddr || `${selectedComp.sggNm || ''} ${selectedComp.umdNm || ''}`.trim() || '주소 정보 없음'}
                                         </h4>
                                     </div>
-                                    {m.distStr !== '-' && (
+                                    {!selectedComp.cohortTrade && m.distStr !== '-' && (
                                         <span className="text-slate-400 text-xs mt-0.5 font-bold whitespace-nowrap">대상지 거리: {m.distStr}</span>
                                     )}
                                 </div>
 
+                                {selectedComp.cohortTrade ? (
+                                    <div className="grid grid-cols-2 gap-2.5 text-xs pt-2.5 border-t border-slate-100">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">거래년월</span>
+                                            <span className="font-extrabold text-slate-800">{m.date}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">면적</span>
+                                            <span className="font-extrabold text-slate-800">{m.area > 0 ? `${m.area.toLocaleString()}㎡` : '-'}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">실거래가</span>
+                                            <span className="font-extrabold text-slate-800">{m.dealEok}원</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">실거래 ㎡단가</span>
+                                            <span className="font-extrabold text-slate-800">{m.rawSqmStr}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">거래연도 공시</span>
+                                            <span className="font-extrabold text-slate-800">
+                                                {m.officialPrice > 0 ? formatSqmManwon(m.officialPrice) : '-'}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-slate-400 text-[9px] font-bold">관측 배율</span>
+                                            <span className="font-black text-teal-600 text-[13px]">
+                                                {selectedComp.observedRatio != null ? `${Number(selectedComp.observedRatio).toFixed(2)}배` : '-'}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5 col-span-2">
+                                            <span className="text-slate-400 text-[9px] font-bold">공시 similarity</span>
+                                            <span className="font-extrabold text-slate-800">
+                                                {selectedComp.similarityBand != null
+                                                    ? `${Number(selectedComp.similarityBand).toFixed(2)} (${selectedComp.inSimilarityBand === false ? '필터 제외' : '필터 통과'})`
+                                                    : '-'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs pt-2.5 border-t border-slate-100">
                                     <div className="flex flex-col gap-0.5">
                                         <span className="text-slate-400 text-[9px] font-bold">용도지역</span>
@@ -854,6 +902,7 @@ export default function ComparableMap({
                                         <span className="font-extrabold text-slate-800">{m.simStr}</span>
                                     </div>
                                 </div>
+                                )}
                             </div>
                         ) : null}
                     </div>

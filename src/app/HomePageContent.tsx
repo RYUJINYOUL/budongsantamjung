@@ -97,6 +97,7 @@ import {
   RECOM_CATEGORIES,
   RECOM_HIDDEN_APT_FILTER_SECTIONS,
   RECOM_LIST_TAGLINE,
+  LISTINGS_LIST_TAGLINE,
   recomQuickPickCategory,
   type RecomQuickPickId,
 } from '../lib/recomQuickPicks';
@@ -117,6 +118,9 @@ import {
   RECOM_FETCH_TIMEOUT_MS,
   scheduleFetchTimeout,
 } from '../lib/fetchAbort';
+import ListingLiteFloatingPanel from '../components/listing/ListingLiteFloatingPanel';
+import { fetchListingDetail, fetchListings, type ListingItem } from '../lib/listingInventory';
+import { listingCategoryToApi, mapListingToFeedItem } from '../lib/mapListingToFeedItem';
 
 interface Analysis {
   id: string;
@@ -204,17 +208,25 @@ function litePanelOptionsFromAnalysis(analysis: Analysis) {
 
 const HOME_DEFAULT_ZOOM = DEFAULT_MAP_POSITION.zoomLevel;
 
-export type MapFeedMode = 'home' | 'recom';
+export type MapFeedMode = 'home' | 'recom' | 'listings';
+
+function mapFeedScope(mode: MapFeedMode): MapFeedScope {
+  if (mode === 'recom') return 'recom';
+  if (mode === 'listings') return 'listings';
+  return 'home';
+}
 
 export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const mapBasePath = feedMode === 'recom' ? '/recom' : '/';
+  const mapBasePath = feedMode === 'recom' ? '/recom' : feedMode === 'listings' ? '/listings' : '/';
+  const feedScope = mapFeedScope(feedMode);
   const feedModeRef = useRef(feedMode);
   feedModeRef.current = feedMode;
   const activePanel = searchParams.get('panel'); // 'analyze' | null
   const litePanelPropId = searchParams.get('lite');
   const litePanelReportId = searchParams.get('liteReport');
+  const listingPanelId = searchParams.get('listing');
 
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,7 +236,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [showMobileMap, setShowMobileMap] = useState(true);
   const [selectedProperty, setSelectedProperty] = useState<Analysis | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(
-    feedMode === 'recom' ? '아파트' : 'all',
+    feedMode === 'recom' || feedMode === 'listings' ? '아파트' : 'all',
   );
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
@@ -241,6 +253,8 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [recomQuickPickId, setRecomQuickPickId] = useState<RecomQuickPickId | null>(null);
   const [showRecomMemberGate, setShowRecomMemberGate] = useState(false);
   const [recomFilterSheetOpen, setRecomFilterSheetOpen] = useState(false);
+  const [panelListingItem, setPanelListingItem] = useState<ListingItem | null>(null);
+  const [panelListingLoading, setPanelListingLoading] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   // 분석 패널에서 선택한 위치 → 지도 이동 + 마커 표시
   const [analyzeLocation, setAnalyzeLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
@@ -410,18 +424,18 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [variantPickPending, setVariantPickPending] = useState<R114VariantPickContext | null>(null);
 
   useEffect(() => {
-    setDiscoverFilters(loadApartmentDiscoverFilters(feedMode));
-    setInvestmentFilters(loadInvestmentDiscoverFilters(feedMode));
+    setDiscoverFilters(loadApartmentDiscoverFilters(feedScope));
+    setInvestmentFilters(loadInvestmentDiscoverFilters(feedScope));
     const onDiscover = (e: Event) => {
       const scope = (e as CustomEvent<{ scope?: MapFeedScope }>).detail?.scope ?? 'home';
-      if (scope === feedMode) {
-        setDiscoverFilters(loadApartmentDiscoverFilters(feedMode));
+      if (scope === feedScope) {
+        setDiscoverFilters(loadApartmentDiscoverFilters(feedScope));
       }
     };
     const onInvestment = (e: Event) => {
       const scope = (e as CustomEvent<{ scope?: MapFeedScope }>).detail?.scope ?? 'home';
-      if (scope === feedMode) {
-        setInvestmentFilters(loadInvestmentDiscoverFilters(feedMode));
+      if (scope === feedScope) {
+        setInvestmentFilters(loadInvestmentDiscoverFilters(feedScope));
       }
     };
     window.addEventListener('apartment-discover-filters-updated', onDiscover);
@@ -430,7 +444,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       window.removeEventListener('apartment-discover-filters-updated', onDiscover);
       window.removeEventListener('investment-discover-filters-updated', onInvestment);
     };
-  }, [feedMode]);
+  }, [feedMode, feedScope]);
 
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -544,7 +558,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
 
     if (geoReady) return;
 
-    const saved = readHomeMapSession(feedMode);
+    const saved = readHomeMapSession(feedScope);
     if (saved) {
       appliedUrlGeoRef.current = `${saved.lat},${saved.lng},${saved.zoomLevel}`;
       applyHomeGeo(saved.lat, saved.lng, saved.zoomLevel);
@@ -595,11 +609,13 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     }
 
     if (isMapHomePanel(panel)) {
-      const normalizeCategory = feedMode === 'recom' ? normalizeRecomCategory : normalizeMapCategory;
+      const normalizeCategory = feedMode === 'recom' || feedMode === 'listings'
+        ? normalizeRecomCategory
+        : normalizeMapCategory;
       if (category) {
         setSelectedCategory(normalizeCategory(category));
       } else if (geoReady) {
-        const saved = readHomeMapSession(feedMode);
+        const saved = readHomeMapSession(feedScope);
         if (saved?.category) {
           setSelectedCategory(normalizeCategory(saved.category));
         }
@@ -701,6 +717,22 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
         }
 
         setAnalyses([]);
+        hasTimelineLoadedRef.current = true;
+        return;
+      }
+
+      const isListingsFeed = feedModeRef.current === 'listings';
+      if (isListingsFeed) {
+        const apiCategory = listingCategoryToApi(category);
+        const { items } = await fetchListings({
+          category: apiCategory,
+          lat,
+          lng,
+          radiusKm: radius,
+          limit: 50,
+          signal: abortController.signal,
+        });
+        setAnalyses(items.map(mapListingToFeedItem) as Analysis[]);
         hasTimelineLoadedRef.current = true;
         return;
       }
@@ -815,7 +847,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   /** 뒤로가기·bfcache 복귀 — URL 좌표로 지도 복원 후 재조회 */
   useEffect(() => {
     const onPageShow = () => {
-      if (!geoReady || (window.location.pathname !== '/' && window.location.pathname !== '/recom')) return;
+      if (!geoReady || window.location.pathname !== mapBasePath) return;
       const params = new URLSearchParams(window.location.search);
       if (applyGeoFromUrlSearchParams(params)) {
         const zoomStr = params.get('zoom');
@@ -826,7 +858,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
         fetchAnalyses(lat, lng, radius, true);
         return;
       }
-      const saved = readHomeMapSession(feedMode);
+      const saved = readHomeMapSession(feedScope);
       if (saved) {
         applyHomeGeo(saved.lat, saved.lng, saved.zoomLevel);
         fetchAnalyses(saved.lat, saved.lng, zoomLevelToRadiusKm(saved.zoomLevel), true);
@@ -944,14 +976,14 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     appliedUrlGeoRef.current = `${lat},${lng},${zoomLevel}`;
     setMapCenter({ lat, lng });
     setMapPosition({ lat, lng, zoomLevel });
-    writeHomeMapSession({ lat, lng, zoomLevel }, feedMode);
+    writeHomeMapSession({ lat, lng, zoomLevel }, feedScope);
     scheduleSyncHomeUrl({ lat, lng, zoomLevel });
   }, [scheduleSyncHomeUrl]);
 
   const handleCategoryChange = useCallback((cat: string) => {
     setSelectedCategory(cat);
     setDisplayCount(isMobile ? 15 : 20);
-    writeHomeMapSession({ category: cat }, feedMode);
+    writeHomeMapSession({ category: cat }, feedScope);
     scheduleSyncHomeUrl({ category: cat });
     if (feedMode === 'recom') {
       setRecomQuickPickId((prev) => {
@@ -965,19 +997,19 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     if (pickId === 'apt-rise') {
       setDiscoverFilters((prev) => {
         const next = applyRecomApartmentQuickPick(prev);
-        saveApartmentDiscoverFilters(next, feedMode);
+        saveApartmentDiscoverFilters(next, feedScope);
         discoverFiltersRef.current = next;
         return next;
       });
     } else {
       setInvestmentFilters((prev) => {
         const next = applyRecomInvestmentQuickPick(prev);
-        saveInvestmentDiscoverFilters(next, feedMode);
+        saveInvestmentDiscoverFilters(next, feedScope);
         investmentFiltersRef.current = next;
         return next;
       });
     }
-  }, [feedMode]);
+  }, [feedMode, feedScope]);
 
   const handleRecomQuickPickSelect = useCallback((pickId: RecomQuickPickId) => {
     const category = recomQuickPickCategory(pickId);
@@ -986,7 +1018,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     setSelectedCategory(category);
     selectedCategoryRef.current = category;
     setDisplayCount(isMobile ? 15 : 20);
-    writeHomeMapSession({ category }, feedMode);
+    writeHomeMapSession({ category }, feedScope);
     scheduleSyncHomeUrl({ category });
 
     if (!auth.currentUser) {
@@ -1034,7 +1066,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       zoomLevel: pos.zoomLevel,
       category: selectedCategoryRef.current,
       tab: showMobileMap ? 'map' : 'list',
-    }, feedMode);
+    }, feedScope);
     if (new URLSearchParams(window.location.search).get('lite')) return;
     scheduleSyncHomeUrl();
   }, [scheduleSyncHomeUrl, showMobileMap, feedMode]);
@@ -1131,7 +1163,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       ...(coords?.lat != null && coords?.lng != null
         ? { lat: coords.lat, lng: coords.lng }
         : {}),
-    }, feedMode);
+    }, feedScope);
     router.replace(`${mapBasePath}?${params.toString()}`, { scroll: false });
   }, [router, mapPosition.zoomLevel, mapBasePath]);
 
@@ -1190,10 +1222,61 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     writeHomeMapSession({
       tab: onListTab ? 'list' : 'map',
       ...(geo ? { lat: geo.lat, lng: geo.lng, zoomLevel: geo.zoom } : {}),
-    }, feedMode);
+    }, feedScope);
     const qs = params.toString();
     router.replace(qs ? `${mapBasePath}?${qs}` : mapBasePath, { scroll: false });
-  }, [router, mapPosition, mapCenter, mapBasePath]);
+  }, [router, mapPosition, mapCenter, mapBasePath, feedScope]);
+
+  const openListingPanel = useCallback((
+    listingId: string,
+    coords?: { lat: number; lng: number } | null,
+  ) => {
+    if (syncHomeUrlRef.current) {
+      clearTimeout(syncHomeUrlRef.current);
+      syncHomeUrlRef.current = null;
+    }
+    const onListTab = !showMobileMapRef.current;
+    const params = new URLSearchParams(window.location.search);
+    params.set('listing', listingId);
+    params.delete('lite');
+    params.delete('liteReport');
+    params.set('tab', onListTab ? 'list' : 'map');
+    if (coords?.lat != null && coords?.lng != null) {
+      params.set('lat', String(coords.lat));
+      params.set('lng', String(coords.lng));
+      appliedUrlGeoRef.current = `${coords.lat},${coords.lng},${mapPosition.zoomLevel}`;
+      setMapCenter({ lat: coords.lat, lng: coords.lng });
+    }
+    if (onListTab) setShowMobileMap(false);
+    writeHomeMapSession({
+      tab: onListTab ? 'list' : 'map',
+      ...(coords?.lat != null && coords?.lng != null
+        ? { lat: coords.lat, lng: coords.lng }
+        : {}),
+    }, feedScope);
+    router.replace(`${mapBasePath}?${params.toString()}`, { scroll: false });
+  }, [router, mapPosition.zoomLevel, mapBasePath, feedScope]);
+
+  const closeListingPanel = useCallback(() => {
+    if (syncHomeUrlRef.current) {
+      clearTimeout(syncHomeUrlRef.current);
+      syncHomeUrlRef.current = null;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const onListTab = params.get('tab') === 'list' || !showMobileMapRef.current;
+    params.delete('listing');
+    params.set('tab', onListTab ? 'list' : 'map');
+    if (onListTab) setShowMobileMap(false);
+    writeHomeMapSession({ tab: onListTab ? 'list' : 'map' }, feedScope);
+    const qs = params.toString();
+    router.replace(qs ? `${mapBasePath}?${qs}` : mapBasePath, { scroll: false });
+    setPanelListingItem(null);
+  }, [router, mapBasePath, feedScope]);
+
+  const handleListingAnalyze = useCallback(() => {
+    if (!panelListingItem) return;
+    router.push(`/analyze/${makeAnalyzeSlug(panelListingItem.id, panelListingItem.propertyTitle)}`);
+  }, [panelListingItem, router]);
 
   const handleLiteAnalyze = useCallback(async (r114PropId: string) => {
     const returnHref = buildDiscoverReturnHref();
@@ -1252,12 +1335,63 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     return () => { cancelled = true; };
   }, [litePanelPropId]);
 
+  useEffect(() => {
+    if (!listingPanelId) {
+      setPanelListingItem(null);
+      return;
+    }
+    const cached = analyses.find((a) => a.id === listingPanelId);
+    if (cached) {
+      setPanelListingItem({
+        id: cached.id,
+        category: (cached.category === '토지' ? 'land'
+          : cached.category === '주택' ? 'house'
+          : cached.category === '아파트' ? 'apartment'
+          : cached.category === '상가' ? 'store'
+          : cached.category === '빌딩' ? 'building'
+          : 'land') as ListingItem['category'],
+        categoryLabel: cached.category,
+        address: cached.location?.address || '',
+        lat: cached.lat ?? null,
+        lng: cached.lng ?? null,
+        priceWon: null,
+        budgetMan: cached.budgetMan ?? null,
+        areaM2: cached.area ?? cached.exclusiveArea ?? null,
+        pyeong: cached.area != null ? Math.round((cached.area / 3.3058) * 10) / 10 : null,
+        publishStatus: 'lite',
+        aiAnalysisStatus: cached.hasReport ? 'completed' : 'pending',
+        aiScore: cached.propertyGrade?.riskScore ? Number(cached.propertyGrade.riskScore) : null,
+        propertyTitle: cached.propertyTitle || '',
+        detectiveNote: cached.detectiveNote,
+        listingMeta: {},
+        hasReport: !!cached.hasReport,
+      });
+    }
+    let cancelled = false;
+    setPanelListingLoading(true);
+    void fetchListingDetail(listingPanelId).then((detail) => {
+      if (cancelled) return;
+      setPanelListingItem(detail);
+      setPanelListingLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [listingPanelId, analyses]);
+
   const navigateFromAnalysis = useCallback((analysis: Analysis) => {
     const isApartment = isApartmentAnalysis(analysis);
     const returnHref = buildDiscoverReturnHref();
     const coords = analysis.lat != null && analysis.lng != null
       ? { lat: analysis.lat, lng: analysis.lng }
       : null;
+
+    if (feedModeRef.current === 'listings') {
+      if (shouldOpenLitePanelOnMapClick(analysis)) {
+        openLitePanelFromAnalysis(analysis);
+        return;
+      }
+      openListingPanel(analysis.id, coords);
+      return;
+    }
 
     /** 아파트 — r114_prop_id 있으면 Lite 패널 (분석완료·미분석 공통) */
     if (shouldOpenLitePanelOnMapClick(analysis)) {
@@ -1298,7 +1432,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     }
 
     router.push(`/analyze/${analysis.id}?return=${encodeURIComponent(returnHref)}`);
-  }, [router, buildDiscoverReturnHref, aptAddressById, openLitePanelFromAnalysis, mapBasePath]);
+  }, [router, buildDiscoverReturnHref, aptAddressById, openLitePanelFromAnalysis, openListingPanel, mapBasePath]);
 
   const showCompareToast = useCallback((message: string) => {
     setCompareToast(message);
@@ -1383,7 +1517,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
 
   const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
-  const panelCategories = feedMode === 'recom' ? RECOM_CATEGORIES : CATEGORIES;
+  const panelCategories = feedMode === 'recom' || feedMode === 'listings' ? RECOM_CATEGORIES : CATEGORIES;
   const recomGuestView = feedMode === 'recom' && !user;
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
   const [listSearchQuery, setListSearchQuery] = useState('');
@@ -1546,6 +1680,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   );
 
   const listAnalysesForDisplay = useMemo(() => {
+    if (feedMode === 'listings') {
+      return searchFilteredAnalyses;
+    }
     let list = searchFilteredAnalyses;
     if (selectedCategory === '아파트') {
       if (apartmentTabDiscover && feedMode !== 'recom') {
@@ -1845,6 +1982,14 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     && activePanel !== 'compare',
   );
 
+  const showListingPanel = Boolean(
+    listingPanelId
+    && feedMode === 'listings'
+    && activePanel !== 'analyze'
+    && activePanel !== 'ranking'
+    && activePanel !== 'compare',
+  );
+
   return (
     <div className="detective-bg min-h-screen text-slate-900 relative">
       <div className="noise-overlay" />
@@ -1871,7 +2016,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                         ? '지역 브리핑'
                         : feedMode === 'recom'
                           ? '추천 매물'
-                          : '부동산탐정'}
+                          : feedMode === 'listings'
+                            ? '매물'
+                            : '부동산탐정'}
                 </h1>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -1881,7 +2028,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                       active={recomHasActiveFilters(selectedCategory, discoverFilters, investmentFilters)}
                       onClick={handleRecomFilterHeaderClick}
                     />
-                  ) : (
+                  ) : feedMode === 'listings' ? null : (
                     <MyHomeHeaderButton />
                   )
                 )}
@@ -1913,14 +2060,14 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
               <div className="pointer-events-auto flex bg-white/80 backdrop-blur-md rounded-2xl p-1 shadow-xl border border-slate-200 w-full">
                 <button onClick={() => {
                   setShowMobileMap(true);
-                  writeHomeMapSession({ tab: 'map' }, feedMode);
+                  writeHomeMapSession({ tab: 'map' }, feedScope);
                   scheduleSyncHomeUrl({ tab: 'map' });
                 }} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                   지도
                 </button>
                 <button onClick={() => {
                   setShowMobileMap(false);
-                  writeHomeMapSession({ tab: 'list' }, feedMode);
+                  writeHomeMapSession({ tab: 'list' }, feedScope);
                   scheduleSyncHomeUrl({ tab: 'list' });
                 }} className={`flex flex-1 items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition-all whitespace-nowrap ${!showMobileMap ? 'bg-emerald-400 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                   {activePanel === 'analyze' ? '매물분석' : '목록'}
@@ -1983,7 +2130,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
             <div className={`flex-1 min-h-0 overflow-y-auto px-4 lg:px-6 py-4 pb-24 ${showMobileMap ? 'hidden lg:block' : 'block'}`}>
               <div className={`flex flex-col gap-3 ${recomGuestView ? 'mb-2' : 'mb-4'}`}>
                 <h2 className="text-sm font-bold text-slate-800">
-                  {feedMode === 'recom' ? RECOM_LIST_TAGLINE : '최근 분석'}
+                  {feedMode === 'recom'
+                    ? RECOM_LIST_TAGLINE
+                    : feedMode === 'listings'
+                      ? LISTINGS_LIST_TAGLINE
+                      : '최근 분석'}
                 </h2>
 
                 {!recomGuestView && (
@@ -2003,7 +2154,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                   </div>
                 </div>
 
-                {selectedCategory === '아파트' && (
+                {selectedCategory === '아파트' && feedMode !== 'listings' && (
                   <ApartmentDiscoverToolbar
                     filters={discoverFilters}
                     risePresetPlacement={feedMode === 'recom' ? 'top' : 'afterSort'}
@@ -2013,7 +2164,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     }}
                     onApply={(f) => {
                       setDiscoverFilters(f);
-                      saveApartmentDiscoverFilters(f, feedMode);
+                      saveApartmentDiscoverFilters(f, feedScope);
                     }}
                   />
                 )}
@@ -2027,7 +2178,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     }}
                     onApply={(f) => {
                       setInvestmentFilters(f);
-                      saveInvestmentDiscoverFilters(f, feedMode);
+                      saveInvestmentDiscoverFilters(f, feedScope);
                     }}
                   />
                 )}
@@ -2141,6 +2292,10 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">
                       필터 상세 설정 또는 위치를 이동하세요.
                     </p>
+                  ) : feedMode === 'listings' && !listSearchQuery ? (
+                    <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">
+                      등록된 매물이 없습니다. 지도를 이동하거나 다른 카테고리를 선택해 보세요.
+                    </p>
                   ) : (
                     <>
                       <p className="text-slate-800 font-bold mono text-sm mb-1 text-center">
@@ -2230,6 +2385,14 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                 onCompareNoticeTap={handleLiteCompareNoticeTap}
               />
             )}
+            {showListingPanel && panelListingItem && !showMobileMap && (
+              <ListingLiteFloatingPanel
+                item={panelListingItem}
+                onClose={closeListingPanel}
+                onAnalyzeClick={handleListingAnalyze}
+                placement="list-inset"
+              />
+            )}
             </div>
           )}
         </div>
@@ -2264,13 +2427,28 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                 />
               )}
 
+              {showListingPanel && panelListingItem && (showMobileMap || !isMobile) && (
+                <ListingLiteFloatingPanel
+                  item={panelListingItem}
+                  onClose={closeListingPanel}
+                  onAnalyzeClick={handleListingAnalyze}
+                  placement="map"
+                />
+              )}
+
+              {showListingPanel && panelListingLoading && !panelListingItem && (
+                <div className="absolute inset-0 z-[46] flex items-center justify-center bg-white/80">
+                  <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
               {/* 상급지 비교 결과 오버레이 — 지도 위에 전체를 덮음 (항상 마운트, hidden으로 가시성 제어) */}
               {activePanel === 'compare' && (
                 <div className={`absolute inset-0 z-30 ${showCompareResult ? '' : 'hidden'}`} id="compare-result-portal" />
               )}
 
               {/* 지도 내 카테고리 필터 (분석/랭킹/추천 탭 제외 — 좌측 패널 또는 퀵픽 사용) */}
-              {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && feedMode !== 'recom') && (
+              {(activePanel !== 'analyze' && activePanel !== 'ranking' && activePanel !== 'compare' && feedMode === 'home') && (
                 <div className="absolute top-20 lg:top-1/2 lg:-translate-y-1/2 right-4 z-20 flex flex-col gap-1.5 bg-white/90 backdrop-blur-sm p-1.5 rounded-xl shadow-md border border-slate-200">
                   {CATEGORIES.map(cat => (
                     <button key={cat} onClick={() => handleCategoryChange(cat)}
@@ -2311,7 +2489,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
               ) : (
                 <KakaoMap
                   properties={mapProperties}
-                  disableRegionMarkers={feedMode === 'recom'}
+                  disableRegionMarkers={feedMode === 'recom' || feedMode === 'listings'}
                   selectedProperty={selectedMapProperty}
                   navigationZoomLevel={SEARCH_NAVIGATION_ZOOM_LEVEL}
                   initialCenter={mapCenter}
@@ -2340,6 +2518,18 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     }
                     const analysis = analyses.find((a) => a.id === property.id);
                     if (!analysis) return;
+                    if (feedModeRef.current === 'listings') {
+                      if (shouldOpenLitePanelOnMapClick(analysis)) {
+                        setSelectedProperty(null);
+                        openLitePanelFromAnalysis(analysis);
+                        return;
+                      }
+                      const coords = analysis.lat != null && analysis.lng != null
+                        ? { lat: analysis.lat, lng: analysis.lng }
+                        : null;
+                      openListingPanel(analysis.id, coords);
+                      return;
+                    }
                     if (shouldOpenLitePanelOnMapClick(analysis)) {
                       setSelectedProperty(null);
                       openLitePanelFromAnalysis(analysis);
@@ -2586,7 +2776,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
         }}
         onApply={(f) => {
           setDiscoverFilters(f);
-          saveApartmentDiscoverFilters(f, feedMode);
+          saveApartmentDiscoverFilters(f, feedScope);
         }}
       />
       <InvestmentDiscoverFilterSheet
@@ -2599,7 +2789,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
         }}
         onApply={(f) => {
           setInvestmentFilters(f);
-          saveInvestmentDiscoverFilters(f, feedMode);
+          saveInvestmentDiscoverFilters(f, feedScope);
         }}
       />
       <R114VariantPickModal
@@ -2634,11 +2824,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           investmentFilters={investmentFilters}
           onDiscoverApply={(f) => {
             setDiscoverFilters(f);
-            saveApartmentDiscoverFilters(f, feedMode);
+            saveApartmentDiscoverFilters(f, feedScope);
           }}
           onInvestmentApply={(f) => {
             setInvestmentFilters(f);
-            saveInvestmentDiscoverFilters(f, feedMode);
+            saveInvestmentDiscoverFilters(f, feedScope);
           }}
           onOpenApartmentSheet={(section) => {
             setDiscoverSheetSection(section ?? null);

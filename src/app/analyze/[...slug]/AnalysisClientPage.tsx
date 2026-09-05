@@ -76,6 +76,11 @@ import {
 } from '../../../lib/shortsSceneData';
 import { AI_ANALYSIS_STEPS } from '../../../lib/aiAnalysisSteps';
 import {
+    dedupeScoreItems,
+    resolveScoreItemWeight,
+    formatWeightedScoreLabel,
+} from '../../../lib/landScoreWeights';
+import {
     completeActiveAiAnalysis,
     dismissActiveAiAnalysis,
     failActiveAiAnalysis,
@@ -542,14 +547,18 @@ function buildAiReportCopyText(
     };
 
     const riskList: string[] = [];
-    Object.entries(scoreItems).forEach(([k, v]) => {
-        if (shouldHideItem(k, options.category || parsedAi.category || '')) return;
-        const mappedLabel = labelMap[k] || k;
-        const item = v as { score?: number; reason?: string } | number;
-        const s = typeof item === 'object' && item !== null ? (item.score ?? 0) : Number(item);
-        const r = typeof item === 'object' && item !== null ? (item.reason ?? '') : '';
+    const compRiskWeights = compRisk.weights as Record<string, number> | undefined;
+    const catForRisk = options.category || parsedAi.category || '';
+    dedupeScoreItems(scoreItems).forEach(({ key, item: v }) => {
+        if (shouldHideItem(key, catForRisk)) return;
+        const mappedLabel = labelMap[key] || key;
+        const row = v as { score?: number; reason?: string } | number;
+        const raw = typeof row === 'object' && row !== null ? (row.score ?? 0) : Number(row);
+        const maxW = resolveScoreItemWeight(key, catForRisk, compRiskWeights) ?? 10;
+        const scoreStr = maxW === 10 ? `${raw}점` : formatWeightedScoreLabel(raw, maxW);
+        const r = typeof row === 'object' && row !== null ? (row.reason ?? '') : '';
 
-        const headerLine = `□ ${mappedLabel} : ${s}점`;
+        const headerLine = `□ ${mappedLabel} : ${scoreStr}`;
         riskList.push(`${headerLine}\n${r}`);
     });
     const riskBlock = riskList.join('\n\n');
@@ -884,7 +893,7 @@ ${separator}
 ${aiEvaluationContent}
 
 
-■ 세부 리스크 평가 (10점 만점)
+■ 세부 리스크 평가 (가중 점수)
 ${separator}
 
 ${riskBlock}

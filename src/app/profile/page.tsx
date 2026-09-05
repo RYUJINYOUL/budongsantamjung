@@ -18,9 +18,11 @@ import ApartmentAreaPickModal, { type ApartmentComparePickPayload } from '../../
 import { compareItemKey } from '../../lib/apartmentCompareBasket';
 import { isAdminUser } from '../../lib/adminUids';
 
-type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home' | 'admin-analyses' | 'admin-sourcing';
+import AnalyzePanel from '../../components/AnalyzePanel';
 
-const PROFILE_TABS: Tab[] = ['favorites', 'my-analyses', 'my-discoveries', 'my-home', 'admin-analyses', 'admin-sourcing'];
+type Tab = 'profile' | 'favorites' | 'my-analyses' | 'my-discoveries' | 'my-home' | 'admin-analyses' | 'admin-sourcing' | 'admin-listings';
+
+const PROFILE_TABS: Tab[] = ['favorites', 'my-analyses', 'my-discoveries', 'my-home', 'admin-analyses', 'admin-sourcing', 'admin-listings'];
 
 interface AnalysisCard {
     analysisId?: string;
@@ -794,6 +796,7 @@ function ProfilePageContent() {
                                     { key: 'my-analyses' as Tab, label: '내 분석 내역' },
                                     { key: 'my-discoveries' as Tab, label: '발견 기록' },
                                     ...(isAdmin ? [
+                                        { key: 'admin-listings' as Tab, label: '매물 등록' },
                                         { key: 'admin-analyses' as Tab, label: 'AI 분석 현황' },
                                         { key: 'admin-sourcing' as Tab, label: '매물 소싱' },
                                     ] : []),
@@ -972,6 +975,22 @@ function ProfilePageContent() {
                         )}
 
                         {/* 관리자 — 날짜별 AI 분석 */}
+                        {activeTab === 'admin-listings' && isAdmin && (
+                            <div className="space-y-4 max-w-lg">
+                                <div className="h-[min(720px,75vh)] border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                                    <AnalyzePanel listingRegisterMode />
+                                </div>
+                                <div className="text-center py-2">
+                                    <Link
+                                        href="/listings"
+                                        className="text-sm font-bold text-emerald-600 hover:underline"
+                                    >
+                                        등록된 매물 목록 보기 →
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'admin-analyses' && isAdmin && (
                             <div className="space-y-4">
                                 <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-4">

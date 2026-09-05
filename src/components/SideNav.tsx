@@ -30,6 +30,12 @@ const NAV_ITEMS = [
     icon: '/a5.png',
   },
   {
+    id: 'listings',
+    label: '매물',
+    href: '/listings',
+    icon: '/a3.png',
+  },
+  {
     id: 'discover',
     label: '발견',
     href: '/discover',

@@ -3,6 +3,12 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import PremiumRiskGauge from './PremiumRiskGauge';
+import AnalysisPriceSnapshot from './analysis/AnalysisPriceSnapshot';
+import {
+    dedupeScoreItems,
+    resolveScoreItemWeight,
+    toWeightedScore,
+} from '@/lib/landScoreWeights';
 import ComparableMap from './ComparableMap';
 import {
     Zap, ShieldCheck, DollarSign, Layers, TrendingUp, TrendingDown, ShieldAlert,
@@ -14,6 +20,8 @@ import {
     Milestone, Play, Map, X, SlidersHorizontal, Calculator
 } from 'lucide-react';
 import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
+import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
+import { computeLedgerFactorProduct, getV31SectionMeta } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
 const REPORT_PASTEL_PALETTE = [
@@ -83,30 +91,35 @@ const RISK_CHIP_VARIANTS = {
 // MiniBar 컴포넌트
 const MiniBar = ({
     label,
-    score,
+    rawScore,
+    maxWeight = 10,
     reason,
     facts,
-    max = 10,
     customColor,
     animate = true,
 }: {
     label: string;
-    score: number;
+    rawScore: number;
+    maxWeight?: number;
     reason?: string;
     facts?: string[];
-    max?: number;
     customColor?: string;
     animate?: boolean;
 }) => {
     const reduceMotion = useReducedMotion();
     const shouldAnimate = animate && !reduceMotion;
-    const pct = (score / max) * 100;
-    const color = customColor || (score >= 8 ? "#22c55e" : score >= 5 ? "#eab308" : "#ef4444");
+    const displayScore = maxWeight === 10
+        ? rawScore
+        : toWeightedScore(rawScore, maxWeight);
+    const displayMax = maxWeight;
+    const pct = (rawScore / 10) * 100;
+    const color = customColor || (rawScore >= 8 ? "#22c55e" : rawScore >= 5 ? "#eab308" : "#ef4444");
+    const scoreLabel = Number.isInteger(displayScore) ? String(displayScore) : displayScore.toFixed(1);
     return (
         <div className="bg-white/5 p-4 rounded-[20px] border border-white/10 transition-all">
             <div className="flex justify-between items-center mb-1">
                 <span className="text-sm font-bold text-white">{label}</span>
-                <span style={{ color }} className="text-xs font-black font-mono">{score} / {max}점</span>
+                <span style={{ color }} className="text-xs font-black font-mono">{scoreLabel} / {displayMax}점</span>
             </div>
             <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden mt-2 mb-1">
                 {shouldAnimate ? (
@@ -299,109 +312,6 @@ const LedgerMultipliersSection = ({ tiles }: { tiles: LedgerMultiplierTile[] }) 
                             {...tile}
                         />
                     ))}
-                </div>
-            </div>
-        </PriceReasonMethodCard>
-    );
-};
-
-// ── 3단계: 입지 등급 및 CBD 프리미엄 ─────────────────────────
-
-const LedgerLocationSection = ({
-    cbdGrade,
-    cbdScore,
-    cbdEst,
-    targetArea,
-    isBuildingOrHouse,
-}: {
-    cbdGrade: string;
-    cbdScore: number;
-    cbdEst: any;
-    targetArea: number;
-    isBuildingOrHouse: boolean;
-}) => {
-    const minMult = cbdEst?.multiplier?.min ?? 1.0;
-    const maxMult = cbdEst?.multiplier?.max ?? 1.0;
-    const officialPerSqm = cbdEst?.officialPerSqm ?? 0;
-    const minTotalMan = cbdEst && targetArea > 0
-        ? Math.round((officialPerSqm * minMult * targetArea) / 10000)
-        : 0;
-    const maxTotalMan = cbdEst && targetArea > 0
-        ? Math.round((officialPerSqm * maxMult * targetArea) / 10000)
-        : 0;
-    const hasRange = Boolean(cbdEst && minTotalMan > 0 && maxTotalMan > 0);
-    const title = isBuildingOrHouse
-        ? '프리미엄 등급과 중심상업지역 입지 등급 참고'
-        : '중심상업지역 접근성 · 용도지역 배율로 토지 잠재 가치 추정';
-    const accent = LEDGER_ACCENTS.location;
-
-    return (
-        <PriceReasonMethodCard
-            icon={MapPin}
-            title={title}
-            accent={accent}
-            chips={(
-                <>
-                    {metaChip('입지 분석', accent)}
-                    {metaChip(`CBD ${cbdGrade}`)}
-                    {metaChip(`${cbdScore}점`, LEDGER_ACCENTS.comparables)}
-                    {hasRange && metaChip(`배율 ${minMult.toFixed(1)}~${maxMult.toFixed(1)}배`, LEDGER_ACCENTS.multipliers)}
-                </>
-            )}
-        >
-            <div
-                className="rounded-2xl bg-white/[0.02] overflow-hidden"
-                style={{
-                    border: `1px solid ${hexToRgba(accent, 0.25)}`,
-                    boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.08)}`,
-                }}
-            >
-                <div
-                    className="mx-3.5 mt-3.5 mb-3 rounded-xl px-4 py-3"
-                    style={{
-                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
-                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
-                    }}
-                >
-                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>입지 등급</span>
-                    <p className="text-[22px] font-black mt-0.5 leading-none" style={{ color: accent }}>{cbdGrade}</p>
-                    <p className="text-[10px] text-white/35 mt-1.5">
-                        종합 점수 {cbdScore}점
-                        {hasRange ? ` · 추정 ${minTotalMan.toLocaleString()}~${maxTotalMan.toLocaleString()}만원` : ''}
-                    </p>
-                </div>
-                <div className="px-3.5 pb-3.5 flex flex-col gap-2">
-                    {hasRange ? (
-                        <>
-                            <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 flex flex-col gap-1">
-                                <span className="text-[10px] text-white/40">일반 용도/주거 기준</span>
-                                <span className="text-white font-bold text-[13px]">
-                                    {minTotalMan.toLocaleString()}만원 ~ {maxTotalMan.toLocaleString()}만원
-                                </span>
-                                <span className="text-[10px] text-white/35">
-                                    공시지가 × 배율 {minMult.toFixed(1)}~{maxMult.toFixed(1)}배 · {targetArea.toLocaleString()}㎡
-                                </span>
-                            </div>
-                            <div
-                                className="rounded-xl px-3 py-2.5"
-                                style={{
-                                    border: `1px solid ${hexToRgba(LEDGER_ACCENTS.multipliers, 0.15)}`,
-                                    backgroundColor: hexToRgba(LEDGER_ACCENTS.multipliers, 0.04),
-                                }}
-                            >
-                                <span className="text-[10px] font-semibold" style={{ color: hexToRgba(LEDGER_ACCENTS.multipliers, 0.85) }}>상업화 · 개발 성공 시 잠재 가치</span>
-                                <p className="text-white/55 text-[10px] leading-relaxed mt-1">
-                                    공시지가의 3.5배 ~ 5.0배 범위 적용 가능 (개발 호재·용도변경 성공 시)
-                                </p>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5">
-                            <p className="text-white/55 text-[11px] leading-relaxed">
-                                빌딩/주택 실거래가에는 입지 프리미엄이 이미 반영되어 있으므로 별도 CBD 배율 산출 불필요
-                            </p>
-                        </div>
-                    )}
                 </div>
             </div>
         </PriceReasonMethodCard>
@@ -1369,10 +1279,10 @@ const resolveOfficialPerSqm = (meta: any, attached: any, targetArea: number) => 
     if (cbd?.officialPerSqm > 0) return Number(cbd.officialPerSqm);
     const opr = meta.officialPriceRatio?.targetOfficialPerSqm;
     if (opr > 0) return Number(opr);
-    const minMult = Number(attached?.minMult) || 0;
-    const minTotal = Number(attached?.minTotal) || 0;
-    if (minMult > 0 && minTotal > 0 && targetArea > 0) {
-        return Math.round(minTotal / (minMult * targetArea));
+    const midMult = Number(attached?.midMult) || Number(attached?.minMult) || 0;
+    const midTotal = Number(attached?.midTotal) || Number(attached?.minTotal) || 0;
+    if (midMult > 0 && midTotal > 0 && targetArea > 0) {
+        return Math.round(midTotal / (midMult * targetArea));
     }
     return 0;
 };
@@ -1462,7 +1372,7 @@ const OfficialMultiplierSection = ({
     if (opr && (opr.dynamicStatus === 'cohort' || opr.dynamicStatus === 'cohort_relaxed')) {
         const isFiltered = opr.dynamicStatus === 'cohort';
         const accent = PRICE_METHOD_ACCENTS.comparables;
-        const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || 'cohort';
+        const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || '동일수급권';
         const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
@@ -1482,11 +1392,11 @@ const OfficialMultiplierSection = ({
         return (
             <PriceReasonMethodCard
                 icon={Percent}
-                title="관측 코호트 배율 (실거래 ÷ 공시)"
+                title="동일수급권 배율 (실거래 ÷ 공시)"
                 accent={accent}
                 chips={(
                     <div className="flex flex-wrap items-center gap-2 w-full">
-                        {metaChip(isFiltered ? 'similarity 필터' : '코호트 전체', accent)}
+                        {metaChip(isFiltered ? 'similarity 필터' : '동일수급권 전체', accent)}
                         {metaChip(levelLabel, accent)}
                         {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
                         {obs?.confidenceGrade && metaChip(`신뢰 ${obs.confidenceGrade}`, accent)}
@@ -1523,7 +1433,7 @@ const OfficialMultiplierSection = ({
                         }}
                     >
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
-                            코호트 median 추정 토지가
+                            동일수급권 median 추정 토지가
                         </span>
                         <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                             {formatEokCompact(estimatedTotal)}
@@ -1549,8 +1459,8 @@ const OfficialMultiplierSection = ({
                     <div className="mx-4 mb-3 pt-3 border-t border-white/5">
                         <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
                             {isFiltered
-                                ? `동일 시장(용도×지목) 코호트 ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
-                                : `표본 부족으로 similarity 필터 없이 코호트 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
+                                ? `동일수급권(용도×지목) ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
+                                : `표본 부족으로 similarity 필터 없이 동일수급권 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
                         </p>
                     </div>
 
@@ -1558,7 +1468,7 @@ const OfficialMultiplierSection = ({
                         <div className="mx-4 mb-3 pt-3 border-t border-white/5">
                             <div className="flex items-center justify-between gap-2 mb-2.5">
                                 <div>
-                                    <p className="text-[11px] font-semibold text-white/70">코호트 실거래 근거</p>
+                                    <p className="text-[11px] font-semibold text-white/70">동일수급권 실거래 근거</p>
                                     <p className="text-[9px] text-white/30 mt-0.5">
                                         매매가·면적·공시·배율 — median은 아래 목록의 중앙값
                                     </p>
@@ -1635,13 +1545,13 @@ const OfficialMultiplierSection = ({
                             {obs?.p25Ratio != null && obs?.p75Ratio != null && (
                                 <div className="pt-1 border-t border-white/5">
                                     <div className="flex justify-between text-[10px]">
-                                        <span className="text-white/35">코호트 배율 분포 (참고)</span>
+                                        <span className="text-white/35">동일수급권 배율 분포 (참고)</span>
                                         <span className="text-white/50 font-mono">
                                             p25 {Number(obs.p25Ratio).toFixed(2)} · median {Number(opr.appliedMultiplier).toFixed(2)} · p75 {Number(obs.p75Ratio).toFixed(2)}배
                                         </span>
                                     </div>
                                     <p className="text-[9px] text-white/30 leading-relaxed mt-1">
-                                        동일 시장 실거래의 공시 대비 배율 흩어짐입니다. 위 추정가에는 median만 반영됩니다.
+                                        동일수급권 실거래의 공시 대비 배율 흩어짐입니다. 위 추정가에는 median만 반영됩니다.
                                     </p>
                                 </div>
                             )}
@@ -1776,20 +1686,15 @@ const OfficialMultiplierSection = ({
 
     if (!attached) return null;
 
-    const minTotal = Number(attached.minTotal) || 0;
-    const maxTotal = Number(attached.maxTotal) || 0;
-    const midTotal = Number(attached.midTotal) || 0;
-    const minMult = Number(attached.minMult) || 0;
-    const maxMult = Number(attached.maxMult) || 0;
-    const midMult = Number(attached.midMult) || 0;
+    const midTotal = Number(attached.midTotal) || Number(attached.minTotal) || 0;
+    const midMult = Number(attached.midMult) || Number(attached.minMult) || 0;
     const zoning = attached.zoning || meta.cbdMultiplierEstimate?.zoning || '-';
     const officialPerSqm = resolveOfficialPerSqm(meta, attached, targetArea);
-    const cbdGrade = meta.cbdMultiplierEstimate?.grade || '';
 
     const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
     const compMin = landSpectrum?.min || 0;
     const compMax = landSpectrum?.max || 0;
-    const hasCompContrast = compMin > 0 && minTotal > 0 && (minTotal > compMax * 1.5 || maxTotal > compMax * 2);
+    const hasCompContrast = compMin > 0 && midTotal > 0 && (midTotal > compMax * 1.5);
 
     const accent = PRICE_METHOD_ACCENTS.official;
     const landAccent = PRICE_METHOD_ACCENTS.comparables;
@@ -1803,7 +1708,6 @@ const OfficialMultiplierSection = ({
                 <>
                     {metaChip('공시지가 기반', accent)}
                     {metaChip('보조 추정')}
-                    {cbdGrade && metaChip(`CBD ${cbdGrade}`, PRICE_METHOD_ACCENTS.building)}
                 </>
             )}
         >
@@ -1821,20 +1725,20 @@ const OfficialMultiplierSection = ({
                         border: `1px solid ${hexToRgba(accent, 0.3)}`,
                     }}
                 >
-                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>공시 배율 추정 범위</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>공시지가 배율 추정</span>
                     <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
-                        {formatEokCompact(minTotal)} ~ {formatEokCompact(maxTotal)}원
+                        {formatEokCompact(midTotal)}원
                     </p>
-                    {midTotal > 0 && (
+                    {midMult > 0 && (
                         <p className="text-[10px] text-white/35 mt-1.5">
-                            중간값 {formatEokCompact(midTotal)}원 ({midMult}배)
+                            적용 배율 {midMult}배
                         </p>
                     )}
                 </div>
 
                 <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
                     <span>용도지역 {zoning}</span>
-                    <span>배율 {minMult}~{maxMult}배</span>
+                    {midMult > 0 && <span>배율 {midMult}배</span>}
                     {officialPerSqm > 0 && targetArea > 0 && (
                         <span>
                             {formatSqmManwon(officialPerSqm)} × {targetArea.toLocaleString()}㎡
@@ -1864,11 +1768,11 @@ const OfficialMultiplierSection = ({
                         <div className="flex justify-between text-[10px]">
                             <span className="text-white/35">공시 배율 추정</span>
                             <span className="font-semibold" style={{ color: accent }}>
-                                {formatEokCompact(minTotal)} ~ {formatEokCompact(maxTotal)}
+                                {formatEokCompact(midTotal)}
                             </span>
                         </div>
                         <p className="text-[9px] text-white/30 leading-relaxed pt-0.5">
-                            공시 배율법은 CBD·입지 프리미엄을 반영해 실거래 대입보다 높게 나올 수 있습니다. 판단 시 실거래 대입을 우선 참고하세요.
+                            공시 배율법은 실거래 대입과 다를 수 있습니다. 판단 시 실거래 대입을 우선 참고하세요.
                         </p>
                     </div>
                 )}
@@ -1896,19 +1800,11 @@ const OfficialMultiplierSection = ({
                             </div>
                         )}
                         <div className="flex justify-between text-[10px]">
-                            <span className="text-white/35">최저 배율 × 공시지가</span>
-                            <span className="text-white/70 font-mono">{minMult}배 → {formatEokCompact(minTotal)}</span>
-                        </div>
-                        <div className="flex justify-between text-[10px]">
-                            <span className="text-white/35">중간 배율 × 공시지가</span>
+                            <span className="text-white/35">적용 배율 × 공시지가</span>
                             <span className="font-semibold font-mono" style={{ color: accent }}>{midMult}배 → {formatEokCompact(midTotal)}</span>
                         </div>
-                        <div className="flex justify-between text-[10px]">
-                            <span className="text-white/35">최고 배율 × 공시지가</span>
-                            <span className="text-white/70 font-mono">{maxMult}배 → {formatEokCompact(maxTotal)}</span>
-                        </div>
                         <p className="text-[9px] text-white/30 leading-relaxed pt-1">
-                            ※ 용도지역({zoning})과 CBD 등급({cbdGrade || '-'})에 따른 배율표를 적용합니다. 건물 가치는 포함되지 않습니다.
+                            ※ 용도지역({zoning}) 배율표를 적용합니다. 건물 가치는 포함되지 않습니다.
                         </p>
                     </div>
                 )}
@@ -2710,6 +2606,16 @@ const getVerdictBadgeStyle = (label: string) => {
 
 
 export type AiReportShortsSection = 'summary' | 'mustCheck';
+export type AiReportV31ExternalSection =
+  | 'priceHeader'
+  | 'scores'
+  | 'priceMethodCards'
+  | 'priceDetails'
+  | 'development'
+  | 'benefit'
+  | 'market'
+  | 'mustCheck'
+  | 'finalVerdict';
 
 export default function AiReportView({
     ai,
@@ -2719,6 +2625,8 @@ export default function AiReportView({
     isCheckingAccess,
     shortsMode = false,
     shortsSections,
+    layoutVariant = 'default',
+    v31ExternalSections,
 }: {
     ai: any;
     mergedData?: any;
@@ -2727,6 +2635,8 @@ export default function AiReportView({
     isCheckingAccess?: boolean;
     shortsMode?: boolean;
     shortsSections?: AiReportShortsSection[];
+    layoutVariant?: 'default' | 'v31';
+    v31ExternalSections?: AiReportV31ExternalSection[];
 }) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
     const resolvedAnalysisMetadata = React.useMemo(
@@ -2742,6 +2652,24 @@ export default function AiReportView({
     const [activeAptGroupKey, setActiveAptGroupKey] = React.useState<string | null>(null);
 
     const categoryStr = String(mergedData?.category || 'land');
+    const isV31 = layoutVariant === 'v31';
+    const v31External = v31ExternalSections || [];
+    const v31HidesScores = isV31 && v31External.includes('scores');
+    const v31HidesPriceHeader = isV31 && v31External.includes('priceHeader');
+    const v31HidesPriceMethodCards = isV31 && v31External.includes('priceMethodCards');
+    const v31HidesPriceDetails = isV31 && v31External.includes('priceDetails');
+    const v31HidesDevelopment = isV31 && v31External.includes('development');
+    const v31HidesBenefit = isV31 && v31External.includes('benefit');
+    const v31HidesMarket = isV31 && v31External.includes('market');
+    const v31HidesMustCheck = isV31 && v31External.includes('mustCheck');
+    const v31HidesFinalVerdict = isV31 && v31External.includes('finalVerdict');
+    const v31CardClass = isV31 ? 'v31-themed-card' : '';
+    const v31Anchor = (id: string) => {
+        if (!isV31) return {};
+        if (id === 'analysis-v31-price' && v31HidesPriceHeader) return {};
+        if (id === 'analysis-v31-risk' && v31HidesScores) return {};
+        return { id };
+    };
 
     const regionName = React.useMemo(() => {
         const rawRegion = mergedData?.regionInfo?.fullName || mergedData?.vitals?.regionInfo?.fullName || mergedData?.regionName || '';
@@ -2783,7 +2711,7 @@ export default function AiReportView({
         }
     } catch (_) { }
 
-    const renderPriceReasonMethods = (spectrum: any) => {
+    const renderPriceReasonMethods = (spectrum: any, opts?: { omitMethodCards?: boolean }) => {
         if (!spectrum) return null;
         const lowerCat = categoryStr.toLowerCase().trim();
         const isApartmentCat = lowerCat === 'apartment' || categoryStr.trim() === '아파트';
@@ -2802,26 +2730,30 @@ export default function AiReportView({
 
         return (
             <div className="flex flex-col gap-4">
-                <LandComparableValueSection
-                    comparables={comparables}
-                    meta={meta}
-                    targetArea={targetArea}
-                    categoryStr={categoryStr}
-                    isBuildingCat={isBuildingCat}
-                    regionName={regionName}
-                />
-                <OfficialMultiplierSection
-                    attached={attachedMultiplier}
-                    meta={meta}
-                    comparables={comparables}
-                    targetArea={targetArea}
-                    isListAppended={meta.isListAppended}
-                    estimateNarrative={officialMultiplierEstimate}
-                    onMapOpen={(samples) => {
-                        setMapCustomComparables(samples);
-                        setIsMapModalOpen(true);
-                    }}
-                />
+                {!opts?.omitMethodCards && (
+                    <>
+                        <LandComparableValueSection
+                            comparables={comparables}
+                            meta={meta}
+                            targetArea={targetArea}
+                            categoryStr={categoryStr}
+                            isBuildingCat={isBuildingCat}
+                            regionName={regionName}
+                        />
+                        <OfficialMultiplierSection
+                            attached={attachedMultiplier}
+                            meta={meta}
+                            comparables={comparables}
+                            targetArea={targetArea}
+                            isListAppended={meta.isListAppended}
+                            estimateNarrative={officialMultiplierEstimate}
+                            onMapOpen={(samples) => {
+                                setMapCustomComparables(samples);
+                                setIsMapModalOpen(true);
+                            }}
+                        />
+                    </>
+                )}
                 <BuildingResidualSection
                     meta={meta}
                     spectrum={spectrum}
@@ -2897,6 +2829,7 @@ export default function AiReportView({
     const lowerCat = categoryStr.toLowerCase().trim();
     const isLand = lowerCat === 'land' || categoryStr.trim() === '토지';
     const isBuildingCat = lowerCat === 'building' || lowerCat === '빌딩' || lowerCat === 'store' || lowerCat === '상가';
+    const v31Category: 'land' | 'building' = isBuildingCat ? 'building' : 'land';
     const showLandPriceNotes = isLand || isBuildingCat;
     const isApartment = lowerCat === 'apartment' || categoryStr.trim() === '아파트';
 
@@ -3142,14 +3075,10 @@ export default function AiReportView({
             avgTimeFactor = sum / comparables.length;
         }
 
-        const cbdEst = meta.cbdMultiplierEstimate;
-        const cbdGrade = meta.cbdGrade?.grade || cbdEst?.grade || 'GENERAL';
-        const cbdScore = meta.cbdGrade?.score || 0;
         const zoningChangeComment = meta.zoningChangeComment || '주변 5년 이내 상업/숙박 용도변경 이력 없음';
 
         const isBuilding = categoryStr === 'building';
         const isHouse = categoryStr === 'house';
-        const showLocationStep = isLand || isBuilding || isHouse;
         const showZoningStep = isLand || isBuilding;
 
         const ledgerTitle = isBuilding
@@ -3329,15 +3258,6 @@ export default function AiReportView({
                     confidenceGrade={meta.confidenceGrade || ''}
                 />
                 <LedgerMultipliersSection tiles={tiles} />
-                {showLocationStep && (
-                    <LedgerLocationSection
-                        cbdGrade={cbdGrade}
-                        cbdScore={cbdScore}
-                        cbdEst={cbdEst}
-                        targetArea={meta.areaAdjustment?.targetArea || targetArea}
-                        isBuildingOrHouse={isBuilding || isHouse}
-                    />
-                )}
                 {showZoningStep && (
                     <LedgerZoningChangeSection comment={zoningChangeComment} />
                 )}
@@ -3812,6 +3732,43 @@ export default function AiReportView({
         );
     };
 
+    const renderPriceDetailBlocks = () => (
+        <>
+            <IncomeApproachSection
+                mergedData={mergedData}
+                ai={ai}
+                categoryStr={categoryStr}
+            />
+
+            <BuildingStoresSection
+                mergedData={mergedData}
+                categoryStr={categoryStr}
+            />
+
+            {priceReas.priceSpectrum && renderPriceReasonMethods(priceReas.priceSpectrum, {
+                omitMethodCards: v31HidesPriceMethodCards,
+            })}
+
+            {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier && (
+                priceSubCard(Percent, '공시지가 배율 추정', String(priceReas.officialMultiplierEstimate), PRICE_METHOD_ACCENTS.official)
+            )}
+
+            {showLandPriceNotes && priceReas.zoningChangeNote && (
+                priceSubCard(TrendingUp, '토지 용도지역 변경 동향', String(priceReas.zoningChangeNote), PRICE_METHOD_ACCENTS.narrative)
+            )}
+
+            {isApartment && priceReas.estimatedTotalPriceNote && !ai.analysisMetadata?.complexGroups && (
+                priceSubCard(Coins, '최종 추정가 산출', String(priceReas.estimatedTotalPriceNote), PRICE_METHOD_ACCENTS.comparables)
+            )}
+
+            {isApartment && priceReas.marketSummaryComment && !ai.analysisMetadata?.complexGroups && (
+                priceSubCard(BarChart3, '시장 분석 코멘트', stripEmojis(String(priceReas.marketSummaryComment)), PRICE_METHOD_ACCENTS.regional)
+            )}
+        </>
+    );
+
+    const ledgerFactorProduct = computeLedgerFactorProduct(ai.analysisMetadata);
+
     if (shortsSections && shortsSections.length > 0) {
         return (
             <div className="shorts-ai-section space-y-0">
@@ -3822,18 +3779,28 @@ export default function AiReportView({
     }
 
     return (
-        <div className="space-y-6">
+        <div className={`space-y-6${isV31 ? ' ai-report-v31-inner' : ''}`}>
 
 
-            {/* 1. 종합 분석 요약 */}
-            {renderAiSummarySection()}
+            {/* 1. 종합 분석 요약 — v3.1 셸에서 제공 */}
+            {!isV31 && renderAiSummarySection()}
 
-            {/* 2. 입력 상세 정보 */}
-            {renderUserDetailedInfoSection()}
+            {/* 2. 가격 스냅샷 — 제시가 · AI범위 · 비교사례 · 바 · 태그 */}
+            {!isV31 && (isLand || isBuildingCat) && (
+                <AnalysisPriceSnapshot
+                    ai={ai}
+                    mergedData={mergedData}
+                    analysisMetadata={ai.analysisMetadata || resolvedAnalysisMetadata}
+                    category={categoryStr}
+                />
+            )}
 
             {/* 3. 세부 리스크 평가 항목 */}
-            {Object.keys(radarMap).length > 0 && (
-                <div className="p-6 bg-[#0f172a] rounded-[40px] border border-white/5 shadow-[0_0_25px_rgba(14,165,233,0.04)]">
+            {!v31HidesScores && Object.keys(radarMap).length > 0 && (
+                <div
+                    {...v31Anchor('analysis-v31-risk')}
+                    className={`p-6 bg-[#0f172a] rounded-[40px] border border-white/5 shadow-[0_0_25px_rgba(14,165,233,0.04)] analysis-v31-section-anchor ${v31CardClass}`}
+                >
                     <div className="flex items-center gap-2 mb-5">
                         <Zap className="w-4 h-4 text-[#0ea5e9]" />
                         <span className="text-white text-base font-bold">세부 리스크 평가 항목</span>
@@ -3847,24 +3814,29 @@ export default function AiReportView({
                             visible: { transition: { staggerChildren: 0.07 } },
                         }}
                     >
-                        {Object.entries(compRisk.scoreItems || {})
-                            .filter(([key, item]: [string, any]) => {
+                        {dedupeScoreItems(compRisk.scoreItems || {})
+                            .filter(({ key, item }) => {
                                 if (shouldHideItem(key, categoryStr)) return false;
                                 if (item === null) return false;
-                                if (typeof item === 'object' && item.score === null) return false;
+                                if (typeof item === 'object' && (item as { score?: number | null }).score === null) return false;
                                 return true;
                             })
-                            .map(([key, item]: [string, any], idx) => {
+                            .map(({ key, item }, idx) => {
                                 const label = labelMap[key] || key;
                                 const customColor = pastelColors[idx % pastelColors.length];
                                 const facts = buildRiskItemFacts(key, riskFactsContext);
+                                const rawScore = item !== null && typeof item === 'object'
+                                    ? ((item as { score?: number }).score ?? 0)
+                                    : (typeof item === 'number' ? item : 0);
+                                const apiWeights = compRisk.weights as Record<string, number> | undefined;
+                                const maxWeight = resolveScoreItemWeight(key, categoryStr, apiWeights) ?? 10;
                                 const card = (
                                     <MiniBar
                                         label={label}
-                                        score={item !== null && typeof item === 'object' ? (item.score ?? 0) : (typeof item === 'number' ? item : 0)}
-                                        reason={item !== null && typeof item === 'object' ? item.reason : undefined}
+                                        rawScore={rawScore}
+                                        reason={item !== null && typeof item === 'object' ? (item as { reason?: string }).reason : undefined}
                                         facts={facts.length > 0 ? facts : undefined}
-                                        max={10}
+                                        maxWeight={maxWeight}
                                         customColor={customColor}
                                         animate={!shortsMode}
                                     />
@@ -3883,9 +3855,13 @@ export default function AiReportView({
             )}
 
             {/* 4. 예상 가격 타당성 검증 */}
-            {Object.keys(priceReas).length > 0 && (
-                <div className="flex flex-col gap-5">
+            {!v31HidesPriceDetails && (Object.keys(priceReas).length > 0 || (isV31 && v31HidesPriceHeader && !isApartment && ai.analysisMetadata)) && (
+                <div
+                    {...v31Anchor('analysis-v31-price')}
+                    className={`flex flex-col gap-5 analysis-v31-section-anchor${isV31 ? ' v31-order-price' : ''}${isV31 ? '' : ' v31-themed-card'}`}
+                >
                     {/* 요약 */}
+                    {!v31HidesPriceHeader && (
                     <div
                         className="p-6 bg-[#0f172a] rounded-[40px] flex flex-col gap-4"
                         style={{
@@ -3928,54 +3904,62 @@ export default function AiReportView({
                             <span className="text-white/50 text-xs leading-relaxed border-t border-white/5 pt-3">{priceReas.opinion}</span>
                         )}
                     </div>
-
-                    <IncomeApproachSection
-                        mergedData={mergedData}
-                        ai={ai}
-                        categoryStr={categoryStr}
-                    />
-
-                    <BuildingStoresSection
-                        mergedData={mergedData}
-                        categoryStr={categoryStr}
-                    />
-
-                    {/* 방법론별 독립 카드 + 보조 참고 카드 */}
-                    {priceReas.priceSpectrum && renderPriceReasonMethods(priceReas.priceSpectrum)}
-
-                    {showLandPriceNotes && priceReas.cbdEstimate && (
-                        priceSubCard(MapPin, '도심 중심업무지구(CBD) 추정', String(priceReas.cbdEstimate), PRICE_METHOD_ACCENTS.building)
                     )}
 
-                    {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier
-                        && !['cohort', 'cohort_relaxed'].includes(ai.analysisMetadata?.officialPriceRatio?.dynamicStatus || '') && (
-                        priceSubCard(Percent, '공시지가 배율 추정', String(priceReas.officialMultiplierEstimate), PRICE_METHOD_ACCENTS.official)
-                    )}
-
-                    {showLandPriceNotes && priceReas.zoningChangeNote && (
-                        priceSubCard(TrendingUp, '토지 용도지역 변경 동향', String(priceReas.zoningChangeNote), PRICE_METHOD_ACCENTS.narrative)
-                    )}
-
-                    {/* priceSpectrum 없을 때 아파트 레거시 서브 카드 */}
-                    {isApartment && priceReas.estimatedTotalPriceNote && !ai.analysisMetadata?.complexGroups && (
-                        priceSubCard(Coins, '최종 추정가 산출', String(priceReas.estimatedTotalPriceNote), PRICE_METHOD_ACCENTS.comparables)
-                    )}
-
-                    {isApartment && priceReas.marketSummaryComment && !ai.analysisMetadata?.complexGroups && (
-                        priceSubCard(BarChart3, '시장 분석 코멘트', stripEmojis(String(priceReas.marketSummaryComment)), PRICE_METHOD_ACCENTS.regional)
+                    {isV31 && v31HidesPriceHeader ? (
+                        <details className="analysis-v31-details">
+                            <summary>
+                                가격 분석 상세 · Ledger · AI 해설 (합산 {ledgerFactorProduct.toFixed(3)}x) · 펼치기
+                            </summary>
+                            <div className="analysis-v31-details-body flex flex-col gap-5">
+                                {Object.keys(priceReas).length > 0 && renderPriceDetailBlocks()}
+                                {!isApartment && renderValuationLedgerSection()}
+                            </div>
+                        </details>
+                    ) : (
+                        renderPriceDetailBlocks()
                     )}
                 </div>
             )}
 
             {/* 5. 토지 정밀 검증 원장 (Land Valuation Ledger) */}
-            {!isApartment && renderValuationLedgerSection()}
+            {!isApartment && !(isV31 && (v31HidesPriceHeader || v31HidesPriceDetails)) && (
+                <div {...v31Anchor('analysis-v31-price')} className={isV31 ? 'analysis-v31-section-anchor v31-order-price' : undefined}>
+                    {renderValuationLedgerSection()}
+                </div>
+            )}
 
             {/* 6. 아파트 정밀 검증 원장 (Apartment Valuation Ledger) */}
             {isApartment && renderApartmentValuationLedgerSection()}
 
             {/* 7. 실거래가 및 시세 비교 분석 */}
-            {Object.keys(priceAnalysis).length > 0 && (
-                <div className="p-6 bg-[#0f172a]/55 border border-[#bcd4e6]/20 rounded-[40px] shadow-[0_0_25px_rgba(188,212,230,0.04)]">
+            {!v31HidesMarket && Object.keys(priceAnalysis).length > 0 && (
+                isV31 ? (
+                    <AnalysisV31SectionShell
+                        id="analysis-v31-market"
+                        meta={getV31SectionMeta('market', v31Category)}
+                        orderClass="v31-order-market"
+                    >
+                        <div className={`analysis-v31-card ${v31CardClass}`}>
+                            {firesaleSummary && (
+                                <div className="mb-3 flex flex-col gap-2">
+                                    <div className="text-[11px] font-bold text-[#64748b]">실거래가 비교 및 급매 요약</div>
+                                    <span className="text-[13px] leading-relaxed text-[#475569] whitespace-pre-wrap">{firesaleSummary}</span>
+                                </div>
+                            )}
+                            {tradeVolume && (
+                                <div className="flex flex-col gap-2">
+                                    <div className="text-[11px] font-bold text-[#64748b]">지역 거래량 및 시장 분석</div>
+                                    <span className="text-[13px] leading-relaxed text-[#475569] whitespace-pre-wrap">{tradeVolume}</span>
+                                </div>
+                            )}
+                        </div>
+                    </AnalysisV31SectionShell>
+                ) : (
+                <div
+                    {...v31Anchor('analysis-v31-market')}
+                    className={`p-6 bg-[#0f172a]/55 border border-[#bcd4e6]/20 rounded-[40px] shadow-[0_0_25px_rgba(188,212,230,0.04)] analysis-v31-section-anchor ${v31CardClass}`}
+                >
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-[#bcd4e6]/12 border border-[#bcd4e6]/30 rounded-xl">
                             <BarChart3 className="w-4 h-4 text-[#bcd4e6]" />
@@ -4003,11 +3987,31 @@ export default function AiReportView({
                         </div>
                     )}
                 </div>
+                )
             )}
 
             {/* 8. 토지 형태 및 개발 잠재력 */}
-            {landShapes.length > 0 && !isApartment && (
-                <div className="p-6 bg-[#0f172a]/55 border border-[#eddcd2]/20 rounded-[40px] shadow-[0_0_25px_rgba(237,220,210,0.04)]">
+            {!v31HidesDevelopment && landShapes.length > 0 && !isApartment && (
+                isV31 ? (
+                    <AnalysisV31SectionShell
+                        id="analysis-v31-development"
+                        meta={getV31SectionMeta('development', v31Category)}
+                        orderClass="v31-order-dev"
+                    >
+                        <details className="analysis-v31-details">
+                            <summary>토지 형태 · 개발 잠재력 AI 해설 (원문)</summary>
+                            <div className="analysis-v31-details-body flex flex-col gap-3">
+                                {landShapes.map((shape, i) => (
+                                    <p key={i} className="analysis-v31-prose-note m-0">{String(shape)}</p>
+                                ))}
+                            </div>
+                        </details>
+                    </AnalysisV31SectionShell>
+                ) : (
+                <div
+                    {...v31Anchor('analysis-v31-development')}
+                    className={`p-6 bg-[#0f172a]/55 border border-[#eddcd2]/20 rounded-[40px] shadow-[0_0_25px_rgba(237,220,210,0.04)] analysis-v31-section-anchor ${v31CardClass}`}
+                >
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-[#eddcd2]/12 border border-[#eddcd2]/30 rounded-xl">
                             <Hexagon className="w-4 h-4 text-[#eddcd2]" />
@@ -4023,6 +4027,7 @@ export default function AiReportView({
                         ))}
                     </div>
                 </div>
+                )
             )}
 
             {/* 8.5 동시기 거시·공급 맥락 (macroOutlook) */}
@@ -4084,43 +4089,101 @@ export default function AiReportView({
             )}
 
             {/* 9. 심층 리포트 */}
-            {Object.keys(inDepth).length > 0 && (
-                <div className="flex flex-col gap-4">
-                    {([
-                        ...(['investmentValue', 'reconstruction', 'outlook'] as const).filter(
-                            (key) => inDepth[key] && String(inDepth[key]).trim() !== ''
-                        ),
-                        ...Object.keys(inDepth).filter(
-                            (k) => !['scarcityMarket', 'growthMarket', 'supplyMarket', 'shrinkingMarket', 'investmentValue', 'reconstruction', 'historicalStory', 'outlook'].includes(k)
-                        ),
-                    ] as string[])
-                        .filter((key) => {
-                        if (!inDepth[key] || String(inDepth[key]).trim() === '') return false;
-                        const meta = inDepthCategories[key];
-                        const label = meta?.label || key;
-                        return !shouldHideItem(key, categoryStr) && !shouldHideItem(label, categoryStr);
-                    }).map((key) => {
-                        const value = inDepth[key];
-                        const meta = inDepthCategories[key] || { icon: Search, label: key, color: '#94a3b8' };
-                        const Icon = meta.icon;
+            {!v31HidesBenefit && Object.keys(inDepth).length > 0 && (() => {
+                const inDepthKeys = ([
+                    ...(['investmentValue', 'reconstruction', 'outlook'] as const).filter(
+                        (key) => inDepth[key] && String(inDepth[key]).trim() !== '',
+                    ),
+                    ...Object.keys(inDepth).filter(
+                        (k) => !['scarcityMarket', 'growthMarket', 'supplyMarket', 'shrinkingMarket', 'investmentValue', 'reconstruction', 'historicalStory', 'outlook'].includes(k),
+                    ),
+                ] as string[]).filter((key) => {
+                    if (!inDepth[key] || String(inDepth[key]).trim() === '') return false;
+                    const catMeta = inDepthCategories[key];
+                    const label = catMeta?.label || key;
+                    return !shouldHideItem(key, categoryStr) && !shouldHideItem(label, categoryStr);
+                });
+
+                if (inDepthKeys.length === 0) return null;
+
+                const renderCards = (v31Mode: boolean) => inDepthKeys.map((key) => {
+                    const value = inDepth[key];
+                    const catMeta = inDepthCategories[key] || { icon: Search, label: key, color: '#94a3b8' };
+                    const Icon = catMeta.icon;
+                    const text = String(value);
+
+                    if (v31Mode) {
                         return (
-                            <div key={key} className="p-6 bg-[#0f172a] rounded-[40px] border border-white/5">
-                                <div className="flex items-center gap-2.5 mb-4">
-                                    <Icon className="w-5 h-5" style={{ color: meta.color }} />
-                                    <h3 className="text-white text-[15px] font-bold">{meta.label}</h3>
+                            <div key={key} className={`analysis-v31-card ${v31CardClass}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Icon className="w-4 h-4" style={{ color: catMeta.color }} />
+                                    <h3 className="text-sm font-bold text-[#17191c]">{catMeta.label}</h3>
                                 </div>
-                                <span className="text-white/70 text-xs leading-relaxed whitespace-pre-wrap">{String(value)}</span>
+                                {text.length > 180 ? (
+                                    <details className="analysis-v31-details">
+                                        <summary>{catMeta.label} · AI 해설 원문</summary>
+                                        <div className="analysis-v31-details-body whitespace-pre-wrap">{text}</div>
+                                    </details>
+                                ) : (
+                                    <p className="analysis-v31-prose-note m-0 whitespace-pre-wrap">{text}</p>
+                                )}
                             </div>
                         );
-                    })}
-                </div>
-            )}
+                    }
+
+                    return (
+                        <div key={key} className={`p-6 bg-[#0f172a] rounded-[40px] border border-white/5 ${isV31 ? 'v31-themed-card' : ''}`}>
+                            <div className="flex items-center gap-2.5 mb-4">
+                                <Icon className="w-5 h-5" style={{ color: catMeta.color }} />
+                                <h3 className="text-white text-[15px] font-bold">{catMeta.label}</h3>
+                            </div>
+                            <span className="text-white/70 text-xs leading-relaxed whitespace-pre-wrap">{text}</span>
+                        </div>
+                    );
+                });
+
+                if (isV31) {
+                    return (
+                        <AnalysisV31SectionShell
+                            id="analysis-v31-benefit"
+                            meta={getV31SectionMeta('benefit', v31Category)}
+                            orderClass="v31-order-benefit"
+                        >
+                            <div className="flex flex-col gap-3">
+                                {renderCards(true)}
+                            </div>
+                        </AnalysisV31SectionShell>
+                    );
+                }
+
+                return (
+                    <div
+                        {...v31Anchor('analysis-v31-benefit')}
+                        className="flex flex-col gap-4 analysis-v31-section-anchor"
+                    >
+                        {renderCards(false)}
+                    </div>
+                );
+            })()}
 
             {/* 10. 중요 체크 리스트 */}
-            {renderMustCheckSection()}
+            {!v31HidesMustCheck && (
+                isV31 ? (
+                    <div className="v31-order-misc">
+                        <details className="analysis-v31-details">
+                            <summary>현장 확인 체크리스트 · 펼치기</summary>
+                            <div className="analysis-v31-details-body">
+                                {renderMustCheckSection()}
+                            </div>
+                        </details>
+                    </div>
+                ) : (
+                    renderMustCheckSection()
+                )
+            )}
 
             {/* 11. 대지 정보 규격 */}
-            {Object.keys(areaInfo).length > 0 && (
+            {!isV31 && Object.keys(areaInfo).length > 0 && (
                 <div className="p-6 bg-[#0f172a]/55 border border-[#fad2e1]/20 rounded-[40px] shadow-[0_0_25px_rgba(250,210,225,0.04)]">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-[#fad2e1]/12 border border-[#fad2e1]/30 rounded-xl">
@@ -4142,7 +4205,52 @@ export default function AiReportView({
             )}
 
             {/* 12. 종합 최종 분석 판정 */}
-            {ai['8_finalVerdict'] && (
+            {!v31HidesFinalVerdict && ai['8_finalVerdict'] && (
+                isV31 ? (
+                    <div className="v31-order-misc">
+                        <details className="analysis-v31-details">
+                            <summary>종합 최종 분석 판정 · 펼치기</summary>
+                            <div className="analysis-v31-details-body">
+                                <div className={`p-6 lg:p-7 bg-[#0f172a]/55 border border-[#FFFB3F]/20 rounded-[32px] ${v31CardClass}`}>
+                                    {(() => {
+                                        const verdict = ai['8_finalVerdict'];
+                                        if (typeof verdict !== 'object') {
+                                            return <span className="text-sm leading-relaxed">{String(verdict)}</span>;
+                                        }
+
+                                        const v = verdict.verdic || verdict.verdict || '-';
+                                        const grade = verdict.investmentGrade || '-';
+                                        const reason = verdict.reason || '-';
+                                        const condition = verdict.condition || '';
+
+                                        return (
+                                            <div className="flex flex-col gap-5">
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    <div className="px-3.5 py-1.5 bg-[#FFFB3F] text-[#0f172a] font-black text-xs rounded-lg">
+                                                        결론: {v}
+                                                    </div>
+                                                    <div className="px-3.5 py-1.5 bg-white/[0.06] border border-white/15 font-bold text-xs rounded-lg">
+                                                        등급: {grade}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-2">
+                                                    <span className="text-[11px] font-semibold text-[#64748b]">분석 근거</span>
+                                                    <span className="text-sm leading-relaxed">{reason}</span>
+                                                </div>
+                                                {condition && (
+                                                    <div className="flex flex-col gap-2 pt-4 border-t border-[#eceef1]">
+                                                        <span className="text-[11px] font-semibold text-[#64748b]">전제 조건</span>
+                                                        <span className="text-xs leading-relaxed italic text-[#64748b]">{condition}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                ) : (
                 <div className="p-6 lg:p-7 bg-[#0f172a]/55 border border-[#FFFB3F]/20 rounded-[32px]">
                     <div className="flex items-center gap-3 mb-6 pb-5 border-b border-white/[0.06]">
                         <div className="p-2 bg-[#FFFB3F]/10 border border-[#FFFB3F]/25 rounded-xl">
@@ -4186,11 +4294,13 @@ export default function AiReportView({
                         );
                     })()}
                 </div>
+                )
             )}
 
             {/* 13. 데이터 출처 */}
-            {ai.analysisMetadata && (
-                <div className="p-6 lg:p-7 bg-[#0f172a]/50 border border-white/[0.06] rounded-[32px]">
+            {ai.analysisMetadata && (() => {
+                const dataSourceBody = (
+                    <>
                     <div className="flex justify-between items-center pb-5 mb-5 border-b border-white/[0.06]">
                         <div className="flex items-center gap-2.5">
                             <div className="p-1.5 rounded-lg bg-emerald-500/10">
@@ -4263,8 +4373,30 @@ export default function AiReportView({
                             </div>
                         </div>
                     )}
-                </div>
-            )}
+                    </>
+                );
+
+                if (isV31) {
+                    return (
+                        <div className="v31-order-misc">
+                            <details className="analysis-v31-details">
+                                <summary>데이터 출처 · 신뢰도</summary>
+                                <div className="analysis-v31-details-body">
+                                    <div className={`p-6 lg:p-7 bg-[#0f172a]/50 border border-white/[0.06] rounded-[32px] ${v31CardClass}`}>
+                                        {dataSourceBody}
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="p-6 lg:p-7 bg-[#0f172a]/50 border border-white/[0.06] rounded-[32px]">
+                        {dataSourceBody}
+                    </div>
+                );
+            })()}
 
             {/* Comparable Map Modal */}
             {isMapModalOpen && (

@@ -15,6 +15,7 @@ import {
 import { parseParcelPolygonFromVworldResponse, computePolygonCentroid } from '../lib/parcelGeometry';
 import { fetchR114LiteComplex, resolveR114LiteAptSeq } from '../lib/r114LiteApi';
 import type { R114LiteResolveAptSeqResponse } from '../lib/r114LiteTypes';
+import { createAdminListing } from '../lib/listingInventory';
 import R114LiteAptSeqResolveForm from './R114LiteAptSeqResolveForm';
 import {
   PANEL_CARD,
@@ -59,6 +60,8 @@ interface AnalyzePanelProps {
   onMobileButtonClick?: () => void;
   /** 관리자 샘플 분석(/admin/analyze) — 리포트 생성 후 AI 자동 실행 플래그 */
   adminSampleMode?: boolean;
+  /** 관리자 매물 Lite 등록 — 토지·빌딩, analyze-with-report 대신 admin/listings */
+  listingRegisterMode?: boolean;
   /** URL 추출 등 외부에서 분석 폼 전체를 채울 때 사용 */
   urlPrefill?: {
     timestamp: number;
@@ -166,7 +169,7 @@ function SearchInputSpinnerSlot({ busy }: { busy: boolean }) {
   );
 }
 
-export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill, adminSampleMode }: AnalyzePanelProps) {
+export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill, adminSampleMode, listingRegisterMode }: AnalyzePanelProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [canAnalyze, setCanAnalyze] = useState(true);
@@ -260,6 +263,12 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   useEffect(() => {
     fetch('/industry_master.json').then(r => r.json()).then(setAllIndustries).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (listingRegisterMode) {
+      setDetailInput((prev) => ({ ...prev, transactionType: '매매' }));
+    }
+  }, [listingRegisterMode, selectedCategory]);
 
   useEffect(() => {
     if (!prefilledR114PropId) {
@@ -659,6 +668,65 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     user,
   ]);
 
+  const executeListingRegistration = useCallback(async (resolvedPnu: string | null) => {
+    if (!listingRegisterMode || !selectedCategory || !address || !lat || !lng || !user) return;
+    if (selectedCategory !== 'land' && selectedCategory !== 'building') return;
+
+    if (detailInput.salePrice === '' || Number(detailInput.salePrice) <= 0) {
+      setAnalysisError('매매가(만원)를 입력해 주세요.');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const allParcels = [{ address, lat, lng, pnu: resolvedPnu }];
+      if (isMultiParcel) {
+        additionalParcels.forEach((p) => { if (p.pnu) allParcels.push(p); });
+      }
+      const pnuList = allParcels.map((p) => p.pnu).filter(Boolean) as string[];
+      const storeData = collectAnalysisInputData(selectedCategory, {
+        ...detailInput,
+        transactionType: '매매',
+      });
+
+      const payload = {
+        category: selectedCategory as 'land' | 'building',
+        address,
+        lat,
+        lng,
+        primaryPnu: resolvedPnu,
+        pnuList,
+        storeData,
+        priceMan: detailInput.salePrice,
+      };
+
+      const result = await createAdminListing(idToken, payload);
+      if (!result.success || !result.item) {
+        throw new Error(result.error || '매물 등록 실패');
+      }
+      router.push(`/listing/${result.item.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '매물 등록 오류';
+      setAnalysisError(message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [
+    additionalParcels,
+    address,
+    detailInput,
+    isMultiParcel,
+    lat,
+    lng,
+    listingRegisterMode,
+    router,
+    selectedCategory,
+    user,
+  ]);
+
   const handleAptSeqResolved = useCallback((data: NonNullable<R114LiteResolveAptSeqResponse['data']>) => {
     setPrefilledRtmsAptSeq(data.rtmsAptSeq);
     setR114LiteMeta((prev) => (prev ? { ...prev, needsResolve: false } : null));
@@ -674,6 +742,20 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     if (!selectedCategory || !address || !lat || !lng || !user) return;
 
     let resolvedPnu = primaryPnu;
+
+    if (listingRegisterMode) {
+      if (!resolvedPnu && lat && lng) {
+        try {
+          const fetched = await getPnuFromCoords(lat, lng);
+          if (fetched) {
+            resolvedPnu = fetched;
+            setPrimaryPnu(fetched);
+          }
+        } catch { /* optional */ }
+      }
+      await executeListingRegistration(resolvedPnu);
+      return;
+    }
 
     // 아파트인 경우 PNU가 없으면 lat/lng로 재시도 (VWorld 지연 대응)
     if (selectedCategory === 'apartment') {
@@ -756,8 +838,14 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     <div className="relative flex flex-col h-full min-h-0 bg-slate-50/30">
       {/* 헤더 */}
       <div className={PAGE_SUBHEADER}>
-        <h2 className={PAGE_SUBHEADER_TITLE}>공공데이터 수집</h2>
-        <p className={PANEL_SECTION_DESC}>카테고리와 위치를 선택한 뒤 리포트를 생성하세요</p>
+        <h2 className={PAGE_SUBHEADER_TITLE}>
+          {listingRegisterMode ? '매물 등록' : '공공데이터 수집'}
+        </h2>
+        <p className={PANEL_SECTION_DESC}>
+          {listingRegisterMode
+            ? '위치·가격 입력 후 Lite 매물 페이지로 이동합니다'
+            : '카테고리와 위치를 선택한 뒤 리포트를 생성하세요'}
+        </p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-5 py-4 space-y-3">
@@ -791,7 +879,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className={`grid gap-1.5 ${listingRegisterMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
               {CATEGORIES.slice(3).map(cat => (
                 <button
                   key={cat.id}
@@ -1022,6 +1110,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               category={selectedCategory}
               input={detailInput}
               onChange={patchDetailInput}
+              mode={listingRegisterMode ? 'listing' : 'default'}
             />
           </section>
         )}
@@ -1036,7 +1125,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
 
       {/* 하단 CTA — 고정 */}
       <div className="shrink-0 px-4 lg:px-5 py-3.5 border-t border-slate-100 bg-white">
-        {isMobile ? (
+        {isMobile && !listingRegisterMode ? (
           <button
             type="button"
             onClick={onMobileButtonClick}
@@ -1048,7 +1137,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           <a href="/login" className="block w-full py-3 bg-slate-900 text-white font-bold rounded-xl text-center text-xs hover:bg-slate-800 transition-all">
             로그인 후 진행
           </a>
-        ) : !canAnalyze ? (
+        ) : !listingRegisterMode && !canAnalyze ? (
           <div className="w-full py-3 bg-rose-50 text-rose-600 font-semibold rounded-xl text-center text-xs border border-rose-100">
             일일 수집 한도 초과
           </div>
@@ -1065,13 +1154,17 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 실거래 확인 중...
               </>
             ) : isAnalyzing ? (
-              '데이터 수집 중...'
+              listingRegisterMode ? '매물 등록 중...' : '데이터 수집 중...'
+            ) : listingRegisterMode ? (
+              '매물 등록 → Lite 페이지'
             ) : (
               '공공데이터 수집 리포트 생성'
             )}
           </button>
         )}
-        <p className="text-[9px] text-slate-400 text-center mt-2 font-medium">국가 공공 데이터 기반 리포트</p>
+        <p className="text-[9px] text-slate-400 text-center mt-2 font-medium">
+          {listingRegisterMode ? '등록 후 AI 분석은 Lite 페이지에서 진행' : '국가 공공 데이터 기반 리포트'}
+        </p>
       </div>
 
       {/* r114 Lite aptSeq 미검증 — 리포트 생성 직전 단지 확인 */}

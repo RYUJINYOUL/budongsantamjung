@@ -32,6 +32,9 @@ export const RECOM_CATEGORIES = ['아파트', '토지', '주택', '상가', '빌
 /** 추천 목록·로그인 게이트 공통 부제 */
 export const RECOM_LIST_TAGLINE = '분석 2만+건 중 높은 점수 7.5%만 추천합니다.';
 
+/** 매물(/listings) 목록 부제 */
+export const LISTINGS_LIST_TAGLINE = '중개사·관리자가 등록한 매물입니다.';
+
 /** 지도 퀵픽 패널 헤더 */
 export const RECOM_QUICK_PICK_TITLE = '엄선 추천';
 

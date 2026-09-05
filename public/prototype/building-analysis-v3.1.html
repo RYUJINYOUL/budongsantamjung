@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>역삼하이츠빌딩 · 서울 강남구 테헤란로 AI 분석 | 부동산탐정</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Noto Sans KR", sans-serif; background: #f5f6f8; color: #17191c; }
+    button { font: inherit; cursor: pointer; }
+    .container { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+    .proto-strip { background: #fffbeb; border-bottom: 1px solid #fde68a; padding: 7px 16px; text-align: center; font-size: 12px; color: #92400e; }
+    .proto-strip a { color: #2563eb; font-weight: 700; text-decoration: none; }
+    .topbar { background: #fff; border-bottom: 1px solid #e8e9ec; }
+    .topbar-inner { height: 64px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { font-size: 18px; font-weight: 800; }
+    .brand span { color: #2563eb; }
+    .small-btn { border: 1px solid #e1e3e7; background: white; border-radius: 8px; padding: 8px 13px; font-size: 13px; color: #555; }
+    .data-tabs-wrap { background: #0f172a; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .data-tabs-inner { display: flex; gap: 4px; overflow-x: auto; padding: 10px 0; scrollbar-width: none; }
+    .data-tabs-inner::-webkit-scrollbar { display: none; }
+    .data-tab { flex: 0 0 auto; padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; color: rgba(255,255,255,.55); background: transparent; border: none; white-space: nowrap; }
+    .data-tab.active { color: #fff; background: #059669; }
+    .data-tab-note { font-size: 11px; color: rgba(255,255,255,.4); padding: 0 0 8px; text-align: center; }
+    .page-header { padding: 28px 0 20px; }
+    .breadcrumb { color: #8a8f98; font-size: 13px; margin-bottom: 9px; }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -1px; }
+    .address { margin-top: 7px; color: #70757e; font-size: 14px; }
+    .summary { background: #fff; border: 1px solid #e4e6ea; border-radius: 18px; padding: 28px; box-shadow: 0 3px 12px rgba(0,0,0,.035); margin-bottom: 0; }
+    .summary-grid { display: grid; grid-template-columns: 1fr 300px; gap: 28px; }
+    .badge { padding: 7px 11px; border-radius: 999px; font-size: 13px; font-weight: 700; display: inline-block; }
+    .badge.green { background: #eaf8ef; color: #15803d; }
+    .badge.blue { background: #e8f0fe; color: #1d4ed8; }
+    .badge.amber { background: #fff7df; color: #a16207; }
+    .judgment-stack { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+    .judgment-row { display: flex; gap: 12px; padding: 10px 14px; background: #f7f8fa; border-radius: 10px; font-size: 13px; }
+    .judgment-row .jk { color: #858a92; min-width: 110px; }
+    .judgment-row .jv { font-weight: 800; }
+    .judgment-row.reliability { background: #fff7df; border: 1px solid #fde68a; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .metric.land { background: #fff7df; border: 1px solid #fde68a; }
+    .metric { background: #f7f8fa; border-radius: 12px; padding: 14px; }
+    .metric.building { background: #eef4fb; border: 1px solid #c7daf5; }
+    .metric.income { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .metric .pl { font-size: 11px; color: #858a92; }
+    .metric .pv { font-size: 18px; font-weight: 800; margin-top: 5px; letter-spacing: -.3px; }
+    .metric .ps { font-size: 10px; color: #969ba3; margin-top: 3px; }
+    .combined-bar-wrap { margin-top: 18px; padding: 16px; background: #f8fafc; border-radius: 12px; border: 1px solid #e4e6ea; }
+    .combined-bar-title { font-size: 12px; font-weight: 800; margin-bottom: 10px; color: #475569; }
+    .stack-bar { display: flex; height: 14px; border-radius: 8px; overflow: hidden; margin-bottom: 8px; }
+    .stack-land { background: #93c5fd; flex: 92; }
+    .stack-bldg { background: #64748b; flex: 7; min-width: 20px; }
+    .stack-legend { display: flex; gap: 16px; font-size: 11px; color: #64748b; flex-wrap: wrap; }
+    .stack-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+    .leg-land::before { background: #93c5fd; }
+    .leg-bldg::before { background: #64748b; }
+    .why-panel { border-left: 1px solid #eceef1; padding-left: 22px; }
+    .why-panel h3 { font-size: 14px; margin: 0 0 12px; }
+    .why-item { display: flex; gap: 8px; font-size: 13px; margin-bottom: 7px; line-height: 1.5; }
+    .why-item .ok { color: #16a34a; font-weight: 800; }
+    .why-item .warn { color: #b7791f; font-weight: 800; }
+    .tab-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #eceef1; }
+    .tab-link { font-size: 11px; padding: 5px 10px; border-radius: 6px; background: #f7f8fa; border: 1px solid #e4e6ea; color: #60656d; cursor: pointer; }
+    .section-nav { position: sticky; top: 0; z-index: 20; margin-top: 16px; background: rgba(245,246,248,.94); backdrop-filter: blur(10px); padding: 12px 0; border-bottom: 1px solid #e4e6ea; }
+    .nav-inner { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .nav-btn { flex: 0 0 auto; border: 1px solid #e0e2e6; background: white; border-radius: 999px; padding: 8px 14px; font-size: 12px; color: #60656d; }
+    .nav-btn.active { background: #17191c; color: white; border-color: #17191c; }
+    .section { padding-top: 44px; scroll-margin-top: 100px; }
+    .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .section-number { font-size: 12px; color: #2563eb; font-weight: 800; }
+    .section-title h2 { margin: 0; font-size: 21px; }
+    .section-desc { color: #7d828a; font-size: 13px; margin-top: 4px; }
+    .card { background: white; border: 1px solid #e4e6ea; border-radius: 15px; padding: 22px; margin-bottom: 13px; }
+    .card-title { font-size: 14px; font-weight: 800; margin-bottom: 16px; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .chip { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #f7f8fa; border: 1px solid #e4e6ea; color: #555; }
+    .chip.blue { background: #e8f0fe; color: #1d4ed8; border-color: #bfdbfe; }
+    .chip.slate { background: #eef4fb; color: #475569; border-color: #c7daf5; }
+    .chip.green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+    .chip.warn { background: #fff7df; color: #a16207; }
+    .price-methods-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .pm-box { background: #f7f8fa; border-radius: 12px; padding: 16px; border: 1px solid #eceef1; }
+    .pm-box.building { background: #eef4fb; border-color: #c7daf5; }
+    .pm-box.income { background: #f0fdf4; border-color: #bbf7d0; }
+    .pm-box-label { font-size: 11px; color: #858a92; margin-bottom: 6px; }
+    .pm-box-value { font-size: 15px; font-weight: 800; line-height: 1.35; }
+    .pm-box-sub { font-size: 11px; color: #969ba3; margin-top: 6px; line-height: 1.5; }
+    .pm-badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 4px; margin-top: 8px; background: #fff7df; color: #a16207; font-weight: 700; }
+    .pm-badge.ok { background: #eaf8ef; color: #15803d; }
+    .pm-badge.muted { background: #f1f5f9; color: #64748b; }
+    .pm-badge.warn { background: #fef2f2; color: #c24141; }
+    .income-detail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; padding: 16px; background: #f0fdf4; border-radius: 12px; border: 1px solid #bbf7d0; }
+    .income-item label { font-size: 10px; color: #64748b; display: block; }
+    .income-item strong { font-size: 14px; display: block; margin-top: 4px; }
+    .income-item span { font-size: 10px; color: #969ba3; }
+    .empty-comparable { background: #fffaf0; border: 1px solid #f2e2b9; border-radius: 13px; padding: 17px; margin-bottom: 13px; }
+    .empty-title { font-weight: 800; font-size: 13px; }
+    .empty-desc { font-size: 12px; color: #7e7360; margin-top: 6px; line-height: 1.6; }
+    .ref-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; background: #f7f8fa; border-radius: 10px; font-size: 12px; margin-top: 10px; }
+    .outline-btn, .btn-primary { border-radius: 10px; padding: 10px 16px; font-size: 12px; font-weight: 700; margin-right: 8px; margin-top: 10px; }
+    .outline-btn { background: white; border: 1px solid #ded4bd; color: #555; }
+    .btn-primary { background: #2563eb; color: white; border: none; }
+    .map-card { display: grid; grid-template-columns: 1fr 300px; min-height: 340px; padding: 0; overflow: hidden; }
+    .map { position: relative; min-height: 340px; background: linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), #e8edf0; background-size: 50px 50px; }
+    .map-target { position: absolute; left: 48%; top: 48%; width: 22px; height: 22px; background: #111; border: 4px solid white; border-radius: 50%; }
+    .map-pin { position: absolute; width: 32px; height: 20px; background: #94a3b8; color: white; font-size: 8px; font-weight: 800; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+    .map-legend { position: absolute; left: 12px; bottom: 12px; background: rgba(255,255,255,.92); border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.8; }
+    .map-list { border-left: 1px solid #e5e7eb; padding: 18px; font-size: 12px; }
+    .map-item { padding: 10px 0; border-bottom: 1px solid #eff0f2; }
+    .map-item:last-child { border-bottom: 0; }
+    .development-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .dev-item { background: #f7f8fa; border-radius: 12px; padding: 16px; }
+    .dev-label { font-size: 11px; color: #858a92; }
+    .dev-value { margin-top: 6px; font-weight: 800; font-size: 15px; }
+    .benefit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .benefit { border: 1px solid #e4e6ea; border-radius: 13px; padding: 16px; }
+    .benefit-type { font-size: 11px; font-weight: 800; margin-bottom: 8px; }
+    .benefit.direct { border-color: #bce5c9; background: #fbfffc; }
+    .benefit.direct .benefit-type { color: #15803d; }
+    .benefit.indirect .benefit-type { color: #a16207; }
+    .macro-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+    .macro-item { background: #f7f8fa; border-radius: 10px; padding: 14px; }
+    .macro-item label { font-size: 11px; color: #858a92; display: block; }
+    .macro-item strong { font-size: 15px; display: block; margin-top: 5px; }
+    .macro-item span { font-size: 11px; color: #969ba3; }
+    .chart { height: 120px; display: flex; align-items: flex-end; gap: 8px; padding: 0 8px; border-bottom: 1px solid #ddd; }
+    .chart-bar { flex: 1; background: #d9e0eb; border-radius: 4px 4px 0 0; min-height: 8px; }
+    .chart-bar.active { background: #2563eb; }
+    .risk-score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 13px; }
+    .risk-score { display: flex; gap: 12px; align-items: flex-start; padding: 15px; border-radius: 11px; background: #fafafa; border: 1px solid #eee; }
+    .risk-score-num { font-size: 20px; font-weight: 800; min-width: 36px; color: #2563eb; }
+    .risk-score-title { font-size: 13px; font-weight: 700; }
+    .risk-score-desc { margin-top: 4px; color: #858a92; font-size: 11px; line-height: 1.5; }
+    .risk-bar { height: 4px; background: #e8ebef; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .risk-bar-fill { height: 100%; border-radius: 2px; background: #2563eb; }
+    .checklist-item { display: flex; gap: 10px; padding: 12px 0; border-bottom: 1px solid #eff0f2; font-size: 13px; line-height: 1.55; }
+    .checklist-item:last-child { border-bottom: 0; }
+    .check-icon { color: #c24141; font-weight: 800; }
+    .details-block { border: 1px solid #e4e6ea; border-radius: 12px; margin-bottom: 12px; background: white; overflow: hidden; }
+    .details-block summary { padding: 14px 18px; cursor: pointer; font-weight: 700; font-size: 13px; list-style: none; background: #f7f8fa; }
+    .details-block summary::-webkit-details-marker { display: none; }
+    .details-body { padding: 16px 18px; font-size: 13px; color: #555; line-height: 1.75; border-top: 1px solid #eee; }
+    .notice-inline { font-size: 12px; color: #64748b; background: #f8fafc; border-radius: 10px; padding: 12px 14px; margin-top: 12px; line-height: 1.6; }
+    .verdict-card { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 15px; padding: 22px; margin-top: 13px; }
+    .income-hero { background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border: 1px solid #bbf7d0; border-radius: 16px; padding: 22px; margin-bottom: 14px; }
+    .income-hero-main { font-size: 32px; font-weight: 800; color: #15803d; letter-spacing: -1px; }
+    .income-hero-sub { font-size: 12px; color: #64748b; margin-top: 6px; }
+    .income-hero-ref { font-size: 14px; color: #475569; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #bbf7d0; }
+    .income-notice { font-size: 11px; color: #64748b; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 14px; line-height: 1.65; margin-bottom: 14px; }
+    .income-calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+    .income-calc-box { background: #f7f8fa; border: 1px solid #e4e6ea; border-radius: 12px; padding: 16px; }
+    .income-calc-box.highlight { background: #f0fdf4; border-color: #bbf7d0; }
+    .income-calc-box label { font-size: 11px; color: #858a92; display: block; }
+    .income-calc-box strong { font-size: 16px; display: block; margin-top: 6px; }
+    .income-calc-box span { font-size: 10px; color: #969ba3; display: block; margin-top: 4px; }
+    .rent-table-wrap { max-height: 360px; overflow: auto; border: 1px solid #e4e6ea; border-radius: 10px; margin-top: 10px; }
+    .rent-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .rent-table th { position: sticky; top: 0; background: #f7f8fa; padding: 8px 10px; text-align: left; border-bottom: 1px solid #e4e6ea; font-weight: 700; }
+    .rent-table td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
+    .rent-table tr.non-rent td { color: #969ba3; }
+    .land-change-card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 13px; padding: 18px; margin-bottom: 13px; }
+    .land-change-title { font-size: 13px; font-weight: 800; color: #1d4ed8; margin-bottom: 8px; }
+    .vacancy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+    .vacancy-item { background: #fff7df; border: 1px solid #fde68a; border-radius: 10px; padding: 14px; font-size: 12px; }
+    .vacancy-item strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    .future-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+    .forecast { text-align: center; padding: 28px; margin-bottom: 0; }
+    .forecast-label { color: #858a92; font-size: 12px; }
+    .forecast-value { margin-top: 9px; font-size: 25px; font-weight: 800; }
+    .forecast-desc { margin-top: 8px; color: #777d85; font-size: 12px; line-height: 1.5; }
+    .bull-bear { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+    .bull h3 { color: #15803d; font-size: 14px; margin: 0; }
+    .bear h3 { color: #c24141; font-size: 14px; margin: 0; }
+    .bull ul, .bear ul { margin: 10px 0 0; padding-left: 18px; color: #656a72; font-size: 13px; line-height: 2; }
+    .price-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 13px; margin-bottom: 13px; }
+    .valuation-main { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+    .valuation-caption { color: #878c94; font-size: 12px; margin-top: 5px; line-height: 1.5; }
+    .valuation-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .valuation-table th, .valuation-table td { padding: 12px 5px; border-bottom: 1px solid #eff0f2; text-align: left; }
+    .valuation-table th { color: #8a8f97; font-weight: 500; }
+    .valuation-table td:last-child { text-align: right; font-weight: 700; }
+    .price-bar { margin-top: 20px; }
+    .price-labels { display: flex; justify-content: space-between; color: #858a92; font-size: 11px; margin-bottom: 9px; }
+    .bar { position: relative; height: 10px; background: #e8ebef; border-radius: 20px; }
+    .bar-range { position: absolute; left: 5%; right: 5%; height: 10px; background: #dce8ff; border-radius: 20px; }
+    .bar-marker { position: absolute; left: 3%; top: -5px; width: 20px; height: 20px; background: #17191c; border: 4px solid white; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+    .method-card { border-width: 2px; }
+    .method-card.income-card { border-color: #bbf7d0; }
+    .method-card.official-card { border-color: #fde68a; }
+    .method-card.residual-card { border-color: #c7daf5; }
+    .method-card.combined-card { border-color: #e4e6ea; background: #f8fafc; }
+    .method-card-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+    .method-card-header h3 { margin: 0; font-size: 15px; flex: 1; min-width: 200px; }
+    .residual-hero { background: linear-gradient(135deg, #eef4fb, #f8fafc); border: 1px solid #c7daf5; border-radius: 16px; padding: 20px; margin-bottom: 14px; }
+    .residual-hero-main { font-size: 28px; font-weight: 800; color: #475569; }
+    .official-hero { background: linear-gradient(135deg, #fffbeb, #fefce8); border: 1px solid #fde68a; border-radius: 16px; padding: 20px; margin-bottom: 14px; }
+    .official-hero-main { font-size: 26px; font-weight: 800; color: #a16207; line-height: 1.35; }
+    .vitals-row { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 11px; color: #64748b; margin-top: 10px; }
+    .combined-rows { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .combined-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e4e6ea; }
+    .combined-row.total { font-weight: 800; font-size: 15px; border-bottom: 0; padding-top: 14px; border-top: 2px solid #e4e6ea; }
+    .price-section-tabs { margin-bottom: 16px; }
+    @media (max-width: 900px) {
+      .summary-grid, .map-card, .price-methods-row, .metrics, .development-grid, .benefit-grid, .income-detail, .macro-grid, .income-calc-grid, .vacancy-grid, .future-grid, .bull-bear, .price-grid { grid-template-columns: 1fr; }
+      .why-panel { border-left: 0; padding-left: 0; padding-top: 16px; border-top: 1px solid #eceef1; }
+      .risk-score-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="proto-strip">
+  UI 프로토타입 <strong>빌딩 v3.1</strong> · report <strong>#15637</strong> (역삼하이츠빌딩 · 실데이터) ·
+  <a href="/prototype/land-analysis-v3.1.html">토지 v3.1</a> ·
+  <a href="/prototype/land-analysis-v3.html">비교 목록</a> ·
+  <a href="https://www.tamjung.me/analyze/15637">현재 분석</a>
+</div>
+
+<header class="topbar">
+  <div class="container topbar-inner">
+    <div class="brand">부동산<span>탐정</span></div>
+    <div class="top-actions">
+      <button class="small-btn" type="button">← 추천 지도</button>
+      <button class="small-btn" type="button">AI 재분석</button>
+    </div>
+  </div>
+</header>
+
+<div class="data-tabs-wrap">
+  <div class="container">
+    <div class="data-tabs-inner">
+      <button class="data-tab" type="button">탐정 요약</button>
+      <button class="data-tab" type="button">호재·투자점수</button>
+      <button class="data-tab" type="button">토지 이음</button>
+      <button class="data-tab" type="button">건축물대장</button>
+      <button class="data-tab" type="button">부동산원</button>
+      <button class="data-tab" type="button">공시지가</button>
+      <button class="data-tab" type="button">실거래가</button>
+      <button class="data-tab" type="button">조례·동향·공급</button>
+      <button class="data-tab active" type="button">AI 분석 ✓</button>
+    </div>
+    <div class="data-tab-note">빌딩 = 토지 대입 + 건물 잔존가(원가법) + 수익환원법(CAP Rate) · 탭에서 원본 데이터 확인</div>
+  </div>
+</div>
+
+<main class="container">
+
+  <section class="page-header">
+    <div class="breadcrumb">빌딩 분석 · #15637 · 상가(업무시설) 매매</div>
+    <h1>역삼하이츠빌딩 · 서울 강남구 테헤란로</h1>
+    <div class="address">연면적 24,982.7㎡ · 일반상업지역 · 준공 35년차 · 역삼역 초역세권 · 주차 109대(옥내101·옥외8)</div>
+  </section>
+
+  <!-- SUMMARY -->
+  <section class="summary" id="conclusion">
+    <div class="summary-grid">
+      <div>
+        <span class="badge blue">토지 대입 + 건물 잔존 + 수익환원</span>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span class="badge green">매수</span>
+          <span style="font-size:28px;font-weight:800;letter-spacing:-1px">61점</span>
+        </div>
+        <div class="judgment-stack">
+          <div class="judgment-row"><span class="jk">투자 판단</span><span class="jv">매수</span></div>
+          <div class="judgment-row"><span class="jk">판단 점수</span><span class="jv">61 / 100</span></div>
+          <div class="judgment-row reliability"><span class="jk">데이터 신뢰도</span><span class="jv">C — 동일유형 비교 0건</span></div>
+        </div>
+        <p style="font-size:11px;color:#969ba3;margin:0">※ 3법 동시 표시: 공시배율(토지) · 수익환원 · 잔존가 · 합산 참고</p>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="pl">제시 매매가</div>
+            <div class="pv">80억</div>
+            <div class="ps">토지+건물 일괄</div>
+          </div>
+          <div class="metric land">
+            <div class="pl">공시지가 배율 (토지)</div>
+            <div class="pv" style="font-size:15px">1,560~3,120억</div>
+            <div class="ps">스펙트럼 · AI 배율</div>
+          </div>
+          <div class="metric income">
+            <div class="pl">수익환원 (빌딩)</div>
+            <div class="pv">1,183억</div>
+            <div class="ps">NOI ÷ CAP 3.23%</div>
+          </div>
+          <div class="metric building">
+            <div class="pl">건물 잔존가</div>
+            <div class="pv">116.8억</div>
+            <div class="ps">NTS 원가법 하한</div>
+          </div>
+          <div class="metric">
+            <div class="pl">합산 참고</div>
+            <div class="pv" style="font-size:15px">1,677~3,237억</div>
+            <div class="ps">토지 + 잔존</div>
+          </div>
+          <div class="metric">
+            <div class="pl">제시가 CAP (역산)</div>
+            <div class="pv">2.5%</div>
+            <div class="ps">벤치 3.8% → ~725억</div>
+          </div>
+        </div>
+
+        <div class="combined-bar-wrap">
+          <div class="combined-bar-title">제시 80억 — 3법·합산 대비 현저히 낮음 · 지분·채무승계 등 거래조건 검토</div>
+          <div class="stack-bar">
+            <div class="stack-land" title="토지 공시배율"></div>
+            <div class="stack-bldg" title="건물 잔존"></div>
+          </div>
+          <div class="stack-legend">
+            <span class="leg-land">공시배율 토지 1,560~3,120억</span>
+            <span class="leg-bldg">+ 잔존 116.8억 · 수익환원 1,183억(별도 트랙)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="why-panel">
+        <h3>AI 요약</h3>
+        <p style="font-size:13px;color:#555;line-height:1.65;margin:0 0 14px">역삼역 초역세권·용적률 잔여분·테헤란로 지구단위계획 등 개발 호재로 잠재력이 큽니다. CAP 2.5%는 시세차익 기대가 큰 투자 유형이며, 35년차 노후 유지보수 비용을 고려해야 합니다.</p>
+        <h3 style="font-size:13px;color:#666;margin-top:0">강점</h3>
+        <div class="why-item"><span class="ok">✓</span><span>용적률 GAP 558.93%p (1300% vs 741%)</span></div>
+        <div class="why-item"><span class="ok">✓</span><span>테헤란로 지구단위계획 · 규제 8점</span></div>
+        <div class="why-item"><span class="ok">✓</span><span>생활편의 24곳 · 역세권 9점</span></div>
+        <h3 style="margin-top:16px;font-size:13px;color:#666">주의</h3>
+        <div class="why-item"><span class="warn">⚠</span><span>동일유형 비교 0건 · 거래량 2점</span></div>
+        <div class="why-item"><span class="warn">⚠</span><span>제시가 CAP 2.5% — 벤치 3.8% 시 ~725억</span></div>
+        <div class="why-item"><span class="warn">⚠</span><span>35년 노후 · 대장 3점 · 설비 리스크</span></div>
+      </div>
+    </div>
+
+    <div class="tab-links">
+      <span class="tab-link">건축물대장 →</span>
+      <span class="tab-link">실거래가 탭 →</span>
+      <span class="tab-link">공시지가 →</span>
+      <span class="tab-link">부동산원 (R-ONE) →</span>
+      <span class="tab-link">호재·투자점수 →</span>
+    </div>
+  </section>
+
+  <nav class="section-nav">
+    <div class="nav-inner">
+      <button class="nav-btn active" type="button" onclick="scrollToId('price')">01 가격</button>
+      <button class="nav-btn" type="button" onclick="scrollToId('comparable')">02 비교</button>
+      <button class="nav-btn" type="button" onclick="scrollToId('building')">03 건물·개발</button>
+      <button class="nav-btn" type="button" onclick="scrollToId('benefit')">04 호재·미래가치</button>
+      <button class="nav-btn" type="button" onclick="scrollToId('market')">05 시장</button>
+      <button class="nav-btn" type="button" onclick="scrollToId('risk')">06 리스크</button>
+    </div>
+  </nav>
+
+  <!-- 01 PRICE -->
+  <section class="section" id="price">
+    <div class="section-title">
+      <span class="section-number">01</span>
+      <div><h2>가격 적정성</h2><div class="section-desc">비교사례 · 공시지가 · 수익환원 · 잔존가 · 합산 — 제시가 vs 추정</div></div>
+    </div>
+
+    <div class="card" style="border-color:#bbf7d0;background:#fbfffc">
+      <div class="card-title" style="margin-bottom:8px">가격 타당성 검증 (AI 결론)</div>
+      <p style="font-size:14px;line-height:1.75;margin:0;color:#333">
+        제시 매매가 <strong>80억</strong>은 공시지가 배율법 토지 스펙트럼(<strong>1,560~3,120억</strong>)과 국세청 건물신축가격기준액 기반 잔존가치 <strong>116.8억</strong>을 합산한 빌딩 총 가치 추정 범위에 비해 <strong>현저히 낮은</strong> 수준입니다.
+        지분 매각·채무 승계 등 특정 거래 조건이 반영되었을 가능성이 있으며, 일반적인 시장 가치와는 큰 차이를 보입니다.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">가격분석 · 비교사례 · 공시지가 · 수익환원 · 잔존가</div>
+      <div class="tab-links price-section-tabs">
+        <span class="tab-link">실거래가 탭 →</span>
+        <span class="tab-link">공시지가 탭 →</span>
+        <span class="tab-link">부동산원 탭 →</span>
+        <span class="tab-link">건축물대장 →</span>
+        <span class="tab-link">토지이음 →</span>
+        <span class="tab-link">호재·투자점수 →</span>
+      </div>
+
+      <div class="price-methods-row">
+        <div class="pm-box">
+          <div class="pm-box-label">실거래 비교</div>
+          <div class="pm-box-value" style="color:#969ba3">산출 불가 · 0건</div>
+          <div class="pm-box-sub">1km · 동일 유형 0건<br>비교사례 부족 · 신뢰 C</div>
+          <span class="pm-badge warn">신뢰 C</span>
+        </div>
+        <div class="pm-box" style="background:#fffbeb;border-color:#fde68a">
+          <div class="pm-box-label">공시지가 배율 (토지)</div>
+          <div class="pm-box-value">1,560~3,120억</div>
+          <div class="pm-box-sub">스펙트럼 · AI 배율법<br>최저 1,559억 ~ 최고 3,119억</div>
+          <span class="pm-badge">토지 가치</span>
+        </div>
+        <div class="pm-box income">
+          <div class="pm-box-label">수익환원법 (빌딩)</div>
+          <div class="pm-box-value">약 1,183억</div>
+          <div class="pm-box-sub">NOI 27.5억 ÷ CAP 3.23%<br>R-ONE · 자동 추정</div>
+          <span class="pm-badge ok">IncomeApproach</span>
+        </div>
+      </div>
+
+      <div class="price-grid">
+        <div class="card" style="margin:0;padding:18px">
+          <div class="card-title" style="margin-bottom:10px">AI 추정가 · 제시가 위치</div>
+          <div class="valuation-main">80억 vs 725억 ~ 1,183억</div>
+          <div class="valuation-caption">공시배율 토지 1,560~3,120억 · 수익환원 1,183억 · 벤치 CAP 3.8% 역산 ~725억 · 제시 80억은 전 구간 대비 저평가</div>
+          <div class="price-bar">
+            <div class="price-labels"><span>제시 80억</span><span>725억</span><span>1,183억</span></div>
+            <div class="bar"><div class="bar-range"></div><div class="bar-marker"></div></div>
+          </div>
+        </div>
+        <div class="card" style="margin:0;padding:18px">
+          <div class="card-title" style="margin-bottom:10px">가격 산출 근거 (3법)</div>
+          <table class="valuation-table">
+            <tr><th>실거래 비교</th><td>0건</td></tr>
+            <tr><th>공시지가 배율</th><td>1,560~3,120억</td></tr>
+            <tr><th>수익환원법</th><td>1,183억 (3.23%)</td></tr>
+            <tr><th>건물 잔존가</th><td>116.8억</td></tr>
+            <tr><th>합산 참고</th><td>1,677~3,237억</td></tr>
+            <tr><th>신뢰도</th><td>C · 비교 0건</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- (1) 수익환원법 · IncomeApproachSection -->
+    <div class="card method-card income-card">
+      <div class="method-card-header">
+        <h3>수익환원법 기반 빌딩 추정가</h3>
+        <span class="chip green">수익환원법</span>
+        <span class="chip green">CAP 3.23%</span>
+        <span class="chip green">빌딩 전용</span>
+        <span class="chip green">자동 추정</span>
+      </div>
+      <div class="income-notice">
+        사용자가 보증금과 월세를 입력하지 않아, <strong>주변 임대료 시세 평균(R-ONE 및 실거래)</strong>을 바탕으로 자동 추정한 값입니다. 정확한 분석을 원하시면 실제 임대료를 직접 입력해 주세요.<br><br>
+        ※ 보증금 운용수익은 가계대출금리(<strong>4.50%</strong>) 기준 참고치이며 <strong>메인 추정가 계산에서는 제외</strong>되었습니다.<br>
+        ※ 빌딩 추정가 = 연간 순영업소득(NOI) ÷ 캡레이트(환원율). R-ONE 오피스 소득수익률(분기)을 연환산하여 적용.
+      </div>
+
+      <div class="income-hero">
+        <div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:6px">▶ 빌딩 추정가 (NOI 기준)</div>
+        <div class="income-hero-main">약 1,183.2억 원</div>
+        <div class="income-hero-sub">(118,321,896,200 원) · 적용 CAP <strong>3.23%</strong> · R-ONE 오피스 소득수익률 기준</div>
+        <div class="income-hero-ref">
+          ※ 보증금 운용수익 포함 시 (참고): <strong>약 1,101.9억</strong> (110,186,462,400 원)
+        </div>
+      </div>
+
+      <div class="income-calc-grid">
+        <div class="income-calc-box highlight">
+          <label>[자동 추정된 임대 정보]</label>
+          <strong>총 월세 229,555,130 원</strong>
+          <span>총 보증금 4,591,102,600 원</span>
+        </div>
+        <div class="income-calc-box">
+          <label>[수익 산출] 연간 NOI</label>
+          <strong>2,754,661,560 원/년</strong>
+          <span>(추정 월세 229,555,130원 × 12개월)</span>
+        </div>
+        <div class="income-calc-box">
+          <label>보증금 운용수익 (참고)</label>
+          <strong>206,599,617 원/년</strong>
+          <span>가계대출금리 4.50% 기준 · 메인 추정 제외</span>
+        </div>
+        <div class="income-calc-box highlight">
+          <label>적용 환원율 (CAP Rate)</label>
+          <strong>3.23%</strong>
+          <span>R-ONE 오피스 소득수익률 · 연환산</span>
+        </div>
+      </div>
+
+      <details class="details-block">
+        <summary>층별 보정계수 산출 내역 · FloorBreakdownTable (전체 90+행)</summary>
+        <div class="details-body" style="padding:0">
+          <div class="rent-table-wrap">
+            <table class="rent-table">
+              <thead><tr><th>층</th><th>용도</th><th>면적</th><th>최종계수</th><th>추정월세</th></tr></thead>
+              <tbody>
+                <tr><td>지상19층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상19층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상19층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상18층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상18층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상18층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상17층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상17층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상17층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상16층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상16층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상16층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상15층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상15층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상15층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상14층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상14층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상14층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상13층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상13층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상13층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상12층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상12층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상12층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상11층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상11층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상11층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상10층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상10층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상10층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상9층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상9층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상9층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상8층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상8층</td><td>기타</td><td>166㎡</td><td>0.41</td><td>2,183,945원</td></tr>
+                <tr><td>지상8층</td><td>오피스텔</td><td>635㎡</td><td>0.36</td><td>7,300,521원</td></tr>
+                <tr><td>지상7층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상7층</td><td>기타</td><td>127㎡</td><td>0.42</td><td>1,707,206원</td></tr>
+                <tr class="non-rent"><td>지상7층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상7층</td><td>업무시설</td><td>639㎡</td><td>0.36</td><td>7,348,070원</td></tr>
+                <tr><td>지상6층</td><td>승강기</td><td>17㎡</td><td>0.53</td><td>294,613원</td></tr>
+                <tr><td>지상6층</td><td>기타</td><td>127㎡</td><td>0.42</td><td>1,707,206원</td></tr>
+                <tr class="non-rent"><td>지상6층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상6층</td><td>업무시설, 제2종근린(직업훈련소)</td><td>639㎡</td><td>0.42</td><td>8,644,788원</td></tr>
+                <tr><td>지상5층</td><td>업무시설</td><td>283㎡</td><td>0.43</td><td>3,952,081원</td></tr>
+                <tr><td>지상5층</td><td>승강기</td><td>17㎡</td><td>0.60</td><td>330,599원</td></tr>
+                <tr><td>지상5층</td><td>기타</td><td>181㎡</td><td>0.46</td><td>2,657,375원</td></tr>
+                <tr class="non-rent"><td>지상5층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상5층</td><td>업무시설</td><td>303㎡</td><td>0.43</td><td>4,191,572원</td></tr>
+                <tr><td>지상4층</td><td>승강기</td><td>17㎡</td><td>0.60</td><td>330,599원</td></tr>
+                <tr><td>지상4층</td><td>기타</td><td>127㎡</td><td>0.47</td><td>1,915,737원</td></tr>
+                <tr class="non-rent"><td>지상4층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상4층</td><td>업무시설</td><td>639㎡</td><td>0.40</td><td>8,245,621원</td></tr>
+                <tr><td>지상3층</td><td>승강기</td><td>17㎡</td><td>0.60</td><td>330,599원</td></tr>
+                <tr><td>지상3층</td><td>기타</td><td>127㎡</td><td>0.47</td><td>1,915,737원</td></tr>
+                <tr class="non-rent"><td>지상3층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상3층</td><td>업무시설</td><td>639㎡</td><td>0.40</td><td>8,245,621원</td></tr>
+                <tr><td>지상2층</td><td>승강기</td><td>17㎡</td><td>0.64</td><td>354,590원</td></tr>
+                <tr><td>지상2층</td><td>기타</td><td>169㎡</td><td>0.49</td><td>2,673,170원</td></tr>
+                <tr class="non-rent"><td>지상2층</td><td>기타일반업무시설</td><td>34㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상2층</td><td>제1종근린(안과의원)</td><td>513㎡</td><td>0.52</td><td>8,539,763원</td></tr>
+                <tr><td>지상1층</td><td>승강기</td><td>17㎡</td><td>0.88</td><td>483,037원</td></tr>
+                <tr><td>지상1층</td><td>기타</td><td>211㎡</td><td>0.66</td><td>4,469,475원</td></tr>
+                <tr><td>지상1층</td><td>M.D.P실</td><td>34㎡</td><td>0.82</td><td>911,971원</td></tr>
+                <tr class="non-rent"><td>지상1층</td><td>기타일반업무시설</td><td>31㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지상1층</td><td>제2종근린(일반음식점)</td><td>433㎡</td><td>0.77</td><td>10,678,096원</td></tr>
+                <tr><td>지하1층</td><td>제1종근린(안과의원)</td><td>79㎡</td><td>0.52</td><td>1,319,658원</td></tr>
+                <tr><td>지하1층</td><td>기타</td><td>246㎡</td><td>0.39</td><td>3,118,750원</td></tr>
+                <tr class="non-rent"><td>지하1층</td><td>기타일반업무시설</td><td>52㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하1층</td><td>기타일반업무시설</td><td>797㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지하1층</td><td>제2종근린(일반음식점)</td><td>430㎡</td><td>0.44</td><td>6,036,066원</td></tr>
+                <tr><td>지하1층</td><td>휴게음식점</td><td>18㎡</td><td>0.63</td><td>372,735원</td></tr>
+                <tr><td>지하1층</td><td>제1종근린(소매점)</td><td>166㎡</td><td>0.48</td><td>2,570,123원</td></tr>
+                <tr><td>지하2층</td><td>기타</td><td>225㎡</td><td>0.40</td><td>2,886,382원</td></tr>
+                <tr class="non-rent"><td>지하2층</td><td>기타일반업무시설</td><td>52㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하2층</td><td>기타일반업무시설</td><td>782㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지하2층</td><td>업무시설(사무소)</td><td>319㎡</td><td>0.38</td><td>3,902,368원</td></tr>
+                <tr><td>지하2층</td><td>업무시설(사무소)</td><td>414㎡</td><td>0.37</td><td>4,957,106원</td></tr>
+                <tr><td>지하3층</td><td>기타</td><td>126㎡</td><td>0.42</td><td>1,691,224원</td></tr>
+                <tr class="non-rent"><td>지하3층</td><td>기타일반업무시설</td><td>13㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하3층</td><td>기타일반업무시설</td><td>1,653㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지하4층</td><td>기타</td><td>126㎡</td><td>0.42</td><td>1,691,224원</td></tr>
+                <tr class="non-rent"><td>지하4층</td><td>기타일반업무시설</td><td>13㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하4층</td><td>기타일반업무시설</td><td>1,653㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지하5층</td><td>기타</td><td>132㎡</td><td>0.42</td><td>1,770,073원</td></tr>
+                <tr class="non-rent"><td>지하5층</td><td>기타일반업무시설</td><td>13㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하5층</td><td>기타일반업무시설</td><td>832㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하6층</td><td>기타일반업무시설</td><td>860㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하6층</td><td>기타일반업무시설</td><td>231㎡</td><td>—</td><td>비임대</td></tr>
+                <tr class="non-rent"><td>지하6층</td><td>기타일반업무시설</td><td>275㎡</td><td>—</td><td>비임대</td></tr>
+                <tr><td>지하6층</td><td>기타</td><td>124㎡</td><td>0.42</td><td>1,668,334원</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <div class="notice-inline" style="margin-top:14px;margin-bottom:0">
+        제시가 80억 기준 <strong>CAP 2.5%</strong> (벤치 3.8~4.5% 하회) · 벤치 3.8% 역산 ~725억.
+        R-ONE CAP 3.23% 메인 추정 <strong>1,183억</strong>은 NOI 기준 빌딩 전체 가치(토지+수익 포함).
+      </div>
+    </div>
+
+    <!-- (2) 공시지가 배율법 · OfficialMultiplierSection -->
+    <div class="card method-card official-card">
+      <div class="method-card-header">
+        <h3>공시지가 배율법 (토지 가치)</h3>
+        <span class="chip warn">보수적 산출</span>
+        <span class="chip warn">반경 1000m · 0건</span>
+        <span class="chip">일반상업지역</span>
+      </div>
+      <div class="official-hero">
+        <div style="font-size:11px;font-weight:700;color:#a16207;margin-bottom:6px">토지 가치 스펙트럼 (공시지가 배율법)</div>
+        <div class="official-hero-main">1,560억 ~ 3,120억</div>
+        <div class="income-hero-sub">최저 1,559억 9,587만 ~ 최고 3,119억 9,175만 · AI 스펙트럼 배율 적용</div>
+      </div>
+      <p style="font-size:12px;color:#64748b;line-height:1.65;margin:0">
+        반경 1km 내 동일 유형 실거래 0건 → 공시지가 배율법으로 토지 구간 추정.
+        빌딩 매매에서 토지·건물 분리 시 <strong>토지 대입</strong>으로 사용 · 잔존가와 합산 참고.
+      </p>
+      <details class="details-block" style="margin-top:14px;margin-bottom:0">
+        <summary>산출식 · 배율 상세 (펼치기)</summary>
+        <div class="details-body">
+          <p>공시지가 × 대지면적 × AI 배율 스펙트럼 (최저~최고). 일반상업지역 · 역삼동 · 사다리형 토지.</p>
+          <p>동적 배율 미적용 시 보수적 하드코딩 배율 fallback — #15637은 AI 스펙트럼(1,560~3,120억) 적용.</p>
+        </div>
+      </details>
+    </div>
+
+    <!-- (3) 잔존가치법 · BuildingResidualSection -->
+    <div class="card method-card residual-card">
+      <div class="method-card-header">
+        <h3>건축물 연식 고려, 잔존 가치를 검토합니다.</h3>
+        <span class="chip slate">원가법 하한</span>
+        <span class="chip">토지가 미포함</span>
+        <span class="chip muted" style="background:#f1f5f9;color:#64748b">시장가 아님</span>
+      </div>
+      <div class="residual-hero">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:6px">건물 잔존가 (원가법)</div>
+        <div class="residual-hero-main">116.8억원</div>
+        <div class="income-hero-sub">116억 7,691만 원 · 국세청 건물신축가격기준액 · 연면적 24,982.7㎡</div>
+      </div>
+      <div class="vitals-row">
+        <strong style="color:#334155">역삼하이츠빌딩</strong>
+        <span>업무시설 · 철근콘크리트</span>
+        <span>준공 1991년 (경과 35년)</span>
+        <span>지상19층 · 지하6층</span>
+        <span>용적률 741.07% · 건폐율 —</span>
+      </div>
+      <p style="font-size:11px;color:#969ba3;margin:10px 0 0">AI 서술: 116억 7,691만 원</p>
+      <details class="details-block" style="margin-top:14px;margin-bottom:0">
+        <summary>산출식 · 지수 상세 (펼치기)</summary>
+        <div class="details-body">
+          <table class="valuation-table">
+            <tr><th>국세청 기준가</th><td>㎡당 신축가격기준액</td></tr>
+            <tr><th>구조지수</th><td>철근콘크리트 ×</td></tr>
+            <tr><th>용도지수</th><td>업무시설 ×</td></tr>
+            <tr><th>위치지수</th><td>공시지가 구간 ×</td></tr>
+            <tr><th>잔가율</th><td>35년 경과 반영 ×</td></tr>
+          </table>
+        </div>
+      </details>
+      <p class="notice-inline" style="margin-top:12px;margin-bottom:0">
+        ※ 국세청 신축가격기준액 기준 <strong>하한선</strong>이며 시장가·임대수익·리모델링 가치는 반영되지 않습니다.
+      </p>
+    </div>
+
+    <!-- 합산 참고 · 토지 + 건물 -->
+    <div class="card method-card combined-card">
+      <div class="card-title">빌딩 총 가치 참고 (토지 + 건물)</div>
+      <div class="combined-rows">
+        <div class="combined-row"><span>토지 대입 (공시지가 배율)</span><span style="color:#a16207;font-weight:700">1,560 ~ 3,120억</span></div>
+        <div class="combined-row"><span>건물 잔존 (원가법)</span><span style="color:#475569;font-weight:700">116.8억</span></div>
+        <div class="combined-row total"><span>합산 참고 범위</span><span>1,677 ~ 3,237억</span></div>
+      </div>
+      <p style="font-size:11px;color:#64748b;margin:12px 0 0;line-height:1.6">
+        AI 스펙트럼: 1,559억 9,587만 ~ 3,119억 9,175만 (+ 잔존 116.8억).
+        <strong>수익환원 1,183억</strong>은 NOI 기준 별도 트랙(임대수익 환원) · 합산과 직접 비교하지 마세요.
+      </p>
+    </div>
+
+    <details class="details-block">
+      <summary>Valuation Ledger · AI 가격 해설 (펼치기)</summary>
+      <div class="details-body">
+        <p>토지: 동일유형 비교 0건 → 공시지가 배율법 스펙트럼 1,560~3,120억. 건물: NTS 신축가격기준액 기반 잔존 116.8억 (35년차 · 업무시설).</p>
+        <p>수익환원: R-ONE CAP 3.23% → 추정 1,183억 · 제시 80억 기준 CAP 2.5% (벤치 3.8% → ~725억). 보증금 운용수익(4.5%)은 메인 추정 제외.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- 02 COMPARABLES -->
+  <section class="section" id="comparable">
+    <div class="section-title">
+      <span class="section-number">02</span>
+      <div><h2>비교사례 · 지도</h2><div class="section-desc">동일유형 0건 · 지역 참고 · ComparableMap</div></div>
+    </div>
+
+    <div class="empty-comparable">
+      <div class="empty-title">⚠ 동일 유형 유효 비교 0건</div>
+      <div class="empty-desc">반경 내 동일 유형의 최 recent 실거래가 총 0건 탐지. 비교사례가 부족하여 개별 사례 분석은 생략합니다. 가격은 공시배율·잔존가·수익환원법으로 검증합니다.</div>
+      <button class="outline-btn" type="button">실거래가 탭 →</button>
+      <button class="outline-btn" type="button">주변 실거래 지도</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">지역 참고 실거래 (RegionalTradesReferenceSection)</div>
+      <div class="ref-row">
+        <div><strong>역삼동 · 숙박시설</strong><br>일반상업지역 · 인근 상업용 부동산</div>
+        <div style="text-align:right"><strong>대지 평당 2억 1,191만</strong><br>높은 토지 가치 형성</div>
+      </div>
+      <p style="font-size:11px;color:#888;margin:12px 0 0">인근 상업용 부동산 매매 사례 참고 · 동일유형 Tier 비교 아님</p>
+    </div>
+
+    <div class="card map-card">
+      <div class="map">
+        <div class="map-target"></div>
+        <div class="map-pin" style="left:62%;top:38%">참고</div>
+        <div class="map-pin" style="left:38%;top:52%">참고</div>
+        <div class="map-pin" style="left:55%;top:65%">참고</div>
+        <div class="map-legend">● 대상지(역삼) · 회색 인근 참고 · 동일유형 0건</div>
+      </div>
+      <div class="map-list">
+        <h3 style="margin:0 0 12px;font-size:14px">가격 · 주변</h3>
+        <div class="map-item"><strong>동일유형 비교</strong><br>0건 · 신뢰 C</div>
+        <div class="map-item"><strong>지역 참고</strong><br>역삼동 숙박 · 평당 2.1억+</div>
+        <div class="map-item"><strong>건물 잔존</strong><br>116.8억 · NTS 원가법</div>
+        <div class="map-item"><strong>수익환원</strong><br>1,183억 · CAP 3.23%</div>
+        <div class="map-item"><strong>합산 추정</strong><br>1,677~3,237억</div>
+        <div class="map-item"><strong>제시가</strong><br>80억 · 범위 대비 저평가</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 BUILDING + DEV -->
+  <section class="section" id="building">
+    <div class="section-title">
+      <span class="section-number">03</span>
+      <div><h2>건물 · 개발가능성</h2><div class="section-desc">건축물대장 + 용적률 GAP · 재건축 시나리오</div></div>
+    </div>
+
+    <div class="card">
+      <div class="development-grid">
+        <div class="dev-item"><div class="dev-label">연면적</div><div class="dev-value">24,982.7㎡</div></div>
+        <div class="dev-item"><div class="dev-label">용도지역</div><div class="dev-value">일반상업지역</div></div>
+        <div class="dev-item"><div class="dev-label">법정 / 현재 용적률</div><div class="dev-value">1,300% / 741.07%</div></div>
+        <div class="dev-item"><div class="dev-label">용적률 GAP</div><div class="dev-value" style="color:#15803d">+558.93%p</div></div>
+        <div class="dev-item"><div class="dev-label">준공 · 노후</div><div class="dev-value">35년차</div></div>
+        <div class="dev-item"><div class="dev-label">주차</div><div class="dev-value">109대 (옥내101·옥외8)</div></div>
+        <div class="dev-item"><div class="dev-label">승강기</div><div class="dev-value">2대 · 교체주기 도래</div></div>
+        <div class="dev-item"><div class="dev-label">공실률</div><div class="dev-value" style="color:#15803d">4.1%</div></div>
+        <div class="dev-item"><div class="dev-label">입지</div><div class="dev-value">역삼역 초역세권</div></div>
+        <div class="dev-item"><div class="dev-label">토지 형상</div><div class="dev-value">사다리형 (6점)</div></div>
+        <div class="dev-item"><div class="dev-label">벤치 CAP 역산</div><div class="dev-value">3.8% → ~725억</div></div>
+        <div class="dev-item"><div class="dev-label">재건축 잠재</div><div class="dev-value" style="color:#15803d">매우 높음</div></div>
+      </div>
+
+      <div class="vacancy-grid">
+        <div class="vacancy-item">
+          <strong>현재 공실 4.1%</strong>
+          낮은 편 · NOI 기반 CAP 산출
+        </div>
+        <div class="vacancy-item">
+          <strong>3개월 공실 시</strong>
+          임대손실 6억 8,867만 → CAP <strong>25.8%</strong> 하락
+        </div>
+        <div class="vacancy-item">
+          <strong>6개월 공실 시</strong>
+          임대손실 13억 7,733만 → CAP <strong>17.2%</strong> 급락
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:#555;margin:14px 0 0;line-height:1.65">
+        중대형 빌딩(연면적 24,982㎡ · 80억) — 서울 중대형 오피스 벤치마크 CAP 3.8~4.5%.
+        단일 임차인 비중이 높을 경우 이탈 시 NOI 급락 · 임차인 구성·계약 조건 면밀 확인 필요.
+        <span class="tab-link" style="display:inline-block;margin-left:4px">건축물대장 →</span>
+        <span class="tab-link" style="display:inline-block">토지 이음 →</span>
+      </p>
+    </div>
+
+    <div class="land-change-card">
+      <div class="land-change-title">대상 인접 필지 용도변경 이력 조회 · 5년 이내</div>
+      <p style="font-size:13px;line-height:1.7;margin:0;color:#334155">
+        <strong>인접 필지 용도변경 감지</strong> — 최근 5년 내 인근 지역이 주거 용도에서 업무·근린생활시설로 전환되는 <strong>상업화 시그널</strong> 포착 (최근 5년 5건 · 3년 5건).
+        [대상지: 역삼동 601번지, 601-1번지, 601-11번지 등]<br>
+        숙박시설 용도변경 1건(5년 1건) — [역삼동 605번지] 주변 상권 활성화 참고.<br>
+        향후 상업지역 용도변경 성공 시 자산 가치 상향 가능성 높음 <strong>(현재 비준가격 미반영)</strong>.
+      </p>
+      <span class="tab-link" style="margin-top:10px;display:inline-block">토지 이음 →</span>
+    </div>
+
+    <details class="details-block">
+      <summary>토지 형태 및 개발 잠재력 · AI 해설 (펼치기)</summary>
+      <div class="details-body">
+        <p>대상 매물은 연면적 24,982.7㎡, 매매가 80억 원으로 중대형 빌딩. 서버 추정 월세 2억 2,956만/월 · NOI 27억 5,466만/년 · 제시가 기준 CAP 2.5% (벤치 3.8~4.5% 하회 · 시세차익형). 벤치 CAP 3.8% 역산 적정가 ~725억.</p>
+        <p>공실률 4.1% — 3개월 공실 시 CAP 25.8%, 6개월 공실 시 17.2%까지 급락. 단일 임차인 이탈 시 NOI 타격 큼.</p>
+        <p>35년 노후 · 엘리베이터 2대 교체 주기 · 주차 109대(연면적 대비 양호). 사진 미제공 — 외벽·누수·타일·녹 현장 확인 필요.</p>
+      </div>
+    </details>
+
+    <details class="details-block">
+      <summary>투자 시나리오 비교 (현 임대 / 리모델링 / 재건축)</summary>
+      <div class="details-body">
+        <p><strong>현 임대 유지:</strong> CAP 2.5%로 임대수익률 제한적.</p>
+        <p><strong>리모델링 후 임대:</strong> 노후도 개선·임대료 상승 기대. 초기 투자·공실 기간 리스크.</p>
+        <p><strong>신축·재건축:</strong> 용적률 GAP 558.93%p — 장기 최대 시세차익. 대규모 자본·인허가·공사기간 수익 단절 리스크.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- 04 HOSAE -->
+  <section class="section" id="benefit">
+    <div class="section-title">
+      <span class="section-number">04</span>
+      <div><h2>호재 · 미래가치</h2><div class="section-desc">직접/간접 · 호재·투자점수 탭 링크</div></div>
+    </div>
+    <div class="benefit-grid">
+      <div class="benefit direct">
+        <div class="benefit-type">🟢 직접수혜 · 규제 8점</div>
+        <strong>테헤란로 지구단위계획 변경</strong>
+        <p style="font-size:12px;color:#666;margin:8px 0 0">고시 등 직접 수혜 개발 호재 · 규제 완화·가치 상승 가능성 높음</p>
+        <span class="tab-link" style="margin-top:8px;display:inline-block">호재·투자점수 →</span>
+      </div>
+      <div class="benefit indirect">
+        <div class="benefit-type">🟡 간접 · 인프라</div>
+        <strong>역삼역 초역세권 · 상업화 시그널</strong>
+        <p style="font-size:12px;color:#666;margin:8px 0 0">메가MGC커피 역삼문화공원점 등 생활편의 24곳 · 임대료 상승 추세</p>
+      </div>
+      <div class="benefit" style="border-color:#e4e6ea">
+        <div class="benefit-type" style="color:#a16207">⚠ 경쟁 환경</div>
+        <strong>인근 신규 주택 공급</strong>
+        <p style="font-size:12px;color:#666;margin:8px 0 0">래미안 레벤투스 · 도곡아테라 등 — 시장 경쟁 변화 주시</p>
+        <span class="tab-link" style="margin-top:8px;display:inline-block">조례·동향·공급 →</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">미래가치 전망</div>
+      <div class="future-grid">
+        <div class="card forecast">
+          <div class="forecast-label">단기 · 6개월</div>
+          <div class="forecast-value">보합 ~ 약상승</div>
+          <div class="forecast-desc">R-ONE 임대↑ · 공실↓ · 동일유형 거래 0건</div>
+        </div>
+        <div class="card forecast">
+          <div class="forecast-label">중장기 · 개발 성공</div>
+          <div class="forecast-value">재건축 · 용적률 GAP</div>
+          <div class="forecast-desc">558.93%p · 테헤란로 지구단위계획</div>
+        </div>
+      </div>
+      <p style="font-size:13px;color:#555;line-height:1.7;margin:16px 0 0">
+        역삼역 역세권·R-ONE 오피스 견조·용적률 잔여분 vs 비교사례 0건·35년 노후·래미안 레벤투스 등 신규 공급.
+        <strong>AI 추론이며 확정 예측 아님.</strong> 테헤란로 지구단위계획·재건축 시나리오 시 개발 이익 현실화 가능.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="bull-bear">
+        <div class="bull">
+          <h3>▲ 상승 · 긍정 요인</h3>
+          <ul>
+            <li>일반상업 · 용적률 GAP 558.93%p</li>
+            <li>테헤란로 지구단위계획 · 규제 8점</li>
+            <li>역삼역 초역세권 · 생활편의 24곳</li>
+            <li>R-ONE 임대료 상승 · 공실률 하락</li>
+            <li>제시 80억 · 3법·합산 대비 저평가</li>
+          </ul>
+        </div>
+        <div class="bear">
+          <h3>▼ 제한 · 리스크 요인</h3>
+          <ul>
+            <li>비교사례 0건 · 신뢰 C</li>
+            <li>동일유형 거래 0건 · 거래량 2/10</li>
+            <li>제시가 CAP 2.5% · 공실 시나리오</li>
+            <li>35년 노후 · 엘리베이터·설비</li>
+            <li>래미안 레벤투스 · 도곡아테라 공급</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <details class="details-block">
+      <summary>심층 분석 · 미래가치 전망 AI 원문</summary>
+      <div class="details-body">
+        <p>역삼역 초역세권 · 테헤란로 지구단위계획 · 용적률 잔여분 — 재건축·증축 가치 상향 동인. R-ONE 기준 강남권 오피스 임대 견조.</p>
+        <p>강남구 인구 소폭 감소 vs 세대당 인구 유지 — 1인 가구·실거주 수요 해석. 래미안 레벤투스·도곡아테라 등 신규 주택 공급 — 경쟁 환경 주시.</p>
+        <p>향후 6개월: R-ONE·상업화 시그널 고려 <strong>보합~약상승</strong>. AI 추론이며 확정 예측 아님.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- 05 MARKET -->
+  <section class="section" id="market">
+    <div class="section-title">
+      <span class="section-number">05</span>
+      <div><h2>지역 시장 · R-ONE</h2><div class="section-desc">거래량 · 오피스 시장 · 부동산원 탭</div></div>
+    </div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+        <div>
+          <div style="font-size:36px;font-weight:800;color:#b7791f">2<span style="font-size:18px;color:#888">/10</span></div>
+          <div style="font-size:12px;color:#888">거래량 점수 — 동일유형 0건</div>
+          <div style="font-size:13px;color:#64748b;margin-top:8px;line-height:1.55">반경 내 동일 유형 최근 실거래 0건. 지역 거래량 매우 한산.</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#888;margin-bottom:8px">R-ONE 오피스 시장 동향</div>
+          <div class="chart">
+            <div class="chart-bar" style="height:55%"></div>
+            <div class="chart-bar" style="height:68%"></div>
+            <div class="chart-bar" style="height:75%"></div>
+            <div class="chart-bar" style="height:82%"></div>
+            <div class="chart-bar" style="height:90%"></div>
+            <div class="chart-bar active" style="height:100%"></div>
+          </div>
+          <div style="font-size:11px;color:#888;margin-top:6px">임대가격지수 · 임대료 ↑ / 공실률 ↓</div>
+        </div>
+      </div>
+
+      <div class="macro-grid">
+        <div class="macro-item">
+          <label>임대가격지수</label>
+          <strong>상승</strong>
+          <span>R-ONE 오피스</span>
+        </div>
+        <div class="macro-item">
+          <label>임대료</label>
+          <strong>꾸준히 ↑</strong>
+          <span>강남권 수요 견조</span>
+        </div>
+        <div class="macro-item">
+          <label>공실률</label>
+          <strong>하락 추세</strong>
+          <span>수요 반영</span>
+        </div>
+        <div class="macro-item">
+          <label>현재 공실률</label>
+          <strong>4.1%</strong>
+          <span>3·6개월 시나리오 주의</span>
+        </div>
+        <div class="macro-item">
+          <label>인구 현황</label>
+          <strong>6점 · +0.1%</strong>
+          <span>약한 증가세</span>
+        </div>
+      </div>
+
+      <p style="font-size:13px;color:#1e40af;background:#eff6ff;border-radius:10px;padding:12px;margin:16px 0 0;line-height:1.6">
+        <strong>오피스 시장은 견조하나, 이 필지 동일유형 거래는 0건.</strong> R-ONE·지역 거래와 대상 필지를 구분해 해석하세요.
+      </p>
+      <span class="tab-link">부동산원 탭 →</span>
+      <span class="tab-link">실거래가 탭 →</span>
+    </div>
+  </section>
+
+  <!-- 06 RISK -->
+  <section class="section" id="risk">
+    <div class="section-title">
+      <span class="section-number">06</span>
+      <div><h2>리스크 · 계약 전 확인</h2><div class="section-desc">세부 리스크 평가 9항목 + 현장 체크리스트</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">세부 리스크 평가 (ScoreEngine)</div>
+      <div class="risk-score-grid">
+        <div class="risk-score">
+          <div class="risk-score-num">8</div>
+          <div>
+            <div class="risk-score-title">규제 전망</div>
+            <div class="risk-score-desc">테헤란로 지구단위계획 변경 고시 등 직접 수혜 · 규제 완화·가치 상승 가능성 높음</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:80%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">5</div>
+          <div>
+            <div class="risk-score-title">건물 노후도 (사진)</div>
+            <div class="risk-score-desc">35년 · 방수·배관·전기 노후 · 외벽 균열·타일 탈락 · 엘리베이터 교체 주기 (사진 미제공 추정)</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:50%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">6</div>
+          <div>
+            <div class="risk-score-title">임대 수익성</div>
+            <div class="risk-score-desc">제시가 CAP 2.5% · R-ONE 추정 1,183억(CAP 3.23%) · 벤치 3.8% → ~725억 · 시세차익 기대형</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:60%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">2</div>
+          <div>
+            <div class="risk-score-title">거래량 (인근 실거래)</div>
+            <div class="risk-score-desc">반경 내 동일 유형 최근 실거래 0건 · 지역 거래량 매우 한산</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:20%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">9</div>
+          <div>
+            <div class="risk-score-title">생활 편의시설</div>
+            <div class="risk-score-desc">메가MGC커피 역삼문화공원점 역세권 · 주요 생활편의 24곳 · 매우 우수</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:90%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">6</div>
+          <div>
+            <div class="risk-score-title">인구 현황</div>
+            <div class="risk-score-desc">최근 기간 약 0.1% 변동 · 약한 증가세</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:60%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">3</div>
+          <div>
+            <div class="risk-score-title">건물 노후도 (대장)</div>
+            <div class="risk-score-desc">준공 35년 · 재건축 연한(30년) 초과 · 상당한 노후화 예상</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:30%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">9</div>
+          <div>
+            <div class="risk-score-title">토지 이용 규제</div>
+            <div class="risk-score-desc">일반상업지역 · 통상적 활용 가치·규제 강도 양호</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:90%"></div></div>
+          </div>
+        </div>
+        <div class="risk-score">
+          <div class="risk-score-num">6</div>
+          <div>
+            <div class="risk-score-title">토지 형상</div>
+            <div class="risk-score-desc">사다리형 · 대지 활용도 양호</div>
+            <div class="risk-bar"><div class="risk-bar-fill" style="width:60%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="details-block">
+      <summary>임대 수익 전망 · EXIT 전략 (펼치기)</summary>
+      <div class="details-body">
+        <p>R-ONE: 임대가격지수·임대료 ↑, 공실률 ↓ — 강남권 오피스 견조. 35년차 — 리모델링·재건축 가치 증대가 주요 EXIT.</p>
+        <p>용적률 GAP · 테헤란로 지구단위계획 — 개발이익 실현·매각 타이밍 긍정적.</p>
+      </div>
+    </details>
+
+    <details class="details-block">
+      <summary>구조 · 하자 리스크 (펼치기)</summary>
+      <div class="details-body">
+        <p>35년 — 방수층 노후 누수, 배관 부식·막힘, 전기 설비 안전성 저하. 엘리베이터 2대 교체·대규모 수선. 외벽 균열·타일 탈락 정기 점검.</p>
+        <p>사진 미제공 — 외벽·누수·타일·녹 등 노후도 현장 방문 확인 필수.</p>
+      </div>
+    </details>
+
+    <div class="card">
+      <div class="card-title">현장 체크리스트</div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>현재 임차인들의 계약 만료일, 임대료 수준, 보증금 및 월세 납부 현황을 상세히 확인</div></div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>엘리베이터의 최근 점검 기록 및 교체 이력, 주요 부품 노후도와 향후 교체 비용 파악</div></div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>건물 외벽의 균열, 누수, 타일 탈락 등 육안 하자 여부와 보수 이력 확인</div></div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>지하층 주차장의 침수 이력, 배수 시설 상태 및 주차 관리 상세 현황 점검</div></div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>건물 내 방수, 배관, 전기 설비의 최종 교체 시기 및 현재 상태를 전문가 진단</div></div>
+      <div class="checklist-item"><span class="check-icon">🔴</span><div>건물 관리비 내역 항목, 최근 3년간 관리비 변동 추이 및 미납 관리비 여부 확인</div></div>
+    </div>
+
+    <div class="verdict-card">
+      <div class="card-title" style="margin-bottom:8px;color:#15803d">최종 판정: 매수</div>
+        <p style="font-size:13px;color:#444;margin:0;line-height:1.7">
+        역삼역 초역세권·용적률 GAP·테헤란로 지구단위계획 등 개발 잠재력이 크고, 합산·수익환원(1,183억) 대비 제시 80억은 현저히 낮습니다.
+        CAP 2.5%·공실 시나리오·35년 노후·동일유형 0건·임차인 구성 리스크를 반영해 현장 확인 후 진행하세요.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  function scrollToId(id) {
+    const el = document.getElementById(id);
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 90, behavior: 'smooth' });
+  }
+  const sections = ['price', 'comparable', 'building', 'benefit', 'market', 'risk'];
+  const buttons = document.querySelectorAll('.nav-btn');
+  window.addEventListener('scroll', () => {
+    let cur = 'price';
+    sections.forEach(id => { const s = document.getElementById(id); if (s && window.scrollY >= s.offsetTop - 120) cur = id; });
+    buttons.forEach((b, i) => b.classList.toggle('active', sections[i] === cur));
+  });
+</script>
+</body>
+</html>

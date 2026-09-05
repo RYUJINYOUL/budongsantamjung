@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>토지 AI 분석 프로토타입 비교</title>
+  <style>
+    body { font-family: -apple-system, "Noto Sans KR", sans-serif; background: #f5f6f8; margin: 0; padding: 40px 20px; }
+    .wrap { max-width: 520px; margin: 0 auto; }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    p { color: #666; font-size: 14px; line-height: 1.6; }
+    .cards { display: flex; flex-direction: column; gap: 12px; margin-top: 24px; }
+    a.card {
+      display: block; background: #fff; border: 1px solid #e4e6ea; border-radius: 14px;
+      padding: 20px 22px; text-decoration: none; color: inherit;
+    }
+    a.card:hover { border-color: #2563eb; box-shadow: 0 4px 12px rgba(37,99,235,.12); }
+    .card strong { font-size: 16px; display: block; margin-bottom: 6px; }
+    .card span { font-size: 13px; color: #666; line-height: 1.5; }
+    .tag { font-size: 11px; font-weight: 700; color: #2563eb; margin-bottom: 8px; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>토지 AI 분석 UI 프로토타입</h1>
+    <p>report #11572 (평택 서정동) · 비교 후 선택</p>
+    <div class="cards">
+      <a class="card" href="/prototype/building-analysis-v3.1.html">
+        <span class="tag">building v3.1</span>
+        <strong>빌딩 · 토지+건물 분리</strong>
+        <span>잔존가(원가법) · 합산 범위 · 건물 비교 3건 · #11572 목업</span>
+      </a>
+      <a class="card" href="/prototype/land-analysis-v3.1.html">
+        <span class="tag">v3.1</span>
+        <strong>Wide · 5섹션 + 접기</strong>
+        <span>1180px · Summary + 01~05 · Valuation Ledger · 상세 리스크 · AI 해설 접기</span>
+      </a>
+      <a class="card" href="/prototype/land-analysis-v4.html">
+        <span class="tag">v4</span>
+        <strong>8섹션 계층 IA</strong>
+        <span>판정/신뢰도 분리 · 비교사례 0건 강조 · 호재 테이블 · 지역≠대상 구분</span>
+      </a>
+      <a class="card" href="/prototype/land-analysis-pyungtaek.html">
+        <span class="tag">v2</span>
+        <strong>Dense · cream 900px</strong>
+        <span>정보 밀도 높은 단일 스크롤 · 원본 콘텐츠 기준</span>
+      </a>
+    </div>
+  </div>
+</body>
+</html>
