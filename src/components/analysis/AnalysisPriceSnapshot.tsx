@@ -3,6 +3,7 @@
 import React from 'react';
 import {
   buildComparableSub,
+  buildEstimateRangeLabel,
   buildPriceRangeCaption,
   extractSummaryTags,
   formatEokCompact,
@@ -39,7 +40,8 @@ export default function AnalysisPriceSnapshot({
 
   const userPriceWon = resolveUserPriceWon(meta, mergedData);
   const targetArea = getTargetArea(meta, mergedData, v31Cat);
-  const { min, max } = resolveEstimateRange(meta, priceReas, mergedData, v31Cat);
+  const { min, max, source } = resolveEstimateRange(meta, priceReas, mergedData, v31Cat);
+  const estimateLabel = buildEstimateRangeLabel(source);
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
@@ -68,7 +70,7 @@ export default function AnalysisPriceSnapshot({
         </div>
 
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-4">
-          <div className="text-[11px] font-medium text-white/45 mb-1.5">AI 추정 범위</div>
+          <div className="text-[11px] font-medium text-white/45 mb-1.5">{estimateLabel}</div>
           <div className="text-xl sm:text-[1.35rem] font-extrabold text-white tracking-tight">
             {min > 0 || max > 0
               ? (min === max
@@ -102,7 +104,7 @@ export default function AnalysisPriceSnapshot({
         <div className="mt-5">
           <div className="flex justify-between text-[11px] text-white/40 mb-2">
             <span>{formatEokCompact(min)}</span>
-            <span>추정 범위</span>
+            <span>{estimateLabel}</span>
             <span>{formatEokCompact(max)}</span>
           </div>
           <div className="relative h-2.5 rounded-full bg-white/[0.08]">

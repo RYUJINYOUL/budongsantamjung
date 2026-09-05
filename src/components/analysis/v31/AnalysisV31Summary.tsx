@@ -3,6 +3,7 @@
 import React from 'react';
 import {
   buildComparableSub,
+  buildEstimateRangeLabel,
   buildPriceRangeCaption,
   extractSummaryJudgements,
   extractSummaryTags,
@@ -52,7 +53,8 @@ export default function AnalysisV31Summary({
 
   const userPriceWon = resolveUserPriceWon(meta, mergedData);
   const targetArea = getTargetArea(meta, mergedData, category);
-  const { min, max } = resolveEstimateRange(meta, priceReas, mergedData, category);
+  const { min, max, source } = resolveEstimateRange(meta, priceReas, mergedData, category);
+  const estimateLabel = buildEstimateRangeLabel(source);
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
@@ -94,7 +96,7 @@ export default function AnalysisV31Summary({
               )}
             </div>
             <div className="analysis-v31-metric">
-              <div className="analysis-v31-metric-label">AI 추정 범위</div>
+              <div className="analysis-v31-metric-label">{estimateLabel}</div>
               <div className="analysis-v31-metric-value">
                 {min > 0 || max > 0
                   ? (min === max
@@ -117,7 +119,7 @@ export default function AnalysisV31Summary({
             <div className="analysis-v31-price-bar-block">
               <div className="analysis-v31-bar-labels">
                 <span>{formatEokCompact(min)}</span>
-                <span>AI 추정 범위</span>
+                <span>{estimateLabel}</span>
                 <span>{formatEokCompact(max)}</span>
               </div>
               <div className="analysis-v31-bar-track">

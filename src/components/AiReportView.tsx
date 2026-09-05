@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
 import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
-import { computeLedgerFactorProduct, getV31SectionMeta } from '../lib/analysisV31Helpers';
+import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
 const REPORT_PASTEL_PALETTE = [
@@ -2792,9 +2792,12 @@ export default function AiReportView({
         const attachedTrades = Array.isArray(meta.uiAttachedRegionalTrades) ? meta.uiAttachedRegionalTrades : [];
         const attachedMultiplier = meta.uiAttachedMultiplier;
         const isBuildingCat = categoryStr === 'building' || categoryStr === 'store';
-        const estimatedTotalWon = targetArea > 0 && meta.estimatedPricePerSqm
-            ? Number(meta.estimatedPricePerSqm) * targetArea
-            : Number(meta.estimatedTotalPrice) || 0;
+        const cohortEstimateWon = resolveCohortEstimateTotal(meta, mergedData, categoryStr === 'building' || categoryStr === 'store' ? 'building' : 'land');
+        const estimatedTotalWon = cohortEstimateWon > 0
+            ? cohortEstimateWon
+            : (targetArea > 0 && meta.estimatedPricePerSqm
+                ? Number(meta.estimatedPricePerSqm) * targetArea
+                : Number(meta.estimatedTotalPrice) || 0);
         const officialMultiplierEstimate = (ai['5_priceReasonableness'] || {}).officialMultiplierEstimate;
 
         return (

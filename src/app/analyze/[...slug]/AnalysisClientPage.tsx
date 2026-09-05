@@ -74,6 +74,7 @@ import {
     resolveScoreItemWeight,
     formatWeightedScoreLabel,
 } from '../../../lib/landScoreWeights';
+import { resolveEstimateRange } from '../../../lib/analysisV31Helpers';
 import {
     completeActiveAiAnalysis,
     dismissActiveAiAnalysis,
@@ -420,58 +421,11 @@ function buildAiReportCopyText(
     };
 
     const getSimulationRange = () => {
-        const comparables = Array.isArray(analysisMetadata.comparables) ? analysisMetadata.comparables : [];
-
-        let targetArea = 0;
-        const t = analysisMetadata.target || {};
-        const directTargetArea = analysisMetadata.targetArea !== undefined && analysisMetadata.targetArea !== null
-            ? parseFloat(analysisMetadata.targetArea.toString())
-            : null;
-        if (directTargetArea !== null && directTargetArea > 0) {
-            targetArea = directTargetArea;
-        } else if (isApartment) {
-            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
-        } else {
-            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
-        }
-
-        const totals = comparables.map(c => {
-            let dealWon = 0;
-            const dealAmount = c.dealAmount;
-            if (dealAmount) {
-                if (typeof dealAmount === 'string') {
-                    const clean = dealAmount.replace(/[^0-9]/g, '');
-                    dealWon = parseInt(clean, 10);
-                    if (dealAmount.includes('억') && dealWon < 10000) {
-                        dealWon = dealWon * 100000000;
-                    }
-                } else {
-                    dealWon = Number(dealAmount);
-                }
-            }
-            const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
-            const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
-            const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
-            return targetArea > 0 ? adjSqm * targetArea : 0;
-        }).filter(v => v > 0);
-
-        let simMin = 0;
-        let simMax = 0;
-        if (totals.length > 0) {
-            simMin = Math.min(...totals);
-            simMax = Math.max(...totals);
-        } else {
-            simMin = Number(priceReas.priceSpectrum?.min) || Number(analysisMetadata.estimatedTotalPrice) || 0;
-            simMax = Number(priceReas.priceSpectrum?.max) || Number(analysisMetadata.estimatedTotalPrice) || 0;
-        }
-
-        const buildingWon = Number(analysisMetadata.buildingResidualValue) || 0;
-        if (buildingWon > 0) {
-            simMin += buildingWon;
-            simMax += buildingWon;
-        }
-
-        return { min: simMin, max: simMax };
+        const category = isApartment
+            ? 'land'
+            : (options.category === 'land' || parsedAi.category === 'land' ? 'land' : 'building');
+        const { min, max } = resolveEstimateRange(analysisMetadata, priceReas, mergedData, category);
+        return { min, max };
     };
 
     const simRange = getSimulationRange();

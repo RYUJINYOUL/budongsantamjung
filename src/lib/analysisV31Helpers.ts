@@ -93,6 +93,35 @@ export function getScoreTierLabel(score: number): { label: string; tone: 'green'
 
 export type EstimateRange = { min: number; max: number; source: string };
 
+/** 동일수급권(cohort) 추정 총액 — 가격 SSOT */
+export function resolveCohortEstimateTotal(
+  meta: Record<string, unknown> | null | undefined,
+  mergedData?: Record<string, unknown> | null,
+  category = 'land',
+): number {
+  const m = meta || {};
+  const cohortTotal = Number(m.cohortEstimatedTotal) || 0;
+  if (cohortTotal > 0) return cohortTotal;
+
+  const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
+  if (!isCohortOfficialPricing(m) || !opr) return 0;
+
+  const estPrice = Number(opr.estimatedPrice) || 0;
+  if (estPrice > 0) return estPrice;
+
+  const estPerSqm = Number(opr.estimatedPerSqm) || 0;
+  const targetArea = getTargetArea(m, mergedData, category);
+  if (estPerSqm > 0 && targetArea > 0) return Math.round(estPerSqm * targetArea);
+
+  return 0;
+}
+
+export function buildEstimateRangeLabel(source: string): string {
+  if (source === 'cohort') return '동일수급권 추정가';
+  if (source === 'comparables') return '비교사례 추정 범위';
+  return 'AI 추정 범위';
+}
+
 export function isCohortOfficialPricing(
   analysisMetadata: Record<string, unknown> | null | undefined,
 ): boolean {
@@ -159,8 +188,14 @@ export function resolveEstimateRange(
   let max = 0;
   let source = '';
 
+  const cohortTotal = resolveCohortEstimateTotal(meta, mergedData, category);
+  if (cohortTotal > 0) {
+    min = max = cohortTotal;
+    source = 'cohort';
+  }
+
   const totals = comparableAdjTotals(comparables, targetArea);
-  if (totals.length > 0) {
+  if (min <= 0 && totals.length > 0) {
     min = Math.min(...totals);
     max = Math.max(...totals);
     source = 'comparables';
@@ -543,14 +578,15 @@ export function extractSummaryJudgements(
   if (devLine) items.push({ text: devLine.slice(0, 140) });
 
   const userPriceWon = resolveUserPriceWon(meta, mergedData);
-  const { min, max } = resolveEstimateRange(meta, priceReas, mergedData, category);
+  const { min, max, source } = resolveEstimateRange(meta, priceReas, mergedData, category);
   if (userPriceWon > 0 && (min > 0 || max > 0)) {
     const pos = formatPricePositionLabel(userPriceWon, min, max);
     const rangeStr = min === max
       ? formatEokCompact(min)
       : `${formatEokCompact(min)}~${formatEokCompact(max)}`;
+    const rangeLabel = source === 'cohort' ? '동일수급권 추정' : '추정';
     items.push({
-      text: `제시가 ${formatEokCompact(userPriceWon)} · 추정 ${rangeStr}${pos ? ` · ${pos}` : ''}`,
+      text: `제시가 ${formatEokCompact(userPriceWon)} · ${rangeLabel} ${rangeStr}${pos ? ` · ${pos}` : ''}`,
       warn: userPriceWon > max,
     });
   }
@@ -559,7 +595,7 @@ export function extractSummaryJudgements(
   const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
   const midTotal = Number(attached?.midTotal) || Number(opr?.estimatedPrice) || 0;
   const midMult = attached?.midMult;
-  if (midTotal > 0) {
+  if (midTotal > 0 && source !== 'cohort') {
     items.push({
       text: `보수적 배율${midMult ? ` ${midMult}배` : ''} 추정 약 ${formatEokCompact(midTotal)}`,
     });
