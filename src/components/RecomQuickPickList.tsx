@@ -2,6 +2,7 @@
 
 import {
   RECOM_QUICK_PICKS,
+  RECOM_QUICK_PICKS_ENABLED,
   type RecomQuickPickId,
 } from '../lib/recomQuickPicks';
 
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export default function RecomQuickPickList({ activePickId, onSelect, className = '' }: Props) {
+  if (!RECOM_QUICK_PICKS_ENABLED || RECOM_QUICK_PICKS.length === 0) return null;
+
   return (
     <ul className={`space-y-2 ${className}`.trim()}>
       {RECOM_QUICK_PICKS.map((pick) => {

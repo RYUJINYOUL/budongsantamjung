@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import {
+  RECOM_QUICK_PICKS_ENABLED,
   RECOM_QUICK_PICK_TITLE,
   type RecomQuickPickId,
 } from '../lib/recomQuickPicks';
@@ -28,6 +29,8 @@ export default function RecomQuickPickPanel({
   defaultCollapsed = false,
 }: Props) {
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+
+  if (!RECOM_QUICK_PICKS_ENABLED) return null;
 
   if (!expanded) {
     return (

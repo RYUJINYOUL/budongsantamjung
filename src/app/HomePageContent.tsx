@@ -95,6 +95,7 @@ import {
   RECOM_LIST_TAGLINE,
   LISTINGS_LIST_TAGLINE,
   recomQuickPickCategory,
+  RECOM_QUICK_PICKS_ENABLED,
   type RecomQuickPickId,
 } from '../lib/recomQuickPicks';
 import RecomMemberGate from '../components/RecomMemberGate';
@@ -1476,7 +1477,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
 
   const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
   const panelCategories = feedMode === 'recom' || feedMode === 'listings' ? RECOM_CATEGORIES : CATEGORIES;
-  const recomGuestView = feedMode === 'recom' && !user;
+  const recomGuestView = feedMode === 'recom' && !user && RECOM_QUICK_PICKS_ENABLED;
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
   const [listSearchQuery, setListSearchQuery] = useState('');
   const [listSearchResults, setListSearchResults] = useState<any[]>([]);
@@ -2246,7 +2247,20 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                 />
               ) : listAnalysesForDisplay.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-xl border border-slate-200 shadow-sm px-4">
-                  {feedMode === 'recom' && !listSearchQuery ? (
+                  {feedMode === 'recom' && !listSearchQuery && !user ? (
+                    <>
+                      <p className="text-slate-800 font-bold text-sm mb-2">추천 매물</p>
+                      <p className="text-slate-600 font-medium text-sm text-center leading-relaxed mb-4">
+                        무료 가입 후 확인하세요. {RECOM_LIST_TAGLINE}
+                      </p>
+                      <Link
+                        href={`/login?return=${encodeURIComponent(mapBasePath)}`}
+                        className="inline-flex px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-all"
+                      >
+                        로그인하기
+                      </Link>
+                    </>
+                  ) : feedMode === 'recom' && !listSearchQuery ? (
                     <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">
                       필터 상세 설정 또는 위치를 이동하세요.
                     </p>

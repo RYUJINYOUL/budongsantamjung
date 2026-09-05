@@ -28,6 +28,9 @@ export const RECOM_LIST_TAGLINE = '분석 2만+건 중 높은 점수 7.5%만 추
 /** 매물(/listings) 목록 부제 */
 export const LISTINGS_LIST_TAGLINE = '중개사·관리자가 등록한 매물입니다.';
 
+/** 지도·목록 퀵픽 UI 노출 (false = 엄선 추천 패널 전체 숨김) */
+export const RECOM_QUICK_PICKS_ENABLED = false;
+
 /** 지도 퀵픽 패널 헤더 */
 export const RECOM_QUICK_PICK_TITLE = '엄선 추천';
 
