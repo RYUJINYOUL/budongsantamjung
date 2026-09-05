@@ -16,10 +16,7 @@ type Props = {
 
 function shortLabel(id: RecomQuickPickId): string {
   const map: Record<RecomQuickPickId, string> = {
-    'apt-rise': '아파트 상승률',
     'land-1eok': '1억 토지',
-    'house-3eok': '3억 주택',
-    'store-1eok': '1억 상가',
     'building-10eok': '10억 빌딩',
   };
   return map[id];

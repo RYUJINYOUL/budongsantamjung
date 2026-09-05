@@ -82,15 +82,11 @@ import {
   mergeDiscoverWithR114Lite,
 } from '../lib/fetchR114LiteDiscover';
 import {
-  apartmentDiscoverToRecomFilters,
-  fetchRecomApartments,
   fetchRecomReports,
   investmentDiscoverToRecomFilters,
-  mapRecomApartmentToFeedItem,
   mapRecomReportToFeedItem,
 } from '../lib/fetchRecom';
 import {
-  applyRecomApartmentQuickPick,
   applyRecomInvestmentQuickPick,
   normalizeRecomCategory,
   recomHasActiveFilters,
@@ -236,7 +232,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [showMobileMap, setShowMobileMap] = useState(true);
   const [selectedProperty, setSelectedProperty] = useState<Analysis | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(
-    feedMode === 'recom' || feedMode === 'listings' ? '아파트' : 'all',
+    feedMode === 'recom' ? '토지' : 'all',
   );
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
@@ -677,41 +673,12 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           headers,
         };
 
-        if (category === '아파트') {
-          const { items } = await fetchRecomApartments(
-            apartmentDiscoverToRecomFilters(discoverFiltersRef.current),
-            recomFetchOpts,
-          );
-          setAnalyses(items.map(mapRecomApartmentToFeedItem) as Analysis[]);
-          hasTimelineLoadedRef.current = true;
-          return;
-        }
-
         if (isInvestmentDiscoverCategory(category)) {
           const { items } = await fetchRecomReports(
             investmentDiscoverToRecomFilters(investmentFiltersRef.current, category),
             recomFetchOpts,
           );
           setAnalyses(items.map(mapRecomReportToFeedItem) as Analysis[]);
-          hasTimelineLoadedRef.current = true;
-          return;
-        }
-
-        if (category === 'all') {
-          const [aptRes, reportRes] = await Promise.all([
-            fetchRecomApartments(
-              apartmentDiscoverToRecomFilters(discoverFiltersRef.current),
-              recomFetchOpts,
-            ),
-            fetchRecomReports(
-              investmentDiscoverToRecomFilters(investmentFiltersRef.current, '전체'),
-              recomFetchOpts,
-            ),
-          ]);
-          setAnalyses([
-            ...reportRes.items.map(mapRecomReportToFeedItem),
-            ...aptRes.items.map(mapRecomApartmentToFeedItem),
-          ] as Analysis[]);
           hasTimelineLoadedRef.current = true;
           return;
         }
@@ -994,22 +961,13 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   }, [feedMode, isMobile, scheduleSyncHomeUrl]);
 
   const applyRecomQuickPickFilters = useCallback((pickId: RecomQuickPickId) => {
-    if (pickId === 'apt-rise') {
-      setDiscoverFilters((prev) => {
-        const next = applyRecomApartmentQuickPick(prev);
-        saveApartmentDiscoverFilters(next, feedScope);
-        discoverFiltersRef.current = next;
-        return next;
-      });
-    } else {
-      setInvestmentFilters((prev) => {
-        const next = applyRecomInvestmentQuickPick(prev);
-        saveInvestmentDiscoverFilters(next, feedScope);
-        investmentFiltersRef.current = next;
-        return next;
-      });
-    }
-  }, [feedMode, feedScope]);
+    setInvestmentFilters((prev) => {
+      const next = applyRecomInvestmentQuickPick(prev);
+      saveInvestmentDiscoverFilters(next, feedScope);
+      investmentFiltersRef.current = next;
+      return next;
+    });
+  }, [feedScope]);
 
   const handleRecomQuickPickSelect = useCallback((pickId: RecomQuickPickId) => {
     const category = recomQuickPickCategory(pickId);
@@ -2157,7 +2115,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                 {selectedCategory === '아파트' && feedMode !== 'listings' && (
                   <ApartmentDiscoverToolbar
                     filters={discoverFilters}
-                    risePresetPlacement={feedMode === 'recom' ? 'top' : 'afterSort'}
+                    risePresetPlacement="top"
                     onOpenSheet={(section) => {
                       setDiscoverSheetSection(section ?? null);
                       setDiscoverSheetOpen(true);

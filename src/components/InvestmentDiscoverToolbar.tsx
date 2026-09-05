@@ -146,24 +146,28 @@ export default function InvestmentDiscoverToolbar({
       </div>
 
       <div className={`flex items-center flex-wrap ${chipGap} pb-0.5 -mx-0.5 px-0.5`}>
-        {RECOM_INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
-          <button
-            key={score}
-            type="button"
-            className={presetPill(isInvestmentMinScorePresetActive(filters, score), comfortable)}
-            onClick={() => onApply(toggleInvestmentMinScorePreset(filters, score))}
-          >
-            {score}점+
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={!scoreActive}
-          className={clearBtnClass(scoreActive, comfortable)}
-          onClick={() => onApply(clearInvestmentAiScoreFilter(filters))}
-        >
-          해제
-        </button>
+        {RECOM_INVESTMENT_MIN_SCORE_PRESETS.length > 0 && (
+          <>
+            {RECOM_INVESTMENT_MIN_SCORE_PRESETS.map((score) => (
+              <button
+                key={score}
+                type="button"
+                className={presetPill(isInvestmentMinScorePresetActive(filters, score), comfortable)}
+                onClick={() => onApply(toggleInvestmentMinScorePreset(filters, score))}
+              >
+                {score}점+
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={!scoreActive}
+              className={clearBtnClass(scoreActive, comfortable)}
+              onClick={() => onApply(clearInvestmentAiScoreFilter(filters))}
+            >
+              해제
+            </button>
+          </>
+        )}
         <button
           type="button"
           className={sortPill(filters.sortBy !== 'recent', comfortable)}

@@ -124,7 +124,7 @@ export function investmentDiscoverToRecomFilters(
   category: string,
 ): RecomReportFilters {
   const cat = category as RecomReportFilters['category'];
-  const allowed = ['전체', '토지', '빌딩', '주택', '상가'] as const;
+  const allowed = ['전체', '토지', '빌딩'] as const;
   const minAiScore = filters.minAiScore ?? RECOM_INVESTMENT_MIN_AI_SCORE;
   return {
     minAiScore: Math.max(RECOM_INVESTMENT_MIN_AI_SCORE, minAiScore),

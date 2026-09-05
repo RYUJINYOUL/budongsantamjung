@@ -59,24 +59,12 @@ function apartmentDiscoverFiltersStorageKey(scope: MapFeedScope): string {
   return scope === 'recom' ? APARTMENT_DISCOVER_FILTERS_RECOM_KEY : APARTMENT_DISCOVER_FILTERS_KEY;
 }
 
-/** 홈 — 장기 상승률 프리셋 미사용 (추천 전용, localStorage 잔존값 제거) */
+/** 홈·추천 — 장기 상승률 프리셋 (추천 아파트 탭 제거, 홈에서 사용) */
 function stripHomeLongTermRiseFilters(f: ApartmentDiscoverFilters): ApartmentDiscoverFilters {
-  if (
-    f.minRiseRate1y == null
-    && f.minRiseRate3y == null
-    && f.minRiseRate5y == null
-    && f.minRiseRate10y == null
-  ) return f;
-  return {
-    ...f,
-    minRiseRate1y: null,
-    minRiseRate3y: null,
-    minRiseRate5y: null,
-    minRiseRate10y: null,
-  };
+  return f;
 }
 
-/** 장기 상승률 프리셋 (%) — 추천(/recom) 전용 */
+/** 장기 상승률 프리셋 (%) — 홈 아파트 discover */
 export const APARTMENT_RISE_1Y_MIN = 20;
 export const APARTMENT_RISE_3Y_MIN = 30;
 export const APARTMENT_RISE_5Y_MIN = 50;

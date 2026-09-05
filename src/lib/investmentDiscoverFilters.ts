@@ -10,15 +10,15 @@ export const INVESTMENT_PRICE_FILTER_STEP_EOK = 5;
 export const INVESTMENT_PRICE_MAX_PRESETS_EOK = [1, 5, 10, 30, 100] as const;
 
 /** 추천(/recom) — AI 최소 점수 기본·하한 */
-export const RECOM_INVESTMENT_MIN_AI_SCORE = 60;
+export const RECOM_INVESTMENT_MIN_AI_SCORE = 50;
 
-/** 홈 툴바 — AI 최소 점수 프리셋 (추천은 RECOM_INVESTMENT_MIN_SCORE_PRESETS) */
+/** 홈 툴바 — AI 최소 점수 프리셋 */
 export const INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
 
-/** 추천(/recom) — AI 최소 점수 프리셋 */
-export const RECOM_INVESTMENT_MIN_SCORE_PRESETS = [60, 70] as const;
+/** 추천(/recom) — AI 점수 칩 없음 (기본 50점+ 서버·API 적용) */
+export const RECOM_INVESTMENT_MIN_SCORE_PRESETS = [] as const;
 
-const INVESTMENT_DISCOVER_CATEGORIES = ['토지', '빌딩', '주택', '상가'] as const;
+const INVESTMENT_DISCOVER_CATEGORIES = ['토지', '빌딩'] as const;
 
 export function isInvestmentPriceFilterActive(priceMinEok: number, priceMaxEok: number): boolean {
   return priceMinEok > 0 || priceMaxEok < INVESTMENT_PRICE_FILTER_MAX_EOK;
@@ -77,24 +77,34 @@ export function defaultInvestmentDiscoverFilters(): InvestmentDiscoverFilters {
   };
 }
 
+function defaultRecomInvestmentDiscoverFilters(): InvestmentDiscoverFilters {
+  return {
+    ...defaultInvestmentDiscoverFilters(),
+    minAiScore: RECOM_INVESTMENT_MIN_AI_SCORE,
+  };
+}
+
 export function loadInvestmentDiscoverFilters(scope: MapFeedScope = 'home'): InvestmentDiscoverFilters {
   // 홈 — 투자 필터 UI 없음, recom과 분리 전 localStorage 잔존값 무시
   if (scope === 'home' || scope === 'listings') return defaultInvestmentDiscoverFilters();
-  if (typeof window === 'undefined') return defaultInvestmentDiscoverFilters();
+  if (typeof window === 'undefined') return defaultRecomInvestmentDiscoverFilters();
   try {
     const raw = localStorage.getItem(investmentDiscoverFiltersStorageKey(scope));
-    if (!raw) return defaultInvestmentDiscoverFilters();
+    if (!raw) return defaultRecomInvestmentDiscoverFilters();
     const parsed = JSON.parse(raw) as Partial<InvestmentDiscoverFilters>;
-    const merged = { ...defaultInvestmentDiscoverFilters(), ...parsed };
+    const merged = { ...defaultRecomInvestmentDiscoverFilters(), ...parsed };
     if (merged.priceMinEok == null) merged.priceMinEok = 0;
     if (merged.priceMaxEok == null) merged.priceMaxEok = INVESTMENT_PRICE_FILTER_MAX_EOK;
     merged.priceMaxEok = normalizeInvestmentPriceMaxEok(merged.priceMaxEok, merged.priceMinEok);
     if (merged.minAiScore != null && merged.minAiScore < RECOM_INVESTMENT_MIN_AI_SCORE) {
-      merged.minAiScore = null;
+      merged.minAiScore = RECOM_INVESTMENT_MIN_AI_SCORE;
+    }
+    if (merged.minAiScore == null) {
+      merged.minAiScore = RECOM_INVESTMENT_MIN_AI_SCORE;
     }
     return merged;
   } catch {
-    return defaultInvestmentDiscoverFilters();
+    return defaultRecomInvestmentDiscoverFilters();
   }
 }
 

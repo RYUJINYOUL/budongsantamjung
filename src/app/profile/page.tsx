@@ -980,14 +980,6 @@ function ProfilePageContent() {
                                 <div className="h-[min(720px,75vh)] border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
                                     <AnalyzePanel listingRegisterMode />
                                 </div>
-                                <div className="text-center py-2">
-                                    <Link
-                                        href="/listings"
-                                        className="text-sm font-bold text-emerald-600 hover:underline"
-                                    >
-                                        등록된 매물 목록 보기 →
-                                    </Link>
-                                </div>
                             </div>
                         )}
 
