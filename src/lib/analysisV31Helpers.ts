@@ -100,6 +100,50 @@ export function isCohortOfficialPricing(
   return !!opr && ['cohort', 'cohort_relaxed'].includes(String(opr.dynamicStatus || ''));
 }
 
+export function buildPriceRangeCaption(
+  meta: Record<string, unknown>,
+  priceReas: Record<string, unknown> = {},
+): string {
+  const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
+  const obsRatio = opr?.observedRatio as Record<string, unknown> | undefined;
+  const cohort = isCohortOfficialPricing(meta);
+  const confidenceGrade = String(
+    meta.confidenceGrade || obsRatio?.confidenceGrade || priceReas.reliabilityGrade || '',
+  ).trim();
+  if (cohort) {
+    return [
+      '동일수급권 median',
+      Number(opr?.appliedMultiplier) > 0 ? `${Number(opr?.appliedMultiplier).toFixed(1)}배` : null,
+      confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+  return [
+    '공시지가 배율',
+    confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+export function buildComparableSub(meta: Record<string, unknown>): string {
+  const searchRadius = Number(meta.searchRadiusM ?? meta.comparableRadiusM ?? 1000);
+  const totalDetected = Number(meta.totalDetected ?? 0);
+  const relax = Number(meta.conditionRelaxLevel) || 0;
+  return [
+    searchRadius >= 1000 ? `${Math.round(searchRadius / 1000)}km` : `${searchRadius}m`,
+    totalDetected > 0 ? `${totalDetected}건 탐지` : null,
+    relax > 0 ? `L${relax}` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+function scoreItemRaw(item: unknown): number | null {
+  if (item == null) return null;
+  if (typeof item === 'number') return item;
+  if (typeof item === 'object') {
+    const s = Number((item as Record<string, unknown>).score);
+    return Number.isFinite(s) ? s : null;
+  }
+  return null;
+}
+
 export function resolveEstimateRange(
   analysisMetadata: Record<string, unknown> | null | undefined,
   priceReas: Record<string, unknown> | null | undefined,
@@ -381,10 +425,33 @@ export function extractSummaryTags(
 
   const scoreItems = compRisk.scoreItems as Record<string, unknown> | undefined;
   if (scoreItems) {
+    const regulatory = scoreItems['규제·개발 전망']
+      ?? scoreItems['규제 전망']
+      ?? scoreItems.regulatoryOutlook;
+    if (regulatory != null) {
+      const rs = scoreItemRaw(regulatory);
+      tags.push({
+        label: '규제·개발 전망',
+        warn: rs != null && rs <= 4,
+      });
+    }
+    const zoning = scoreItems['현행 용도지역']
+      ?? scoreItems['토지 이용 규제']
+      ?? scoreItems.landRegulation;
+    if (zoning != null) {
+      const zs = scoreItemRaw(zoning);
+      tags.push({
+        label: '현행 용도지역',
+        warn: zs != null && zs <= 4,
+      });
+    }
     Object.entries(scoreItems).forEach(([key, item]) => {
+      if (['규제·개발 전망', '규제 전망', 'regulatoryOutlook', '현행 용도지역', '토지 이용 규제', 'landRegulation'].includes(key)) {
+        return;
+      }
       const reason = typeof item === 'object' && item ? String((item as Record<string, unknown>).reason || '') : '';
-      if (/허가|규제|비행|제한|명도/.test(key + reason)) {
-        tags.push({ label: key.slice(0, 14), warn: true });
+      if (/허가|비행|제한|명도|거래허가/.test(key + reason)) {
+        tags.push({ label: SCORE_LABEL_MAP[key] || key.slice(0, 14), warn: true });
       }
     });
   }

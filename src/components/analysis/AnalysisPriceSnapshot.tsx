@@ -2,11 +2,12 @@
 
 import React from 'react';
 import {
+  buildComparableSub,
+  buildPriceRangeCaption,
   extractSummaryTags,
   formatEokCompact,
   formatPricePositionLabel,
   getTargetArea,
-  isCohortOfficialPricing,
   priceBarMarkerPercent,
   resolveEstimateRange,
   resolveUserPriceWon,
@@ -42,33 +43,11 @@ export default function AnalysisPriceSnapshot({
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-  const obsRatio = (meta.officialPriceRatio as Record<string, unknown> | undefined)?.observedRatio as Record<string, unknown> | undefined;
-  const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
-  const cohort = isCohortOfficialPricing(meta);
-  const confidenceGrade = String(meta.confidenceGrade || obsRatio?.confidenceGrade || priceReas.reliabilityGrade || '').trim();
-  const searchRadius = Number(meta.searchRadiusM ?? meta.comparableRadiusM ?? 1000);
-  const totalDetected = Number(meta.totalDetected ?? 0);
-  const relax = Number(meta.conditionRelaxLevel) || 0;
+  const rangeCaption = buildPriceRangeCaption(meta, priceReas);
+  const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
     ? Math.round(userPriceWon / (targetArea / 3.3058) / 10_000)
     : 0;
-
-  const rangeCaption = cohort
-    ? [
-        '동일수급권 median',
-        Number(opr?.appliedMultiplier) > 0 ? `${Number(opr?.appliedMultiplier).toFixed(1)}배` : null,
-        confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
-      ].filter(Boolean).join(' · ')
-    : [
-        '공시지가 배율',
-        confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
-      ].filter(Boolean).join(' · ');
-
-  const comparableSub = [
-    searchRadius >= 1000 ? `${Math.round(searchRadius / 1000)}km` : `${searchRadius}m`,
-    totalDetected > 0 ? `${totalDetected}건 탐지` : null,
-    relax > 0 ? `L${relax}` : null,
-  ].filter(Boolean).join(' · ');
 
   const hasPriceData = userPriceWon > 0 || min > 0 || max > 0 || comparables.length > 0;
   if (!hasPriceData) return null;

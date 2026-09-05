@@ -2,12 +2,13 @@
 
 import React from 'react';
 import {
+  buildComparableSub,
+  buildPriceRangeCaption,
   extractSummaryJudgements,
   extractSummaryTags,
   extractVerdictBadge,
   formatEokCompact,
   formatPricePositionLabel,
-  formatSqmManwon,
   getScoreTierLabel,
   getTargetArea,
   priceBarMarkerPercent,
@@ -55,21 +56,11 @@ export default function AnalysisV31Summary({
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-  const cbd = meta.cbdMultiplierEstimate as Record<string, unknown> | undefined;
-  const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
-  const obsRatio = opr?.observedRatio as Record<string, unknown> | undefined;
-  const perSqm = Number(cbd?.officialPerSqm) || Number(opr?.targetOfficialPerSqm) || 0;
-  const attached = meta.uiAttachedMultiplier as Record<string, unknown> | undefined;
-  const confidenceGrade = String(meta.confidenceGrade || obsRatio?.confidenceGrade || priceReas.reliabilityGrade || '').trim();
-  const searchRadius = Number(meta.searchRadiusM ?? meta.comparableRadiusM ?? 1000);
+  const rangeCaption = buildPriceRangeCaption(meta, priceReas);
+  const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
     ? Math.round(userPriceWon / (targetArea / 3.3058) / 10_000)
     : 0;
-
-  let rangeCaption = '';
-  if (perSqm > 0) rangeCaption += `공시 ${formatSqmManwon(perSqm)}`;
-  if (attached?.midMult) rangeCaption += `${rangeCaption ? ' · ' : ''}적용 ${attached.midMult}배`;
-  if (confidenceGrade) rangeCaption += `${rangeCaption ? ' · ' : ''}신뢰 ${confidenceGrade}`;
 
   return (
     <section className="analysis-v31-summary">
@@ -116,10 +107,9 @@ export default function AnalysisV31Summary({
             <div className={`analysis-v31-metric${comparables.length === 0 ? ' warning' : ''}`}>
               <div className="analysis-v31-metric-label">유효 비교사례</div>
               <div className="analysis-v31-metric-value">{comparables.length}건</div>
-              <div className="analysis-v31-metric-sub">
-                {searchRadius >= 1000 ? `${Math.round(searchRadius / 1000)}km` : `${searchRadius}m`}
-                {Number(meta.totalDetected) > 0 ? ` · 탐지 ${meta.totalDetected}건` : ''}
-              </div>
+              {comparableSub && (
+                <div className="analysis-v31-metric-sub">{comparableSub}</div>
+              )}
             </div>
           </div>
 
