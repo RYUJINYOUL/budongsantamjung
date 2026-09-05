@@ -44,7 +44,6 @@ import ShortsFrameView from '../../../components/ShortsFrameView';
 import AmenitiesView from '../../../components/AmenitiesView';
 import AiAnalysisBottomBar from '../../../components/AiAnalysisBottomBar';
 import AiReportView from '../../../components/AiReportView';
-import AnalysisV31Report from '../../../components/analysis/v31/AnalysisV31Report';
 import ComparableMap from '../../../components/ComparableMap';
 import AiAnalysisInputModal, {
     defaultAiAnalysisInput,
@@ -2985,9 +2984,6 @@ export default function AnalysisDetailPage({
 
     const cat = (report?.category || mergedData?.category || '').toLowerCase();
     const isApartment = cat === 'apartment' || cat === '아파트' || embeddedInApartment;
-    const isLandOrBuilding = cat === 'land' || cat === '토지'
-        || cat === 'building' || cat === '건물' || cat === '빌딩';
-    const v31Category: 'land' | 'building' = (cat === 'land' || cat === '토지') ? 'land' : 'building';
 
     const dashboardSummary = useMemo(() => {
         const compRisk = reportData?.['1_comprehensiveRisk'];
@@ -4143,23 +4139,13 @@ export default function AnalysisDetailPage({
                                     공공데이터가 갱신되어 저장된 AI 분석이 이전 버전일 수 있습니다. 「AI 재분석」으로 최신 데이터를 반영하세요.
                                 </div>
                             )}
-                            {isLandOrBuilding ? (
-                                <AnalysisV31Report
-                                    ai={reportData || {}}
-                                    mergedData={mergedData}
-                                    analysisMetadata={analysisData?.analysisMetadata || reportData?.analysisMetadata}
-                                    category={v31Category}
-                                    reportId={String(report?.id || (Array.isArray(id) ? id[0] : id) || '')}
-                                />
-                            ) : (
-                                <AiReportView
-                                    ai={reportData || {}}
-                                    mergedData={mergedData}
-                                    analysisMetadata={analysisData?.analysisMetadata || reportData?.analysisMetadata}
-                                    onTriggerAnalysis={handleAiAnalysisClick}
-                                    isCheckingAccess={isCheckingAccess}
-                                />
-                            )}
+                            <AiReportView
+                                ai={reportData || {}}
+                                mergedData={mergedData}
+                                analysisMetadata={analysisData?.analysisMetadata || reportData?.analysisMetadata}
+                                onTriggerAnalysis={handleAiAnalysisClick}
+                                isCheckingAccess={isCheckingAccess}
+                            />
                         </motion.div>
                     )}
                     {activeTab === 'school' && (
