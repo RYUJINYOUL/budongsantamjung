@@ -505,6 +505,10 @@ const resolveComparableMetrics = (c: any, targetArea: number) => {
         deductions: Array.isArray(c.deductions) ? c.deductions : [],
         isRedevelopment: c.isRedevelopment,
         correctionClamped: c.correctionClamped,
+        comparableRole: c.comparableRole || 'reference',
+        realizedOfficialRatio: c.realizedOfficialRatio != null
+            ? Number(c.realizedOfficialRatio)
+            : (c.officialPrice > 0 && rawSqm > 0 ? rawSqm / Number(c.officialPrice) : null),
     };
 };
 
@@ -515,11 +519,13 @@ const ComparableCaseCard = ({
     index,
     targetArea,
     accent = PRICE_METHOD_ACCENTS.comparables,
+    cohortMedianRatio,
 }: {
     c: any;
     index: number;
     targetArea: number;
     accent?: string;
+    cohortMedianRatio?: number | null;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
     const m = resolveComparableMetrics(c, targetArea);
@@ -551,6 +557,16 @@ const ComparableCaseCard = ({
                         {m.areaSizeHint === 'normal' && (
                             <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-sky-400/10 text-sky-300 border border-sky-400/25">
                                 동일 필지
+                            </span>
+                        )}
+                        {m.comparableRole === 'floor_anchor' && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                저가 실거래 · 하한 참고
+                            </span>
+                        )}
+                        {m.comparableRole === 'cross_dong' && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30">
+                                타 동 · 대입 주의
                             </span>
                         )}
                     </div>
@@ -639,6 +655,20 @@ const ComparableCaseCard = ({
                             <span className="text-white/70 font-mono">×{Number(m.officialPriceRatio).toFixed(3)}</span>
                         </div>
                     )}
+                    {m.realizedOfficialRatio != null && (
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">실거래÷공시</span>
+                            <span className="text-white/70 font-mono">{m.realizedOfficialRatio.toFixed(2)}배</span>
+                        </div>
+                    )}
+                    {cohortMedianRatio != null && cohortMedianRatio > 0 && m.realizedOfficialRatio != null && (
+                        <div className="flex justify-between text-[10px]">
+                            <span className="text-white/35">동일수급 중앙값 대비</span>
+                            <span className="text-white/70 font-mono">
+                                {Math.round((m.realizedOfficialRatio / cohortMedianRatio) * 100)}%
+                            </span>
+                        </div>
+                    )}
                     <div className="flex justify-between text-[10px]">
                         <span className="text-white/35">시점 보정</span>
                         <span className="text-white/70 font-mono">
@@ -704,6 +734,7 @@ const PriceReasonMethodCard = ({
     description,
     chips,
     accent,
+    headerAction,
     children,
 }: {
     icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
@@ -711,6 +742,7 @@ const PriceReasonMethodCard = ({
     description?: React.ReactNode;
     chips?: React.ReactNode;
     accent: string;
+    headerAction?: React.ReactNode;
     children: React.ReactNode;
 }) => (
     <div
@@ -731,7 +763,10 @@ const PriceReasonMethodCard = ({
                 <Icon className="w-5 h-5" style={{ color: accent }} />
             </div>
             <div className="min-w-0 flex-1 flex flex-col gap-2 pt-0.5">
-                <span className="text-base font-bold leading-snug text-white">{title}</span>
+                <div className="flex items-start justify-between gap-3">
+                    <span className="text-base font-bold leading-snug text-white">{title}</span>
+                    {headerAction}
+                </div>
                 {description && (
                     <p className="text-white/40 text-[11px] leading-relaxed">{description}</p>
                 )}
@@ -764,16 +799,24 @@ const ComparableHorizontalScroll = ({
     targetArea,
     startIndex = 0,
     accent = PRICE_METHOD_ACCENTS.comparables,
+    cohortMedianRatio,
 }: {
     items: any[];
     targetArea: number;
     startIndex?: number;
     accent?: string;
+    cohortMedianRatio?: number | null;
 }) => (
     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory -mx-1 px-1">
         {items.map((c, index) => (
             <div key={index} className="min-w-[300px] max-w-[300px] shrink-0 snap-center">
-                <ComparableCaseCard c={c} index={startIndex + index} targetArea={targetArea} accent={accent} />
+                <ComparableCaseCard
+                    c={c}
+                    index={startIndex + index}
+                    targetArea={targetArea}
+                    accent={accent}
+                    cohortMedianRatio={cohortMedianRatio}
+                />
             </div>
         ))}
     </div>
@@ -916,6 +959,7 @@ const LandComparableValueSection = ({
     categoryStr,
     isBuildingCat,
     regionName,
+    onMapOpen,
 }: {
     comparables: any[];
     meta: any;
@@ -923,10 +967,13 @@ const LandComparableValueSection = ({
     categoryStr: string;
     isBuildingCat: boolean;
     regionName: string;
+    onMapOpen?: () => void;
 }) => {
     const methodLabel = meta.method || meta.tierLabel || '-';
     const confidenceGrade = meta.confidenceGrade || '';
     const ratioTier = meta.ratioTier || '';
+    const cohortMedianRatio = meta.cohortMedianRatio ?? null;
+    const locationLevel = meta.locationLevel || '';
     const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
     const landMin = landSpectrum?.min ?? 0;
     const landMax = landSpectrum?.max ?? 0;
@@ -937,17 +984,36 @@ const LandComparableValueSection = ({
         : '인근 실거래 사례와 비교 분석합니다.';
     const accent = PRICE_METHOD_ACCENTS.comparables;
 
+    const showMapButton = comparables.length > 0 && !!onMapOpen;
+
     return (
         <PriceReasonMethodCard
             icon={List}
             title={title}
             accent={accent}
+            headerAction={showMapButton ? (
+                <button
+                    type="button"
+                    onClick={onMapOpen}
+                    className="flex items-center gap-1.5 px-3 py-1.5 hover:text-white rounded-xl text-xs font-bold transition-all shrink-0"
+                    style={{
+                        backgroundColor: hexToRgba(accent, 0.1),
+                        border: `1px solid ${hexToRgba(accent, 0.25)}`,
+                        color: accent,
+                    }}
+                >
+                    <Map className="w-3.5 h-3.5" />
+                    <span>지도 보기</span>
+                </button>
+            ) : undefined}
             chips={(
                 <>
                     {targetArea > 0 && metaChip(`대상 ${targetArea.toLocaleString()}㎡`, accent)}
                     {metaChip(methodLabel)}
                     {confidenceGrade && metaChip(`신뢰 ${confidenceGrade}`, accent)}
                     {ratioTier && metaChip(ratioTier)}
+                    {locationLevel === 'same_umd_strict' && metaChip('동일 동 · 면적 유사', accent)}
+                    {locationLevel === 'same_umd' && metaChip('동일 법정동', accent)}
                     {isBuildingCat && metaChip('토지 대입 + 건물 별도', PRICE_METHOD_ACCENTS.building)}
                 </>
             )}
@@ -993,6 +1059,7 @@ const LandComparableValueSection = ({
                                         targetArea={targetArea}
                                         startIndex={0}
                                         accent={accent}
+                                        cohortMedianRatio={cohortMedianRatio}
                                     />
                                 )}
                             </div>
@@ -1006,6 +1073,7 @@ const LandComparableValueSection = ({
                                         targetArea={targetArea}
                                         startIndex={(meta.tier1Comparables || []).length}
                                         accent={accent}
+                                        cohortMedianRatio={cohortMedianRatio}
                                     />
                                 </div>
                             )}
@@ -1015,6 +1083,7 @@ const LandComparableValueSection = ({
                             items={comparables}
                             targetArea={targetArea}
                             accent={accent}
+                            cohortMedianRatio={cohortMedianRatio}
                         />
                     )}
                 </>
@@ -2739,6 +2808,7 @@ export default function AiReportView({
                             categoryStr={categoryStr}
                             isBuildingCat={isBuildingCat}
                             regionName={regionName}
+                            onMapOpen={() => setIsMapModalOpen(true)}
                         />
                         <OfficialMultiplierSection
                             attached={attachedMultiplier}
@@ -3081,29 +3151,6 @@ export default function AiReportView({
         const isHouse = categoryStr === 'house';
         const showZoningStep = isLand || isBuilding;
 
-        const ledgerTitle = isBuilding
-            ? '빌딩 프리미엄 검증 및 분석'
-            : isHouse
-                ? '주택 프리미엄 검증 및 분석'
-                : '토지 프리미엄 검증 및 분석';
-
-        let targetArea = 0;
-        try {
-            const t = meta.target || {};
-            const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
-                ? parseFloat(meta.targetArea.toString())
-                : null;
-            if (directTargetArea !== null && directTargetArea > 0) {
-                targetArea = directTargetArea;
-            } else if (isBuilding) {
-                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
-            } else if (isHouse) {
-                targetArea = parseFloat(t.exclusiveArea_sqm || t.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || '0');
-            } else {
-                targetArea = parseFloat(t.area_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.area_sqm || '0');
-            }
-        } catch (_) { }
-
         const renderHosaeDetails = () => {
             if (!hosaeAdj || !hosaeAdj.details || hosaeAdj.details.length === 0) return null;
             return (
@@ -3242,21 +3289,6 @@ export default function AiReportView({
 
         return (
             <div className="flex flex-col gap-5">
-                <LedgerSummaryCard
-                    title={ledgerTitle}
-                    showMapButton={comparables.length > 0}
-                    onMapOpen={() => setIsMapModalOpen(true)}
-                />
-                <LedgerComparablesSection
-                    categoryStr={categoryStr}
-                    isBuilding={isBuilding}
-                    isHouse={isHouse}
-                    comparables={comparables}
-                    tier1Comparables={meta.tier1Comparables}
-                    tier2Comparables={meta.tier2Comparables}
-                    targetArea={meta.areaAdjustment?.targetArea || targetArea}
-                    confidenceGrade={meta.confidenceGrade || ''}
-                />
                 <LedgerMultipliersSection tiles={tiles} />
                 {showZoningStep && (
                     <LedgerZoningChangeSection comment={zoningChangeComment} />
