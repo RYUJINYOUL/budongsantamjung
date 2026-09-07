@@ -1369,7 +1369,26 @@ const normalizeCohortSamples = (opr: any, obs: any) => {
     return { applied, all };
 };
 
-const CohortTradeRow = ({ trade, accent }: { trade: any; accent: string }) => {
+const COHORT_LIST_INITIAL = 60;
+const COHORT_LIST_STEP = 80;
+const COHORT_MAP_MAX_MARKERS = 150;
+
+const sortCohortSamplesByDate = (samples: any[]) =>
+    samples.slice().sort((a: any, b: any) => {
+        const ay = Number(a.dealYear) || 0;
+        const by = Number(b.dealYear) || 0;
+        if (by !== ay) return by - ay;
+        return (Number(b.dealMonth) || 0) - (Number(a.dealMonth) || 0);
+    });
+
+const capCohortMapSamples = (samples: any[], max: number) => {
+    const withCoords = samples.filter((s: any) => s.lat && s.lng);
+    const applied = withCoords.filter((s: any) => s.inSimilarityBand !== false);
+    const excluded = withCoords.filter((s: any) => s.inSimilarityBand === false);
+    return [...applied, ...excluded].slice(0, max);
+};
+
+const CohortTradeRow = React.memo(function CohortTradeRow({ trade, accent }: { trade: any; accent: string }) {
     const month = String(trade.dealMonth || '?').padStart(2, '0');
     const date = trade.dealYear ? `${trade.dealYear}.${month}` : '-';
     const dealWon = normalizeDealAmountWon(trade.dealAmount);
@@ -1415,7 +1434,7 @@ const CohortTradeRow = ({ trade, accent }: { trade: any; accent: string }) => {
             </div>
         </div>
     );
-};
+});
 
 const OfficialMultiplierSection = ({
     attached,
@@ -1436,6 +1455,11 @@ const OfficialMultiplierSection = ({
 }) => {
     const [expanded, setExpanded] = React.useState(false);
     const [showAllCohortTrades, setShowAllCohortTrades] = React.useState(false);
+    const [cohortListVisible, setCohortListVisible] = React.useState(COHORT_LIST_INITIAL);
+
+    React.useEffect(() => {
+        setCohortListVisible(COHORT_LIST_INITIAL);
+    }, [showAllCohortTrades]);
 
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
@@ -1452,17 +1476,17 @@ const OfficialMultiplierSection = ({
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
         const { applied: appliedSamples, all: allSamples } = normalizeCohortSamples(opr, obs);
-        const listSamples = (showAllCohortTrades ? allSamples : appliedSamples)
-            .slice()
-            .sort((a: any, b: any) => {
-                const ay = Number(a.dealYear) || 0;
-                const by = Number(b.dealYear) || 0;
-                if (by !== ay) return by - ay;
-                return (Number(b.dealMonth) || 0) - (Number(a.dealMonth) || 0);
-            });
-        const mapSamples = showAllCohortTrades ? allSamples : appliedSamples;
-        const hasMapSamples = mapSamples.some((s: any) => s.lat && s.lng);
+        const listSamples = sortCohortSamplesByDate(showAllCohortTrades ? allSamples : appliedSamples);
+        const visibleListSamples = listSamples.slice(0, cohortListVisible);
+        const mapSamples = capCohortMapSamples(
+            showAllCohortTrades ? allSamples : appliedSamples,
+            COHORT_MAP_MAX_MARKERS,
+        );
+        const mapSampleTotal = (showAllCohortTrades ? allSamples : appliedSamples)
+            .filter((s: any) => s.lat && s.lng).length;
+        const hasMapSamples = mapSamples.length > 0;
         const canToggleAllCohort = isFiltered && allSamples.length > appliedSamples.length;
+        const hasMoreCohortRows = listSamples.length > visibleListSamples.length;
 
         return (
             <PriceReasonMethodCard
@@ -1600,12 +1624,24 @@ const OfficialMultiplierSection = ({
                                 >
                                     {canToggleAllCohort && showAllCohortTrades && (
                                         <p className="text-[9px] text-white/30 px-1">
-                                            ● 색 마커 = similarity 통과 · 회색 = 제외 (지도·목록 동일)
+                                            ● 색 마커 = similarity 통과 · 회색 = 제외
+                                            {mapSampleTotal > mapSamples.length && (
+                                                <> · 지도는 {mapSamples.length}건만 표시</>
+                                            )}
                                         </p>
                                     )}
-                                    {listSamples.map((trade: any, idx: number) => (
+                                    {visibleListSamples.map((trade: any, idx: number) => (
                                         <CohortTradeRow key={`${trade.pnu || trade.platPlc || idx}-${idx}`} trade={trade} accent={accent} />
                                     ))}
+                                    {hasMoreCohortRows && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setCohortListVisible(v => v + COHORT_LIST_STEP)}
+                                            className="text-[10px] font-bold px-3 py-2 rounded-lg border border-white/10 text-white/45 hover:text-white/70 hover:bg-white/[0.03] text-center"
+                                        >
+                                            더 보기 ({visibleListSamples.length}/{listSamples.length})
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
