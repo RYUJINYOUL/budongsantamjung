@@ -1,6 +1,7 @@
 'use client';
 
 import type { ListingLiteCohort } from '@/lib/listingInventory';
+import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 
 function isNationalLevel(level?: string | null): boolean {
   return !!level && (level.startsWith('L3') || level.includes('national'));
@@ -93,6 +94,9 @@ export default function ListingCohortCard({
           {isRule
             ? '동일수급권 실거래가 부족해 규칙 배율을 적용했습니다. 추정 매매가는 AI 분석에서 확인하세요.'
             : '필지별 추정가·상세 근거는 AI 분석에서 확인하세요.'}
+        </p>
+        <p className="text-[10px] text-slate-400 font-medium mt-2 leading-relaxed border-t border-slate-200/60 pt-2">
+          {COHORT_MULTIPLIER_DISCLAIMER}
         </p>
 
         {tradeSamples.length > 0 && (

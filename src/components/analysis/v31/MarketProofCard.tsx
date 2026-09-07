@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 
 export type MarketProofCompareDong = {
   dong: string;
@@ -121,6 +122,8 @@ export default function MarketProofCard({
           데이터: {marketProof.dataSource === 'dong_stats_table' ? '법정동 집계 테이블' : '실시간 조회'}
         </p>
       )}
+
+      <p className="analysis-v31-market-proof-disclaimer">{COHORT_MULTIPLIER_DISCLAIMER}</p>
     </div>
   );
 }

@@ -1853,3 +1853,12 @@
   font-size: var(--v31-fs-micro);
   color: var(--v31-subtle);
 }
+
+.analysis-v31-market-proof-disclaimer {
+  margin: 0.75rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--v31-border);
+  font-size: var(--v31-fs-caption);
+  color: var(--v31-muted);
+  line-height: 1.55;
+}

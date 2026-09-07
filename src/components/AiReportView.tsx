@@ -22,6 +22,7 @@ import {
 import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
 import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
 import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketProofCard';
+import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
@@ -1531,6 +1532,9 @@ const OfficialMultiplierSection = ({
                             {isFiltered
                                 ? `동일수급권(용도×지목) ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
                                 : `표본 부족으로 similarity 필터 없이 동일수급권 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
+                        </p>
+                        <p className="text-white/40 text-[10px] leading-relaxed mt-2">
+                            {COHORT_MULTIPLIER_DISCLAIMER}
                         </p>
                     </div>
 
