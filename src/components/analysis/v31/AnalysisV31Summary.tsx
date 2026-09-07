@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import MarketProofCard, { type MarketProofPayload } from './MarketProofCard';
 import {
   buildComparableSub,
   buildEstimateRangeLabel,
@@ -11,6 +12,7 @@ import {
   formatEokCompact,
   formatPricePositionLabel,
   getScoreTierLabel,
+  formatTargetAreaSubline,
   getTargetArea,
   priceBarMarkerPercent,
   resolveEstimateRange,
@@ -58,6 +60,7 @@ export default function AnalysisV31Summary({
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
+  const marketProof = meta.marketProof as MarketProofPayload | undefined;
   const rangeCaption = buildPriceRangeCaption(meta, priceReas);
   const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
@@ -91,7 +94,7 @@ export default function AnalysisV31Summary({
               </div>
               {userPriceWon > 0 && targetArea > 0 && (
                 <div className="analysis-v31-metric-sub">
-                  평당 약 {perPyeong.toLocaleString()}만 · {Math.round(targetArea)}㎡
+                  {formatTargetAreaSubline(targetArea, perPyeong, category)}
                 </div>
               )}
             </div>
@@ -146,6 +149,17 @@ export default function AnalysisV31Summary({
                   {tag.label}
                 </span>
               ))}
+            </div>
+          )}
+
+          {category === 'land' && marketProof?.status && (
+            <div className="analysis-v31-summary-market-proof">
+              <MarketProofCard
+                embedded
+                marketProof={marketProof}
+                marketProofBlocked={meta.marketProofBlocked === true}
+                passStrictEffective={meta.passStrictEffective === true}
+              />
             </div>
           )}
         </div>

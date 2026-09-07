@@ -46,6 +46,23 @@ export function resolveUserPriceWon(
   return num > 1_000_000 ? num : num * 10_000;
 }
 
+/** 토지·빌딩·아파트별 면적 라벨 (「전용」은 아파트 등에만) */
+export function getTargetAreaLabel(category = 'land'): string {
+  const cat = String(category || 'land').toLowerCase();
+  if (cat === 'land' || cat === '토지') return '토지';
+  if (cat === 'building' || cat === '빌딩' || cat === 'store' || cat === '상가') return '연면적';
+  return '전용';
+}
+
+export function formatTargetAreaSubline(
+  targetArea: number,
+  perPyeong: number,
+  category = 'land',
+): string {
+  const label = getTargetAreaLabel(category);
+  return `평당 약 ${perPyeong.toLocaleString()}만 · ${label} ${Math.round(targetArea)}㎡`;
+}
+
 export function getTargetArea(
   meta: Record<string, unknown> | null | undefined,
   mergedData?: Record<string, unknown> | null,
@@ -100,18 +117,25 @@ export function resolveCohortEstimateTotal(
   category = 'land',
 ): number {
   const m = meta || {};
+  const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
+  const obs = opr?.observedRatio as Record<string, unknown> | undefined;
+  const estPerSqm = Number(opr?.estimatedPerSqm) || Number(m.estimatedPricePerSqm) || 0;
+  const targetArea = getTargetArea(m, mergedData, category);
+  const derivedTotal = estPerSqm > 0 && targetArea > 0 ? Math.round(estPerSqm * targetArea) : 0;
+
   const cohortTotal = Number(m.cohortEstimatedTotal) || 0;
+  if (derivedTotal > 0) {
+    if (cohortTotal <= 0) return derivedTotal;
+    const ratio = cohortTotal / derivedTotal;
+    if (ratio < 0.85 || ratio > 1.15) return derivedTotal;
+    return cohortTotal;
+  }
   if (cohortTotal > 0) return cohortTotal;
 
-  const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
   if (!isCohortOfficialPricing(m) || !opr) return 0;
 
   const estPrice = Number(opr.estimatedPrice) || 0;
   if (estPrice > 0) return estPrice;
-
-  const estPerSqm = Number(opr.estimatedPerSqm) || 0;
-  const targetArea = getTargetArea(m, mergedData, category);
-  if (estPerSqm > 0 && targetArea > 0) return Math.round(estPerSqm * targetArea);
 
   return 0;
 }

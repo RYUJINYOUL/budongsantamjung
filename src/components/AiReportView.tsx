@@ -23,6 +23,7 @@ import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
 import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
 import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketProofCard';
 import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
+import { formatHojaeTierSummary, pickHojaeTierFields } from '@/lib/hojaeTier';
 import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
@@ -585,7 +586,7 @@ const ComparableCaseCard = ({
                             borderColor: hexToRgba(accent, 0.2),
                         }}
                     >
-                        공시 유사 {m.simStr}
+                        Tier 유사도 {m.simStr}
                     </span>
                     {m.distStr !== '-' && (
                         <span className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-white/5 text-white/45 border border-white/10">
@@ -1439,12 +1440,15 @@ const OfficialMultiplierSection = ({
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
     const obs = opr?.observedRatio;
+    const hojae = pickHojaeTierFields(obs || {});
+    const hojaeSummary = formatHojaeTierSummary(hojae);
 
     if (opr && (opr.dynamicStatus === 'cohort' || opr.dynamicStatus === 'cohort_relaxed')) {
         const isFiltered = opr.dynamicStatus === 'cohort';
         const accent = PRICE_METHOD_ACCENTS.comparables;
         const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || '동일수급권';
-        const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
+        const estimatedTotal = resolveCohortEstimateTotal(meta, undefined, 'land')
+            || ((opr.estimatedPerSqm || 0) * targetArea);
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
         const { applied: appliedSamples, all: allSamples } = normalizeCohortSamples(opr, obs);
@@ -1471,6 +1475,7 @@ const OfficialMultiplierSection = ({
                         {metaChip(levelLabel, accent)}
                         {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
                         {obs?.confidenceGrade && metaChip(`신뢰 ${obs.confidenceGrade}`, accent)}
+                        {hojaeSummary && metaChip(hojaeSummary, '#a78bfa')}
                         {hasMapSamples && onMapOpen && (
                             <button
                                 type="button"
@@ -1536,6 +1541,24 @@ const OfficialMultiplierSection = ({
                         <p className="text-white/40 text-[10px] leading-relaxed mt-2">
                             {COHORT_MULTIPLIER_DISCLAIMER}
                         </p>
+                        {hojae.hojaeTierReason && (
+                            <div className="mt-2.5 rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-2">
+                                <p className="text-[10px] font-semibold text-violet-200/90">
+                                    Track B 개발호재 (배율 상한)
+                                </p>
+                                <p className="text-[10px] text-violet-100/75 mt-1 leading-relaxed">
+                                    {hojae.hojaeTierReason}
+                                </p>
+                                {hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null && opr.appliedMultiplier > 0 && (
+                                    <p className="text-[10px] text-violet-200/60 mt-1">
+                                        raw median {Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier 상한 {Number(opr.appliedMultiplier).toFixed(2)}배 적용
+                                    </p>
+                                )}
+                                <p className="text-[9px] text-white/30 mt-1.5">
+                                    아래 「주변 개발호재」 인프라(SHP)와 별개 · development_events 기준
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {listSamples.length > 0 && (
@@ -3835,6 +3858,15 @@ export default function AiReportView({
                 />
             )}
 
+            {!isV31 && isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && (
+                <MarketProofCard
+                    embedded
+                    marketProof={resolvedAnalysisMetadata.marketProof as MarketProofPayload}
+                    marketProofBlocked={resolvedAnalysisMetadata.marketProofBlocked === true}
+                    passStrictEffective={resolvedAnalysisMetadata.passStrictEffective === true}
+                />
+            )}
+
             {/* 3. 세부 리스크 평가 항목 */}
             {!v31HidesScores && Object.keys(radarMap).length > 0 && (
                 <div
@@ -3980,7 +4012,7 @@ export default function AiReportView({
                         meta={getV31SectionMeta('market', v31Category)}
                         orderClass="v31-order-market"
                     >
-                        {isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && (
+                        {isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && isV31 && (
                             <MarketProofCard
                                 marketProof={resolvedAnalysisMetadata.marketProof as MarketProofPayload}
                                 marketProofBlocked={resolvedAnalysisMetadata.marketProofBlocked === true}

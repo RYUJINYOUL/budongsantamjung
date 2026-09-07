@@ -101,6 +101,12 @@ export type ListingLiteCohort = {
   confidenceGrade?: string | null;
   cohortKey?: string | null;
   tradeSamples?: Record<string, unknown>[];
+  hojaeTier?: number | null;
+  hojaeTierLabel?: string | null;
+  hojaeTierReason?: string | null;
+  hojaeTierCeiling?: number | null;
+  hojaeTierCapped?: boolean | null;
+  appliedMultiplierRaw?: number | null;
 };
 
 export type ListingLiteContext = {

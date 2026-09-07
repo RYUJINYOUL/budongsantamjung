@@ -2,6 +2,7 @@
 
 import type { ListingLiteCohort } from '@/lib/listingInventory';
 import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
+import { formatHojaeTierSummary } from '@/lib/hojaeTier';
 
 function isNationalLevel(level?: string | null): boolean {
   return !!level && (level.startsWith('L3') || level.includes('national'));
@@ -23,6 +24,7 @@ export default function ListingCohortCard({
       ? (cohort.filteredSampleCount ?? 0)
       : (cohort.cohortSampleCount ?? 0);
     const tradeSamples = cohort.tradeSamples ?? [];
+    const hojaeSummary = formatHojaeTierSummary(cohort);
 
     return (
       <section
@@ -88,7 +90,23 @@ export default function ListingCohortCard({
               신뢰 {cohort.confidenceGrade}
             </span>
           )}
+          {hojaeSummary && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-white border border-violet-200 text-violet-700">
+              {hojaeSummary}
+            </span>
+          )}
         </div>
+
+        {cohort.hojaeTierReason && (
+          <p className="text-[10px] text-violet-800/90 font-medium mt-2 leading-relaxed rounded-lg border border-violet-100 bg-violet-50/60 px-2.5 py-2">
+            개발호재(배율): {cohort.hojaeTierReason}
+            {cohort.hojaeTierCapped && cohort.appliedMultiplierRaw != null && cohort.appliedMultiplier != null && (
+              <span className="block text-violet-700/80 mt-1">
+                raw median {Number(cohort.appliedMultiplierRaw).toFixed(2)}배 → tier 상한 {Number(cohort.appliedMultiplier).toFixed(2)}배 적용
+              </span>
+            )}
+          </p>
+        )}
 
         <p className="text-[10px] text-slate-500 font-medium mt-3 leading-relaxed">
           {isRule

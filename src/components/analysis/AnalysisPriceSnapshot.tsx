@@ -8,6 +8,7 @@ import {
   extractSummaryTags,
   formatEokCompact,
   formatPricePositionLabel,
+  formatTargetAreaSubline,
   getTargetArea,
   priceBarMarkerPercent,
   resolveEstimateRange,
@@ -64,7 +65,7 @@ export default function AnalysisPriceSnapshot({
           </div>
           {userPriceWon > 0 && targetArea > 0 && (
             <div className="mt-1 text-[11px] text-white/40">
-              평당 약 {perPyeong.toLocaleString()}만 · 전용 {Math.round(targetArea)}㎡
+              {formatTargetAreaSubline(targetArea, perPyeong, v31Cat)}
             </div>
           )}
         </div>
