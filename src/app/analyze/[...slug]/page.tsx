@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import dynamic from 'next/dynamic';
+import { resolveBackendUrl } from '../../../lib/backendUrl';
 import { parseAnalyzeSlug } from '../../../lib/slug';
 
 function AnalyzePageLoading() {
@@ -19,7 +20,7 @@ const AnalysisDetailPage = dynamic(
 export const revalidate = 3600;
 
 async function getReportData(id: string) {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://34.47.121.40';
+    const backendUrl = resolveBackendUrl();
     const url = `${backendUrl}/api/land/detective/report/${id}`;
     try {
         const res = await fetch(url, { 

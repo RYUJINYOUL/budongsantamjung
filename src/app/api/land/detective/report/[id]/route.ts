@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { resolveBackendUrl } from '@/lib/backendUrl';
 
 export async function GET(
     request: Request,
@@ -8,7 +9,7 @@ export async function GET(
     const authHeader = request.headers.get('Authorization');
 
     try {
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+        const backendUrl = resolveBackendUrl();
         const url = `${backendUrl}/api/land/detective/report/${id}`;
 
         const response = await fetch(url, {

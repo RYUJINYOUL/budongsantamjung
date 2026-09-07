@@ -2372,6 +2372,16 @@ export default function AnalysisDetailPage({
                     if (isMounted) {
                         setLoading(false);
                         setInitialFetchDone(true);
+                        if (response.status === 404) {
+                            setError('분석 결과를 찾을 수 없습니다.');
+                        } else {
+                            const body = await response.json().catch(() => ({}));
+                            setError(
+                                body.error
+                                || body.message
+                                || `분석 서버 연결 실패 (${response.status})`,
+                            );
+                        }
                     }
                     return;
                 }
