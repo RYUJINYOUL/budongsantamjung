@@ -1800,3 +1800,56 @@
   margin-bottom: 0.5rem;
   color: var(--v31-muted);
 }
+
+/* marketProof card */
+.analysis-v31-market-proof.is-blocked {
+  border-color: rgba(194, 65, 65, 0.35);
+  box-shadow: 0 0 20px rgba(194, 65, 65, 0.08);
+}
+
+.analysis-v31-market-proof-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.analysis-v31-market-proof-metrics {
+  margin-bottom: 0.75rem;
+}
+
+.analysis-v31-market-proof-message {
+  margin: 0 0 0.75rem;
+  font-size: var(--v31-fs-body);
+  color: var(--v31-text);
+  line-height: 1.6;
+}
+
+.analysis-v31-market-proof-alert {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(194, 65, 65, 0.35);
+  background: rgba(194, 65, 65, 0.1);
+  font-size: var(--v31-fs-caption);
+  color: #fecaca;
+  line-height: 1.5;
+}
+
+.analysis-v31-market-proof-compare {
+  margin-top: 0.5rem;
+}
+
+.analysis-v31-market-proof-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.analysis-v31-market-proof-source {
+  margin: 0.65rem 0 0;
+  font-size: var(--v31-fs-micro);
+  color: var(--v31-subtle);
+}

@@ -12,6 +12,7 @@ import {
   extractZoningChangePermits,
   extractZoningChangeSummaryComment,
   buildV31MapData,
+  ZONING_CHANGE_SCOPE_LABEL,
 } from '../../../lib/analysisV31Extractors';
 import { useZoningChangeMapMarkers } from '../../../hooks/useZoningChangeMapMarkers';
 
@@ -75,7 +76,9 @@ export default function AnalysisV31DevelopmentSection({
       <div className="analysis-v31-card">
         <div className="analysis-v31-zoning-row">
           <div>
-            <div className="analysis-v31-card-title">인접 필지 용도변경 (5년 · 반경 500m)</div>
+            <div className="analysis-v31-card-title">
+              인접 필지 용도변경 ({String(meta.zoningChangeScopeLabel || ZONING_CHANGE_SCOPE_LABEL)})
+            </div>
             <p className="analysis-v31-prose-note m-0">
               {hasChange
                 ? `상업·숙박 용도변경 ${meta.zoningChangeCount5Y}건 — ${summaryComment}`

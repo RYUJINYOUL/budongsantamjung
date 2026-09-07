@@ -145,6 +145,9 @@ function formatPermitDate(dateStr: unknown): string {
   return '-';
 }
 
+/** developmentService.PERMIT_SCOPE_LABEL과 동기화 */
+export const ZONING_CHANGE_SCOPE_LABEL = '동일 법정동 · 5년 · 인허가 최대 300건';
+
 /** ZoningChangeAnalyzer와 동일 기준 — 상업/숙박 용도변경, 최근 5년 */
 export function extractZoningChangePermits(
   mergedData?: Record<string, unknown> | null,
@@ -203,12 +206,13 @@ export function extractZoningChangeMapListItems(
 ): { title: string; sub: string }[] {
   const count5Y = Number(meta.zoningChangeCount5Y || 0);
   const count3Y = Number(meta.zoningChangeCount3Y || 0);
+  const scope = String(meta.zoningChangeScopeLabel || ZONING_CHANGE_SCOPE_LABEL);
   const items: { title: string; sub: string }[] = [
     {
       title: '조회 결과',
       sub: count5Y > 0
-        ? `5년 · 반경 500m · 상업/숙박 변경 ${count5Y}건${count3Y > 0 ? ` (최근 3년 ${count3Y}건)` : ''}`
-        : '5년 · 반경 500m · 상업/숙박 변경 없음',
+        ? `${scope} · 상업/숙박 변경 ${count5Y}건${count3Y > 0 ? ` (최근 3년 ${count3Y}건)` : ''}`
+        : `${scope} · 상업/숙박 변경 없음`,
     },
   ];
 

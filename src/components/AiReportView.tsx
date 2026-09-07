@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
 import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
+import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketProofCard';
 import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
@@ -332,7 +333,7 @@ const LedgerZoningChangeSection = ({ comment }: { comment: string }) => {
             chips={(
                 <>
                     {metaChip('5년 이내', accent)}
-                    {metaChip('인접 필지')}
+                    {metaChip('동일 법정동')}
                     {metaChip(noHistory ? '변경 이력 없음' : '변경 이력 감지', noHistory ? undefined : accent)}
                 </>
             )}
@@ -3975,6 +3976,13 @@ export default function AiReportView({
                         meta={getV31SectionMeta('market', v31Category)}
                         orderClass="v31-order-market"
                     >
+                        {isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && (
+                            <MarketProofCard
+                                marketProof={resolvedAnalysisMetadata.marketProof as MarketProofPayload}
+                                marketProofBlocked={resolvedAnalysisMetadata.marketProofBlocked === true}
+                                passStrictEffective={resolvedAnalysisMetadata.passStrictEffective === true}
+                            />
+                        )}
                         <div className={`analysis-v31-card ${v31CardClass}`}>
                             {firesaleSummary && (
                                 <div className="mb-3 flex flex-col gap-2">

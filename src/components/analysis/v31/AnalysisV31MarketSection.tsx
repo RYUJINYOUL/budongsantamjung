@@ -3,6 +3,7 @@
 import React from 'react';
 import MacroContextCharts from '../../MacroContextCharts';
 import AnalysisV31SectionShell from './AnalysisV31SectionShell';
+import MarketProofCard, { type MarketProofPayload } from './MarketProofCard';
 import { getV31SectionMeta, isApartmentAnalysisCategory } from '../../../lib/analysisV31Helpers';
 import {
   extractAmenityPopulationGrid,
@@ -25,6 +26,9 @@ export default function AnalysisV31MarketSection({
   category,
 }: Props) {
   const meta = analysisMetadata || (ai.analysisMetadata as Record<string, unknown>) || {};
+  const marketProof = meta.marketProof as MarketProofPayload | undefined;
+  const marketProofBlocked = meta.marketProofBlocked === true;
+  const passStrictEffective = meta.passStrictEffective === true;
   const priceAnalysis = (ai['3_priceAnalysisReport'] || {}) as Record<string, unknown>;
   const tradeGrid = extractMarketTradeGrid(ai, meta);
   const amenPop = extractAmenityPopulationGrid(ai, mergedData);
@@ -39,6 +43,14 @@ export default function AnalysisV31MarketSection({
       id="analysis-v31-market"
       meta={getV31SectionMeta('market', category)}
     >
+      {category === 'land' && marketProof?.status && (
+        <MarketProofCard
+          marketProof={marketProof}
+          marketProofBlocked={marketProofBlocked}
+          passStrictEffective={passStrictEffective}
+        />
+      )}
+
       {volumeHero && (
         <div className="analysis-v31-card">
           <div className="analysis-v31-market-main">
