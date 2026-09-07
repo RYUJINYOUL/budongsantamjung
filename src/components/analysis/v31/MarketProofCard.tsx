@@ -16,6 +16,7 @@ export type MarketProofPayload = {
   status?: string;
   tradeCount36mo?: number;
   assetClass?: string;
+  uiTrack?: 'A' | 'B' | 'C';
   dongName?: string;
   bjdongCd?: string;
   flag?: string;
@@ -60,6 +61,9 @@ type Props = {
   passStrictEffective?: boolean;
   /** AiReportView 다크 테마 인라인 (가격 스냅샷 하단) */
   embedded?: boolean;
+  /** Track B/C — 시가지 compareDongs 숨김 · 참고 UI */
+  referenceOnly?: boolean;
+  landTrack?: 'A' | 'B' | 'C';
 };
 
 export default function MarketProofCard({
@@ -67,9 +71,14 @@ export default function MarketProofCard({
   marketProofBlocked,
   passStrictEffective,
   embedded = false,
+  referenceOnly = false,
+  landTrack = 'A',
 }: Props) {
   const blocked = marketProofBlocked === true || marketProof.marketProofBlocked === true;
-  const compareDongs = marketProof.compareDongs ?? [];
+  const track = marketProof.uiTrack || landTrack;
+  const compareDongs = referenceOnly || track !== 'A'
+    ? (marketProof.compareDongs ?? []).filter((d) => d.role === 'land_peer' || (d.count != null && !d.buildingCount && !d.landResidentialCount))
+    : (marketProof.compareDongs ?? []);
   const badge = badgeClass(marketProof.status, blocked);
   const embeddedBadge = embeddedBadgeClass(marketProof.status, blocked);
 
@@ -85,10 +94,12 @@ export default function MarketProofCard({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="text-[11px] font-bold text-white/45 uppercase tracking-wide">
-              법정동 시장 활성도
+              {referenceOnly ? '법정동 거래 밀도 (참고)' : '법정동 시장 활성도'}
             </div>
             <p className="text-[12px] text-white/55 mt-1 m-0 leading-relaxed">
-              최근 36개월 동일유형 토지·빌딩 실거래 밀도 — cohort 추정가 해석 시 반드시 참고
+              {referenceOnly
+                ? '동일 지목·용도 기준 거래 밀도입니다. 시가지(대·상업) 비교와는 별개입니다.'
+                : '최근 36개월 동일유형 토지·빌딩 실거래 밀도 — cohort 추정가 해석 시 반드시 참고'}
             </p>
           </div>
           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${embeddedBadge}`}>
@@ -121,16 +132,24 @@ export default function MarketProofCard({
           </p>
         )}
 
-        {blocked && (
+        {blocked && !referenceOnly && (
           <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 mb-3 text-[12px] text-amber-100/90 leading-relaxed">
             거래가 매우 적은 동은 저평가 pass 추천에서 제외됩니다. cohort 배율·AI 분석은 그대로 제공되며,
             아래 참고 법정동 거래를 함께 확인하세요.
           </div>
         )}
 
+        {blocked && referenceOnly && (
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 mb-3 text-[12px] text-amber-100/90 leading-relaxed">
+            거래가 적은 것이 흔한 유형입니다. 추정가는 tier·cohort 참고값이며, 호재·개발 가능성을 우선 확인하세요.
+          </div>
+        )}
+
         {compareDongs.length > 0 && (
           <div className="mb-2">
-            <div className="text-[10px] font-bold text-white/40 mb-1.5">인근 참고 법정동</div>
+            <div className="text-[10px] font-bold text-white/40 mb-1.5">
+              {referenceOnly ? '인근 동일 유형 법정동' : '인근 참고 법정동'}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {compareDongs.map((d) => (
                 <span

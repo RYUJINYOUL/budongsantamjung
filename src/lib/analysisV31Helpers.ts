@@ -1,4 +1,4 @@
-/** v3.1 개별분석 UI — 공통 헬퍼 */
+import { pickHojaeTierFields, type HojaeTierFields } from './hojaeTier';
 
 export function formatEokCompact(won: number): string {
   const n = Math.round(Number(won) || 0);
@@ -153,7 +153,7 @@ export function isCohortOfficialPricing(
   return !!opr && ['cohort', 'cohort_relaxed'].includes(String(opr.dynamicStatus || ''));
 }
 
-export function buildPriceRangeCaption(
+export function buildCohortMultiplierCaption(
   meta: Record<string, unknown>,
   priceReas: Record<string, unknown> = {},
 ): string {
@@ -163,17 +163,60 @@ export function buildPriceRangeCaption(
   const confidenceGrade = String(
     meta.confidenceGrade || obsRatio?.confidenceGrade || priceReas.reliabilityGrade || '',
   ).trim();
+  const applied = Number(opr?.appliedMultiplier) || 0;
+  const hojae = pickHojaeTierFields({ ...meta, observedRatio: obsRatio, officialPriceRatio: opr });
+
+  if (cohort && hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null && applied > 0) {
+    const tier = hojae.hojaeTier ?? 0;
+    const parts = [
+      `tier ${tier} 상한 ${applied.toFixed(1)}배`,
+      `(raw median ${Number(hojae.appliedMultiplierRaw).toFixed(1)} → cap 적용)`,
+      confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
   if (cohort) {
     return [
       '동일수급권 median',
-      Number(opr?.appliedMultiplier) > 0 ? `${Number(opr?.appliedMultiplier).toFixed(1)}배` : null,
+      applied > 0 ? `${applied.toFixed(1)}배` : null,
       confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
     ].filter(Boolean).join(' · ');
   }
+
   return [
     '공시지가 배율',
     confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
   ].filter(Boolean).join(' · ');
+}
+
+/** @deprecated buildCohortMultiplierCaption 사용 */
+export function buildPriceRangeCaption(
+  meta: Record<string, unknown>,
+  priceReas: Record<string, unknown> = {},
+): string {
+  return buildCohortMultiplierCaption(meta, priceReas);
+}
+
+export function buildCohortEstimateTitle(hojae: HojaeTierFields, capped?: boolean): string {
+  if (hojae.hojaeTierCapped || capped) {
+    return '호재 tier 상한 추정 토지가';
+  }
+  return '동일수급권 median 추정 토지가';
+}
+
+export function buildCohortMultiplierSubline(
+  opr: Record<string, unknown> | undefined,
+  hojae: HojaeTierFields,
+): string | null {
+  const applied = Number(opr?.appliedMultiplier) || 0;
+  if (applied <= 0) return null;
+  const perPyeong = Number(opr?.estimatedPerPyeong) || 0;
+  const perPyeongStr = perPyeong > 0 ? `평당 ${Math.round(perPyeong / 10_000).toLocaleString()}만 · ` : '';
+  if (hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null) {
+    return `${perPyeongStr}tier ${hojae.hojaeTier ?? 0} 상한 ${applied.toFixed(2)}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`;
+  }
+  return `${perPyeongStr}median ${applied.toFixed(2)}배 적용`;
 }
 
 export function buildComparableSub(meta: Record<string, unknown>): string {

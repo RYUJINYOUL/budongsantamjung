@@ -4,7 +4,7 @@ import React from 'react';
 import {
   buildComparableSub,
   buildEstimateRangeLabel,
-  buildPriceRangeCaption,
+  buildCohortMultiplierCaption,
   extractSummaryTags,
   formatEokCompact,
   formatPricePositionLabel,
@@ -46,7 +46,7 @@ export default function AnalysisPriceSnapshot({
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-  const rangeCaption = buildPriceRangeCaption(meta, priceReas);
+  const rangeCaption = buildCohortMultiplierCaption(meta, priceReas);
   const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
     ? Math.round(userPriceWon / (targetArea / 3.3058) / 10_000)

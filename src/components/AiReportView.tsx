@@ -24,7 +24,8 @@ import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
 import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketProofCard';
 import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 import { formatHojaeTierSummary, pickHojaeTierFields } from '@/lib/hojaeTier';
-import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal } from '../lib/analysisV31Helpers';
+import { resolveLandUiTrack, shouldShowFullMarketProof, shouldShowReferenceMarketProof } from '@/lib/landAssetTrack';
+import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal, buildCohortEstimateTitle } from '../lib/analysisV31Helpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
 const REPORT_PASTEL_PALETTE = [
@@ -1533,14 +1534,19 @@ const OfficialMultiplierSection = ({
                         }}
                     >
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
-                            동일수급권 median 추정 토지가
+                            {buildCohortEstimateTitle(hojae, hojae.hojaeTierCapped === true)}
                         </span>
                         <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                             {formatEokCompact(estimatedTotal)}
                         </p>
                         {opr.appliedMultiplier > 0 && (
                             <p className="text-[10px] text-white/35 mt-1.5">
-                                평당 {formatPrice(opr.estimatedPerPyeong)} · median {Number(opr.appliedMultiplier).toFixed(2)}배 적용
+                                {[
+                                    opr.estimatedPerPyeong > 0 ? `평당 ${formatPrice(opr.estimatedPerPyeong)}` : null,
+                                    hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null
+                                        ? `tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`
+                                        : `median ${Number(opr.appliedMultiplier).toFixed(2)}배 적용`,
+                                ].filter(Boolean).join(' · ')}
                             </p>
                         )}
                     </div>
@@ -1558,9 +1564,13 @@ const OfficialMultiplierSection = ({
 
                     <div className="mx-4 mb-3 pt-3 border-t border-white/5">
                         <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
-                            {isFiltered
-                                ? `동일수급권(용도×지목) ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
-                                : `표본 부족으로 similarity 필터 없이 동일수급권 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`}
+                            {hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null
+                                ? (isFiltered
+                                    ? `동일수급권 ${cohortN}건 중 ${filteredN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 적용.`
+                                    : `동일수급권 ${cohortN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 적용.`)
+                                : (isFiltered
+                                    ? `동일수급권(용도×지목) ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
+                                    : `표본 부족으로 similarity 필터 없이 동일수급권 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`)}
                         </p>
                         <p className="text-white/40 text-[10px] leading-relaxed mt-2">
                             {COHORT_MULTIPLIER_DISCLAIMER}
@@ -3894,14 +3904,22 @@ export default function AiReportView({
                 />
             )}
 
-            {!isV31 && isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && (
+            {!isV31 && isLand && (() => {
+                const mp = resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined;
+                if (!mp?.status) return null;
+                const track = resolveLandUiTrack(resolvedAnalysisMetadata, mergedData);
+                if (!shouldShowFullMarketProof(track) && !shouldShowReferenceMarketProof(track)) return null;
+                return (
                 <MarketProofCard
                     embedded
-                    marketProof={resolvedAnalysisMetadata.marketProof as MarketProofPayload}
+                    landTrack={track}
+                    referenceOnly={!shouldShowFullMarketProof(track)}
+                    marketProof={mp}
                     marketProofBlocked={resolvedAnalysisMetadata.marketProofBlocked === true}
                     passStrictEffective={resolvedAnalysisMetadata.passStrictEffective === true}
                 />
-            )}
+                );
+            })()}
 
             {/* 3. 세부 리스크 평가 항목 */}
             {!v31HidesScores && Object.keys(radarMap).length > 0 && (
@@ -4048,13 +4066,21 @@ export default function AiReportView({
                         meta={getV31SectionMeta('market', v31Category)}
                         orderClass="v31-order-market"
                     >
-                        {isLand && (resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined)?.status && isV31 && (
+                        {isLand && (() => {
+                            const mp = resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined;
+                            if (!mp?.status || !isV31) return null;
+                            const track = resolveLandUiTrack(resolvedAnalysisMetadata, mergedData);
+                            if (!shouldShowFullMarketProof(track) && !shouldShowReferenceMarketProof(track)) return null;
+                            return (
                             <MarketProofCard
-                                marketProof={resolvedAnalysisMetadata.marketProof as MarketProofPayload}
+                                landTrack={track}
+                                referenceOnly={!shouldShowFullMarketProof(track)}
+                                marketProof={mp}
                                 marketProofBlocked={resolvedAnalysisMetadata.marketProofBlocked === true}
                                 passStrictEffective={resolvedAnalysisMetadata.passStrictEffective === true}
                             />
-                        )}
+                            );
+                        })()}
                         <div className={`analysis-v31-card ${v31CardClass}`}>
                             {firesaleSummary && (
                                 <div className="mb-3 flex flex-col gap-2">

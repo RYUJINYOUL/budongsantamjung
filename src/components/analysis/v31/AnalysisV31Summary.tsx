@@ -3,9 +3,9 @@
 import React from 'react';
 import MarketProofCard, { type MarketProofPayload } from './MarketProofCard';
 import {
-  buildComparableSub,
+  buildCohortMultiplierCaption,
   buildEstimateRangeLabel,
-  buildPriceRangeCaption,
+  buildComparableSub,
   extractSummaryJudgements,
   extractSummaryTags,
   extractVerdictBadge,
@@ -18,6 +18,13 @@ import {
   resolveEstimateRange,
   resolveUserPriceWon,
 } from '../../../lib/analysisV31Helpers';
+import {
+  resolveLandUiTrack,
+  shouldShowFullMarketProof,
+  shouldShowReferenceMarketProof,
+  type LandUiTrack,
+} from '../../../lib/landAssetTrack';
+import { formatHojaeTierSummary, pickHojaeTierFields } from '@/lib/hojaeTier';
 
 type Props = {
   ai: Record<string, unknown>;
@@ -34,6 +41,43 @@ function badgeClass(tone: 'green' | 'blue' | 'amber' | 'red') {
     red: 'analysis-v31-badge-red',
   };
   return map[tone];
+}
+
+function LandTrackContextPanel({
+  track,
+  meta,
+  hojaeSummary,
+  hojaeReason,
+}: {
+  track: LandUiTrack;
+  meta: Record<string, unknown>;
+  hojaeSummary: string | null;
+  hojaeReason?: string | null;
+}) {
+  const title = track === 'B' ? '농·임야 · 호재 중심' : '관리·녹지 · 개발 가능성';
+  const lead = track === 'B'
+    ? '시가지(대·상업) marketProof와 다른 기준입니다. tier 상한·호재·형질변경을 우선 확인하세요.'
+    : '계획·관리·녹지 지역입니다. 도로 접근·개발계획·규제 변경을 중심으로 판단하세요.';
+
+  return (
+    <div className="analysis-v31-card analysis-v31-market-proof reference-mode">
+      <div className="analysis-v31-card-title">{title}</div>
+      <p className="analysis-v31-prose-note">{lead}</p>
+      {hojaeSummary && (
+        <div className="analysis-v31-tag-row mt-2">
+          <span className="analysis-v31-tag">{hojaeSummary}</span>
+        </div>
+      )}
+      {hojaeReason && (
+        <p className="analysis-v31-market-proof-message mt-2">{hojaeReason}</p>
+      )}
+      {meta.marketProofBlocked === true && (
+        <p className="analysis-v31-market-proof-alert mt-2">
+          법정동 거래가 매우 적어 저평가 pass 추천은 제외됩니다. 추정가는 tier·cohort 참고값입니다.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function AnalysisV31Summary({
@@ -61,11 +105,18 @@ export default function AnalysisV31Summary({
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
   const marketProof = meta.marketProof as MarketProofPayload | undefined;
-  const rangeCaption = buildPriceRangeCaption(meta, priceReas);
+  const landTrack = category === 'land' ? resolveLandUiTrack(meta, mergedData) : null;
+  const hojae = pickHojaeTierFields(meta);
+  const hojaeSummary = formatHojaeTierSummary(hojae);
+  const rangeCaption = buildCohortMultiplierCaption(meta, priceReas);
   const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
     ? Math.round(userPriceWon / (targetArea / 3.3058) / 10_000)
     : 0;
+
+  const showFullMp = category === 'land' && marketProof?.status && landTrack && shouldShowFullMarketProof(landTrack);
+  const showRefMp = category === 'land' && marketProof?.status && landTrack && shouldShowReferenceMarketProof(landTrack);
+  const showTrackPanel = category === 'land' && landTrack && (landTrack === 'B' || landTrack === 'C');
 
   return (
     <section className="analysis-v31-summary">
@@ -152,10 +203,35 @@ export default function AnalysisV31Summary({
             </div>
           )}
 
-          {category === 'land' && marketProof?.status && (
+          {showTrackPanel && landTrack && (
+            <div className="analysis-v31-summary-market-proof">
+              <LandTrackContextPanel
+                track={landTrack}
+                meta={meta}
+                hojaeSummary={hojaeSummary}
+                hojaeReason={hojae.hojaeTierReason}
+              />
+            </div>
+          )}
+
+          {showFullMp && marketProof && (
             <div className="analysis-v31-summary-market-proof">
               <MarketProofCard
                 embedded
+                landTrack="A"
+                marketProof={marketProof}
+                marketProofBlocked={meta.marketProofBlocked === true}
+                passStrictEffective={meta.passStrictEffective === true}
+              />
+            </div>
+          )}
+
+          {showRefMp && marketProof && (
+            <div className="analysis-v31-summary-market-proof">
+              <MarketProofCard
+                embedded
+                referenceOnly
+                landTrack={landTrack || 'B'}
                 marketProof={marketProof}
                 marketProofBlocked={meta.marketProofBlocked === true}
                 passStrictEffective={meta.passStrictEffective === true}
