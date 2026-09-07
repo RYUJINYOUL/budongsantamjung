@@ -1,4 +1,4 @@
-import { pickHojaeTierFields, type HojaeTierFields } from './hojaeTier';
+import { pickHojaeTierFields, resolveHojaeTierCeiling, type HojaeTierFields } from './hojaeTier';
 
 export function formatEokCompact(won: number): string {
   const n = Math.round(Number(won) || 0);
@@ -149,7 +149,13 @@ export function buildEstimateRangeLabel(source: string): string {
 export function isCohortOfficialPricing(
   analysisMetadata: Record<string, unknown> | null | undefined,
 ): boolean {
-  const opr = (analysisMetadata || {}).officialPriceRatio as Record<string, unknown> | undefined;
+  const meta = analysisMetadata || {};
+  const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
+  if (meta.cohortEstimateMethod === 'parcel_decomposed') return true;
+  const appliedMethod = String(opr?.appliedMethod || '');
+  if (appliedMethod.includes('multi_parcel_decomposed') || appliedMethod.includes('동일수급권(')) {
+    return true;
+  }
   return !!opr && ['cohort', 'cohort_relaxed'].includes(String(opr.dynamicStatus || ''));
 }
 
@@ -166,10 +172,11 @@ export function buildCohortMultiplierCaption(
   const applied = Number(opr?.appliedMultiplier) || 0;
   const hojae = pickHojaeTierFields({ ...meta, observedRatio: obsRatio, officialPriceRatio: opr });
 
-  if (cohort && hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null && applied > 0) {
+  if (cohort && hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null) {
     const tier = hojae.hojaeTier ?? 0;
+    const ceiling = resolveHojaeTierCeiling(tier, hojae.hojaeTierCeiling);
     const parts = [
-      `tier ${tier} 상한 ${applied.toFixed(1)}배`,
+      ceiling != null ? `tier ${tier} 상한 ${ceiling.toFixed(1)}배` : `tier ${tier} cap 적용`,
       `(raw median ${Number(hojae.appliedMultiplierRaw).toFixed(1)} → cap 적용)`,
       confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
     ].filter(Boolean);
@@ -214,7 +221,9 @@ export function buildCohortMultiplierSubline(
   const perPyeong = Number(opr?.estimatedPerPyeong) || 0;
   const perPyeongStr = perPyeong > 0 ? `평당 ${Math.round(perPyeong / 10_000).toLocaleString()}만 · ` : '';
   if (hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null) {
-    return `${perPyeongStr}tier ${hojae.hojaeTier ?? 0} 상한 ${applied.toFixed(2)}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`;
+    const ceiling = resolveHojaeTierCeiling(hojae.hojaeTier, hojae.hojaeTierCeiling);
+    const capLabel = ceiling != null ? ceiling.toFixed(2) : applied.toFixed(2);
+    return `${perPyeongStr}tier ${hojae.hojaeTier ?? 0} 상한 ${capLabel}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`;
   }
   return `${perPyeongStr}median ${applied.toFixed(2)}배 적용`;
 }

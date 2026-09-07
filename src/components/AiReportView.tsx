@@ -23,7 +23,7 @@ import { buildRiskItemFacts } from '../lib/apartmentRiskItemFacts';
 import AnalysisV31SectionShell from './analysis/v31/AnalysisV31SectionShell';
 import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketProofCard';
 import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
-import { formatHojaeTierSummary, pickHojaeTierFields } from '@/lib/hojaeTier';
+import { formatHojaeTierSummary, pickHojaeTierFields, resolveHojaeTierCeiling } from '@/lib/hojaeTier';
 import { resolveLandUiTrack, shouldShowFullMarketProof, shouldShowReferenceMarketProof } from '@/lib/landAssetTrack';
 import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal, buildCohortEstimateTitle } from '../lib/analysisV31Helpers';
 
@@ -1465,10 +1465,21 @@ const OfficialMultiplierSection = ({
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
     const obs = opr?.observedRatio;
-    const hojae = pickHojaeTierFields(obs || {});
+    const hojae = pickHojaeTierFields({ ...(meta as Record<string, unknown>), observedRatio: obs, officialPriceRatio: opr });
     const hojaeSummary = formatHojaeTierSummary(hojae);
+    const hojaeCeiling = resolveHojaeTierCeiling(hojae.hojaeTier, hojae.hojaeTierCeiling);
+    const capMultiplierLabel = hojaeCeiling != null
+        ? Number(hojaeCeiling).toFixed(2)
+        : Number(opr?.appliedMultiplier || 0).toFixed(2);
 
-    if (opr && (opr.dynamicStatus === 'cohort' || opr.dynamicStatus === 'cohort_relaxed')) {
+    const isCohortPricing = opr && (
+        opr.dynamicStatus === 'cohort'
+        || opr.dynamicStatus === 'cohort_relaxed'
+        || meta.cohortEstimateMethod === 'parcel_decomposed'
+        || String(opr.appliedMethod || '').includes('multi_parcel_decomposed')
+    );
+
+    if (isCohortPricing) {
         const isFiltered = opr.dynamicStatus === 'cohort';
         const accent = PRICE_METHOD_ACCENTS.comparables;
         const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || '동일수급권';
@@ -1544,7 +1555,7 @@ const OfficialMultiplierSection = ({
                                 {[
                                     opr.estimatedPerPyeong > 0 ? `평당 ${formatPrice(opr.estimatedPerPyeong)}` : null,
                                     hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null
-                                        ? `tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`
+                                        ? `tier ${hojae.hojaeTier ?? 0} 상한 ${capMultiplierLabel}배 (raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)} → cap)`
                                         : `median ${Number(opr.appliedMultiplier).toFixed(2)}배 적용`,
                                 ].filter(Boolean).join(' · ')}
                             </p>
@@ -1566,8 +1577,8 @@ const OfficialMultiplierSection = ({
                         <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
                             {hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null
                                 ? (isFiltered
-                                    ? `동일수급권 ${cohortN}건 중 ${filteredN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 적용.`
-                                    : `동일수급권 ${cohortN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${Number(opr.appliedMultiplier).toFixed(2)}배 적용.`)
+                                    ? `동일수급권 ${cohortN}건 중 ${filteredN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${capMultiplierLabel}배 적용.`
+                                    : `동일수급권 ${cohortN}건 raw median ${Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier ${hojae.hojaeTier ?? 0} 상한 ${capMultiplierLabel}배 적용.`)
                                 : (isFiltered
                                     ? `동일수급권(용도×지목) ${cohortN}건 중 공시 유사도 필터 후 ${filteredN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`
                                     : `표본 부족으로 similarity 필터 없이 동일수급권 ${cohortN}건 median ${Number(opr.appliedMultiplier).toFixed(2)}배를 적용했습니다.`)}
@@ -1583,9 +1594,9 @@ const OfficialMultiplierSection = ({
                                 <p className="text-[10px] text-violet-100/75 mt-1 leading-relaxed">
                                     {hojae.hojaeTierReason}
                                 </p>
-                                {hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null && opr.appliedMultiplier > 0 && (
+                                {hojae.hojaeTierCapped && hojae.appliedMultiplierRaw != null && hojaeCeiling != null && (
                                     <p className="text-[10px] text-violet-200/60 mt-1">
-                                        raw median {Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier 상한 {Number(opr.appliedMultiplier).toFixed(2)}배 적용
+                                        raw median {Number(hojae.appliedMultiplierRaw).toFixed(2)}배 → tier 상한 {capMultiplierLabel}배 적용
                                     </p>
                                 )}
                                 <p className="text-[9px] text-white/30 mt-1.5">
