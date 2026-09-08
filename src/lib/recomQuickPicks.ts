@@ -8,7 +8,8 @@ import type { ApartmentDiscoverFilters } from './apartmentDiscoverFilters';
 import { hasActiveApartmentCardFilters, hasStrictDataFilters } from './apartmentDiscoverFilters';
 import { isPyeongFilterActive } from './aptDiscoverArea';
 import { isPriceFilterActive } from './aptDiscoverPrice';
-import { PASS_QUEUE_LIST_TAGLINE } from './passQueue';
+/** 매물(/listings) 목록 부제 */
+export const LISTINGS_LIST_TAGLINE = '중개사·관리자가 등록한 매물입니다.';
 
 export type RecomQuickPickId =
   | 'land-1eok'
@@ -26,8 +27,6 @@ export const RECOM_CATEGORIES = ['토지', '빌딩'] as const;
 /** 추천 목록·로그인 게이트 공통 부제 */
 export const RECOM_LIST_TAGLINE = '분석 2만+건 중 높은 점수 7.5%만 추천합니다.';
 
-/** 매물(/listings) pass 큐 목록 부제 */
-export const LISTINGS_LIST_TAGLINE = PASS_QUEUE_LIST_TAGLINE;
 
 /** 지도·목록 퀵픽 UI 노출 (false = 엄선 추천 패널 전체 숨김) */
 export const RECOM_QUICK_PICKS_ENABLED = false;

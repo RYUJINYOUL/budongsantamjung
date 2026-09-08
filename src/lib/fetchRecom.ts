@@ -45,13 +45,17 @@ export type RecomReportItem = {
   listingPriceMan?: number | null;
   zoningGroup?: string | null;
   zoningLabel?: string | null;
-  aiScore: number;
+  aiScore: number | null;
   detectiveNote?: string | null;
   oneLiner?: string | null;
   propertyGrade?: { riskScore?: string; overall?: string; reason?: string };
   createdAt?: string;
   updatedAt?: string;
   hasReport?: boolean;
+  passBadge?: string | null;
+  passBadgeLabel?: string | null;
+  listingRatio?: number | null;
+  recomSource?: string | null;
 };
 
 type GeoOpts = { lat: number; lng: number; radiusKm: number };
@@ -174,6 +178,7 @@ export function mapRecomApartmentToFeedItem(item: RecomApartmentItem) {
 
 export function mapRecomReportToFeedItem(item: RecomReportItem) {
   const aiScore = item.aiScore ?? 0;
+  const hasReport = item.hasReport !== false;
   return {
     id: item.id,
     category: item.category,
@@ -186,18 +191,22 @@ export function mapRecomReportToFeedItem(item: RecomReportItem) {
       : undefined,
     detectiveNote: item.detectiveNote ?? undefined,
     oneLiner: item.oneLiner ?? undefined,
-    propertyGrade: item.propertyGrade ?? {
+    propertyGrade: item.propertyGrade ?? (hasReport ? {
       overall: aiScore >= 70 ? '우수' : aiScore >= 40 ? '보통' : '주의',
       reason: '',
       riskScore: String(aiScore),
-    },
+    } : undefined),
     budgetMan: item.budgetMan ?? null,
     listingPriceMan: item.listingPriceMan ?? null,
     zoningGroup: item.zoningGroup ?? null,
     zoningLabel: item.zoningLabel ?? null,
-    hasReport: true,
-    latestReportId: item.id,
+    hasReport,
+    latestReportId: hasReport ? item.id : null,
     createdAt: item.createdAt ?? new Date().toISOString(),
+    passBadge: item.passBadge ?? undefined,
+    passBadgeLabel: item.passBadgeLabel ?? undefined,
+    listingRatio: item.listingRatio ?? undefined,
+    recomSource: item.recomSource ?? undefined,
   };
 }
 

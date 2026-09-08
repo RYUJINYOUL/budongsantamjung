@@ -13,8 +13,8 @@ const EMERALD_ICON_FILTER =
 const SLATE_ICON_FILTER =
   'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)';
 
-/** SideNav에서만 숨김 — URL·페이지 기능은 유지 (발견·분양·랭킹) */
-const HIDDEN_NAV_IDS = new Set(['discover', 'presale', 'ranking']);
+/** SideNav에서만 숨김 — URL·페이지 기능은 유지 (발견·분양·랭킹·매물) */
+const HIDDEN_NAV_IDS = new Set(['discover', 'presale', 'ranking', 'listings']);
 
 const NAV_ITEMS = [
   {
@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'listings',
-    label: '후보',
+    label: '매물',
     href: '/listings',
     icon: '/a3.png',
   },

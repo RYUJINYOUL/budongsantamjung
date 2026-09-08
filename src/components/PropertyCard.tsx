@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { makeAnalyzeSlug } from '../lib/slug';
-import PassQueueBadge from './listing/PassQueueBadge';
 import type { PassBadge, PassQueueInfo } from '../lib/passQueue';
+import { PASS_BADGE } from '../lib/passQueue';
 
 // ────────────────────────────────────────────────
 // 타입 정의
@@ -227,6 +227,7 @@ export default function PropertyCard({
   const isCompact = size === 'compact';
   const isApartment = data.category === '아파트' || data.category === 'apartment';
   const isLiteCard = !!data.r114PropId;
+  const showTradeVolumeRibbon = data.passBadge === PASS_BADGE.TRADE_VOLUME_CHECK;
   const discoverAwaitingCollect = isApartment && data.hasReport === false && !isLiteCard;
   const discoverClickDisabled = discoverAwaitingCollect && !onClick;
 
@@ -261,17 +262,26 @@ export default function PropertyCard({
         onClick={handleClick}
         onKeyDown={(e) => e.key === 'Enter' && handleClick()}
         className={[
-          'group relative bg-white border rounded-2xl',
+          'group relative bg-white border rounded-2xl overflow-hidden',
           discoverClickDisabled ? 'cursor-default' : 'cursor-pointer',
           !discoverClickDisabled && 'transition-all hover:border-emerald-300 hover:shadow-md',
           isCompact ? 'p-3' : 'p-4',
+          showTradeVolumeRibbon && !isCompact ? 'pt-8' : '',
+          showTradeVolumeRibbon && isCompact ? 'pt-7' : '',
           selected
             ? 'border-emerald-400 ring-1 ring-emerald-400 shadow-sm'
             : isLiteCard
               ? 'border-violet-200 bg-violet-50/30'
-              : 'border-slate-100',
+              : showTradeVolumeRibbon
+                ? 'border-amber-200'
+                : 'border-slate-100',
         ].join(' ')}
       >
+        {showTradeVolumeRibbon && (
+          <div className="absolute inset-x-0 top-0 z-10 bg-amber-500 text-white text-[10px] font-extrabold py-1.5 text-center tracking-tight">
+            ⚠️ {data.passBadgeLabel || '거래량 확인 필요'}
+          </div>
+        )}
         {/* 상단: 제목 + 리스크 */}
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex-1 min-w-0">
@@ -290,14 +300,6 @@ export default function PropertyCard({
               <p className="text-xs text-slate-400 truncate font-medium mt-0.5">
                 {subtitle}
               </p>
-            )}
-            {data.passBadge && data.passBadgeLabel && (
-              <div className="mt-1.5">
-                <PassQueueBadge
-                  passBadge={data.passBadge}
-                  label={data.passBadgeLabel}
-                />
-              </div>
             )}
           </div>
 
