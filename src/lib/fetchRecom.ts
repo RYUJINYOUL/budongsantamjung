@@ -203,10 +203,6 @@ export function mapRecomReportToFeedItem(item: RecomReportItem) {
     hasReport,
     latestReportId: hasReport ? item.id : null,
     createdAt: item.createdAt ?? new Date().toISOString(),
-    passBadge: item.passBadge ?? undefined,
-    passBadgeLabel: item.passBadgeLabel ?? undefined,
-    listingRatio: item.listingRatio ?? undefined,
-    recomSource: item.recomSource ?? undefined,
   };
 }
 

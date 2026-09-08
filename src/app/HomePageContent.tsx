@@ -681,10 +681,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
         if (isInvestmentDiscoverCategory(category)) {
           const { items } = await fetchRecomReports(
             investmentDiscoverToRecomFilters(investmentFiltersRef.current, category),
-            {
-              ...recomFetchOpts,
-              limit: category === '토지' ? 200 : 50,
-            },
+            recomFetchOpts,
           );
           setAnalyses(items.map(mapRecomReportToFeedItem) as Analysis[]);
           hasTimelineLoadedRef.current = true;
@@ -1633,9 +1630,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           hasReport: analysis.hasReport,
           latestReportId: analysis.latestReportId ?? null,
           r114PropId: analysis.r114PropId ?? undefined,
-          passBadge: analysis.passBadge ?? undefined,
-          passBadgeLabel: analysis.passBadgeLabel ?? undefined,
-          listingRatio: analysis.listingRatio ?? undefined,
         },
       };
     },
