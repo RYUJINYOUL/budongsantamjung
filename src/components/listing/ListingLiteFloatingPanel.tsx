@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import ListingLitePanel from './ListingLitePanel';
 import ListingLiteFooter from './ListingLiteFooter';
+import PassQueueBadge from './PassQueueBadge';
 import type { ListingItem } from '@/lib/listingInventory';
 
 export default function ListingLiteFloatingPanel({
@@ -44,6 +45,11 @@ export default function ListingLiteFloatingPanel({
           <div className="min-w-0 flex-1">
             <h2 className="text-[17px] font-black text-slate-900 leading-snug truncate">{title}</h2>
             <p className="text-[11px] text-slate-500 font-medium mt-0.5 truncate">{item.address}</p>
+            {item.passBadge && item.passBadgeLabel && (
+              <div className="mt-1.5">
+                <PassQueueBadge passBadge={item.passBadge} label={item.passBadgeLabel} size="md" />
+              </div>
+            )}
           </div>
           <button
             type="button"

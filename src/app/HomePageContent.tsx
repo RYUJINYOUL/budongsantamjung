@@ -116,7 +116,8 @@ import {
   scheduleFetchTimeout,
 } from '../lib/fetchAbort';
 import ListingLiteFloatingPanel from '../components/listing/ListingLiteFloatingPanel';
-import { fetchListingDetail, fetchListings, type ListingItem } from '../lib/listingInventory';
+import { fetchListingDetail, fetchPassQueueListings, type ListingItem } from '../lib/listingInventory';
+import { PASS_BADGE, type PassBadge } from '../lib/passQueue';
 import { listingCategoryToApi, mapListingToFeedItem } from '../lib/mapListingToFeedItem';
 
 interface Analysis {
@@ -158,6 +159,9 @@ interface Analysis {
   avgWolseMonthlyRent1m?: number | null;
   /** 토지·빌딩 등 — 제시가/추정가 (만원) */
   budgetMan?: number | null;
+  passBadge?: PassBadge | null;
+  passBadgeLabel?: string | null;
+  listingRatio?: number | null;
 }
 
 function analysisCardCacheKey(
@@ -233,8 +237,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [showMobileMap, setShowMobileMap] = useState(true);
   const [selectedProperty, setSelectedProperty] = useState<Analysis | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(
-    feedMode === 'recom' ? '토지' : 'all',
+    feedMode === 'recom' || feedMode === 'listings' ? '토지' : 'all',
   );
+  const [passQueueBadgeFilter, setPassQueueBadgeFilter] = useState<'all' | PassBadge>('all');
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
   const [geoReady, setGeoReady] = useState(false);
@@ -692,12 +697,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       const isListingsFeed = feedModeRef.current === 'listings';
       if (isListingsFeed) {
         const apiCategory = listingCategoryToApi(category);
-        const { items } = await fetchListings({
+        const { items } = await fetchPassQueueListings({
           category: apiCategory,
-          lat,
-          lng,
-          radiusKm: radius,
-          limit: 50,
+          limit: 1500,
           signal: abortController.signal,
         });
         setAnalyses(items.map(mapListingToFeedItem) as Analysis[]);
@@ -836,9 +838,10 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     return () => window.removeEventListener('pageshow', onPageShow);
   }, [fetchAnalyses, applyHomeGeo, applyGeoFromUrlSearchParams, geoReady]);
 
-  /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 */
+  /** 지도 이동·줌·탭 — discover는 600ms, 그 외 300ms 디바운스 (pass 큐는 전국 1회 로드) */
   useEffect(() => {
     if (!geoReady) return;
+    if (feedMode === 'listings') return;
     if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     const debounceMs =
       useServerApartmentDiscoverForCategory(selectedCategory) ? 600 : 300;
@@ -849,7 +852,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     return () => {
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [mapPosition, selectedCategory, fetchAnalyses, geoReady]);
+  }, [mapPosition, selectedCategory, fetchAnalyses, geoReady, feedMode]);
 
   useEffect(() => {
     if (!geoReady || !apartmentTabDiscover) return;
@@ -1231,11 +1234,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     router.replace(qs ? `${mapBasePath}?${qs}` : mapBasePath, { scroll: false });
     setPanelListingItem(null);
   }, [router, mapBasePath, feedScope]);
-
-  const handleListingAnalyze = useCallback(() => {
-    if (!panelListingItem) return;
-    router.push(`/analyze/${makeAnalyzeSlug(panelListingItem.id, panelListingItem.propertyTitle)}`);
-  }, [panelListingItem, router]);
 
   const handleLiteAnalyze = useCallback(async (r114PropId: string) => {
     const returnHref = buildDiscoverReturnHref();
@@ -1625,6 +1623,8 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           hasReport: analysis.hasReport,
           latestReportId: analysis.latestReportId ?? null,
           r114PropId: analysis.r114PropId ?? undefined,
+          passBadge: analysis.passBadge ?? undefined,
+          passBadgeLabel: analysis.passBadgeLabel ?? undefined,
         },
       };
     },
@@ -1640,7 +1640,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
 
   const listAnalysesForDisplay = useMemo(() => {
     if (feedMode === 'listings') {
-      return searchFilteredAnalyses;
+      let list = searchFilteredAnalyses;
+      if (passQueueBadgeFilter !== 'all') {
+        list = list.filter((a) => a.passBadge === passQueueBadgeFilter);
+      }
+      return list;
     }
     let list = searchFilteredAnalyses;
     if (selectedCategory === '아파트') {
@@ -1699,6 +1703,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     cardKeyForAnalysis,
     apartmentTabDiscover,
     feedMode,
+    passQueueBadgeFilter,
   ]);
 
   useEffect(() => {
@@ -1976,7 +1981,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                         : feedMode === 'recom'
                           ? '추천 매물'
                           : feedMode === 'listings'
-                            ? '매물'
+                            ? '후보 매물'
                             : '부동산탐정'}
                 </h1>
               </div>
@@ -2112,6 +2117,42 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     ))}
                   </div>
                 </div>
+
+                {feedMode === 'listings' && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        ['all', '전체'],
+                        [PASS_BADGE.ACTIVE, '활성'],
+                        [PASS_BADGE.TRADE_VOLUME_CHECK, '⚠️ 거래량 확인 필'],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setPassQueueBadgeFilter(id)}
+                          className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
+                            passQueueBadgeFilter === id
+                              ? 'bg-slate-900 border-slate-900 text-white'
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-slate-400'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-semibold">
+                      {listAnalysesForDisplay.length.toLocaleString()}건 표시
+                      {passQueueBadgeFilter === 'all' && analyses.length > 0 && (
+                        <>
+                          {' · '}
+                          활성 {analyses.filter((a) => a.passBadge === PASS_BADGE.ACTIVE).length.toLocaleString()}
+                          {' · '}
+                          거래량 확인 필 {analyses.filter((a) => a.passBadge === PASS_BADGE.TRADE_VOLUME_CHECK).length.toLocaleString()}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                )}
 
                 {selectedCategory === '아파트' && feedMode !== 'listings' && (
                   <ApartmentDiscoverToolbar
@@ -2266,7 +2307,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     </p>
                   ) : feedMode === 'listings' && !listSearchQuery ? (
                     <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">
-                      등록된 매물이 없습니다. 지도를 이동하거나 다른 카테고리를 선택해 보세요.
+                      pass 큐 매물을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
                     </p>
                   ) : (
                     <>
@@ -2361,7 +2402,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
               <ListingLiteFloatingPanel
                 item={panelListingItem}
                 onClose={closeListingPanel}
-                onAnalyzeClick={handleListingAnalyze}
                 placement="list-inset"
               />
             )}
@@ -2403,7 +2443,6 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                 <ListingLiteFloatingPanel
                   item={panelListingItem}
                   onClose={closeListingPanel}
-                  onAnalyzeClick={handleListingAnalyze}
                   placement="map"
                 />
               )}

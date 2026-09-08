@@ -3,6 +3,7 @@ import {
   formatPricePerPyeong,
   type ListingItem,
 } from './listingInventory';
+import { formatListingRatio } from './passQueue';
 
 const CATEGORY_KO: Record<string, string> = {
   land: '토지',
@@ -21,10 +22,18 @@ export function mapListingToFeedItem(item: ListingItem) {
   if (item.pyeong != null) areaParts.push(`${item.pyeong.toLocaleString()}평`);
   if (item.areaM2 != null) areaParts.push(`${item.areaM2.toLocaleString()}㎡`);
   const perPyeong = formatPricePerPyeong(item.budgetMan, item.pyeong);
+  const ratioLabel = formatListingRatio(item.listingRatio);
+  const passNote = item.passBadgeLabel
+    ? item.passBadge === 'trade_volume_check'
+      ? `⚠️ ${item.passBadgeLabel}`
+      : item.passBadgeLabel
+    : null;
   const summary = [
+    passNote,
     priceStr,
     areaParts.join(' · '),
     perPyeong !== '-' ? perPyeong : null,
+    ratioLabel ? `호가/추정 ${ratioLabel}` : null,
     meta.zoning,
     meta.jimok,
   ].filter(Boolean).join(' · ');
@@ -56,6 +65,11 @@ export function mapListingToFeedItem(item: ListingItem) {
     avgPrice1m: item.budgetMan ?? undefined,
     r114PropId: (meta as { r114PropId?: string | null }).r114PropId ?? null,
     pnu: item.pnu ?? undefined,
+    passBadge: item.passBadge ?? undefined,
+    passBadgeLabel: item.passBadgeLabel ?? undefined,
+    passQueue: item.passQueue ?? undefined,
+    listingRatio: item.listingRatio ?? undefined,
+    deepAnalyzeEligible: item.deepAnalyzeEligible ?? undefined,
   };
 }
 

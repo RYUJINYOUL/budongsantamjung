@@ -15,8 +15,11 @@ import {
   rejectListingRecom,
   type ListingItem,
 } from '@/lib/listingInventory';
+import PassQueueBadge from '@/components/listing/PassQueueBadge';
+import PassQueueNotice from '@/components/listing/PassQueueNotice';
+import { DEEP_ANALYZE_MIN_SCORE } from '@/lib/passQueue';
 
-const RECOM_MIN_SCORE = 60;
+const RECOM_MIN_SCORE = DEEP_ANALYZE_MIN_SCORE;
 
 function MapEmbed({ lat, lng, address }: { lat: number; lng: number; address: string }) {
   const mapUrl = `https://map.kakao.com/link/map/${encodeURIComponent(address)},${lat},${lng}`;
@@ -193,9 +196,13 @@ export default function ListingDetailClient({ reportId }: { reportId: string }) 
       <main className="max-w-3xl mx-auto px-4 pt-5 space-y-5">
         <div>
           <div className="flex flex-wrap gap-2 mb-3">
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${statusBadge.className}`}>
-              {statusBadge.text}
-            </span>
+            {item.passBadge && item.passBadgeLabel ? (
+              <PassQueueBadge passBadge={item.passBadge} label={item.passBadgeLabel} size="md" />
+            ) : (
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${statusBadge.className}`}>
+                {statusBadge.text}
+              </span>
+            )}
             <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
               {item.categoryLabel}
             </span>
@@ -220,6 +227,15 @@ export default function ListingDetailClient({ reportId }: { reportId: string }) 
             <p className="text-xs text-slate-500 mt-2">{meta.jimok}</p>
           )}
         </section>
+
+        {item.passBadge && (
+          <PassQueueNotice
+            passQueue={item.passQueue}
+            passBadge={item.passBadge}
+            passBadgeLabel={item.passBadgeLabel}
+            listingRatio={item.listingRatio}
+          />
+        )}
 
         {item.lat != null && item.lng != null && (
           <MapEmbed lat={item.lat} lng={item.lng} address={item.address} />

@@ -14,7 +14,7 @@ const SLATE_ICON_FILTER =
   'invert(48%) sepia(11%) saturate(727%) hue-rotate(182deg) brightness(93%) contrast(88%)';
 
 /** SideNav에서만 숨김 — URL·페이지 기능은 유지 (발견·분양·랭킹) */
-const HIDDEN_NAV_IDS = new Set(['discover', 'presale', 'ranking', 'listings']);
+const HIDDEN_NAV_IDS = new Set(['discover', 'presale', 'ranking']);
 
 const NAV_ITEMS = [
   {
@@ -31,7 +31,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'listings',
-    label: '매물',
+    label: '후보',
     href: '/listings',
     icon: '/a3.png',
   },

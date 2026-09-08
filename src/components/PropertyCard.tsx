@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { makeAnalyzeSlug } from '../lib/slug';
+import PassQueueBadge from './listing/PassQueueBadge';
+import type { PassBadge, PassQueueInfo } from '../lib/passQueue';
 
 // ────────────────────────────────────────────────
 // 타입 정의
@@ -48,6 +50,12 @@ export interface PropertyCardData {
   latestReportId?: string | null;
   /** r114 Lite 단지 */
   r114PropId?: string | null;
+  /** pass 큐 배지 */
+  passBadge?: PassBadge | null;
+  passBadgeLabel?: string | null;
+  passQueue?: PassQueueInfo | null;
+  listingRatio?: number | null;
+  deepAnalyzeEligible?: boolean;
 }
 
 export interface PropertyCardProps {
@@ -282,6 +290,14 @@ export default function PropertyCard({
               <p className="text-xs text-slate-400 truncate font-medium mt-0.5">
                 {subtitle}
               </p>
+            )}
+            {data.passBadge && data.passBadgeLabel && (
+              <div className="mt-1.5">
+                <PassQueueBadge
+                  passBadge={data.passBadge}
+                  label={data.passBadgeLabel}
+                />
+              </div>
             )}
           </div>
 

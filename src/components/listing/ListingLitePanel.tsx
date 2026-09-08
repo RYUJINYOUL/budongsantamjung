@@ -5,6 +5,8 @@ import { Loader2, MapPin, TrainFront } from 'lucide-react';
 import ListingMiniMap from './ListingMiniMap';
 import ListingLocationActions from './ListingLocationActions';
 import ListingCohortCard from './ListingCohortCard';
+import PassQueueBadge from './PassQueueBadge';
+import PassQueueNotice from './PassQueueNotice';
 import ListingBuildingLiteSections from './ListingBuildingLiteSections';
 import {
   fetchListingLiteContext,
@@ -13,6 +15,7 @@ import {
   type ListingItem,
   type ListingLiteContext,
 } from '@/lib/listingInventory';
+import { isPassQueueListing } from '@/lib/passQueue';
 
 function SpecRow({ label, value }: { label: string; value: string }) {
   return (
@@ -126,13 +129,21 @@ export default function ListingLitePanel({
 
   const facilityGroups = liteContext?.facilities || {};
   const facilityCount = Object.values(facilityGroups).reduce((sum, list) => sum + (list?.length || 0), 0);
+  const passQueue = liteContext?.passQueue ?? item.passQueue ?? null;
+  const passBadge = liteContext?.passBadge ?? item.passBadge ?? passQueue?.passBadge ?? null;
+  const passBadgeLabel = liteContext?.passBadgeLabel ?? item.passBadgeLabel ?? passQueue?.passBadgeLabel ?? null;
+  const showPassQueue = isPassQueueListing({ passBadge, passQueue });
 
   return (
     <div className="px-4 pb-4 pt-2 space-y-4">
       <div className="flex flex-wrap gap-1.5">
-        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${statusBadge.className}`}>
-          {statusBadge.text}
-        </span>
+        {showPassQueue && passBadge && passBadgeLabel ? (
+          <PassQueueBadge passBadge={passBadge} label={passBadgeLabel} />
+        ) : (
+          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${statusBadge.className}`}>
+            {statusBadge.text}
+          </span>
+        )}
         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
           {item.categoryLabel}
         </span>
@@ -169,6 +180,15 @@ export default function ListingLitePanel({
           </p>
         )}
       </section>
+
+      {showPassQueue && (
+        <PassQueueNotice
+          passQueue={passQueue}
+          passBadge={passBadge}
+          passBadgeLabel={passBadgeLabel}
+          listingRatio={liteContext?.listingRatio ?? item.listingRatio}
+        />
+      )}
 
       {!isCompositeLite && (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

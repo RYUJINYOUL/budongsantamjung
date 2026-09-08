@@ -1,4 +1,7 @@
 import type { MapMarkerProperty } from './mapMarkers';
+import type { PassBadge, PassQueueInfo } from './passQueue';
+
+export type { PassBadge, PassQueueInfo };
 
 export type ListingCategory = 'land' | 'house' | 'apartment' | 'store' | 'building';
 
@@ -126,6 +129,12 @@ export type ListingLiteContext = {
   dealVolumeStats?: Record<string, unknown>[];
   facilities?: Record<string, ListingLiteFacility[]> | null;
   cachedAt?: string;
+  passQueue?: PassQueueInfo | null;
+  passBadge?: PassBadge | null;
+  passBadgeLabel?: string | null;
+  listingRatio?: number | null;
+  deepAnalyzeEligible?: boolean;
+  recomEligible?: boolean;
 };
 
 export type ListingItem = {
@@ -146,6 +155,13 @@ export type ListingItem = {
   aiScore: number | null;
   recomApprovedAt?: string | null;
   recomEligible?: boolean;
+  deepAnalyzeEligible?: boolean;
+  passQueue?: PassQueueInfo | null;
+  passBadge?: PassBadge | null;
+  passBadgeLabel?: string | null;
+  listingRatio?: number | null;
+  ddangyaUid?: number | null;
+  ddangyaUrl?: string | null;
   propertyTitle: string;
   detectiveNote?: string | null;
   oneLiner?: string | null;
@@ -203,13 +219,18 @@ export async function fetchListings(options?: {
   lng?: number;
   radiusKm?: number;
   limit?: number;
+  passQueue?: boolean;
   signal?: AbortSignal;
 }): Promise<{ items: ListingItem[]; meta?: Record<string, unknown> }> {
   const params = new URLSearchParams();
   if (options?.category) params.set('category', options.category);
-  if (options?.lat != null) params.set('lat', String(options.lat));
-  if (options?.lng != null) params.set('lng', String(options.lng));
-  if (options?.radiusKm != null) params.set('radius', String(options.radiusKm));
+  if (options?.passQueue) {
+    params.set('passQueue', '1');
+  } else {
+    if (options?.lat != null) params.set('lat', String(options.lat));
+    if (options?.lng != null) params.set('lng', String(options.lng));
+    if (options?.radiusKm != null) params.set('radius', String(options.radiusKm));
+  }
   if (options?.limit != null) params.set('limit', String(options.limit));
 
   const res = await fetch(`/api/land/detective/listings?${params}`, {
@@ -219,6 +240,19 @@ export async function fetchListings(options?: {
   if (!res.ok) return { items: [] };
   const data = await res.json();
   return { items: Array.isArray(data.items) ? data.items : [], meta: data.meta };
+}
+
+export async function fetchPassQueueListings(options?: {
+  category?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<{ items: ListingItem[]; meta?: Record<string, unknown> }> {
+  return fetchListings({
+    passQueue: true,
+    category: options?.category,
+    limit: options?.limit ?? 1500,
+    signal: options?.signal,
+  });
 }
 
 export async function fetchListingLiteContext(
