@@ -40,10 +40,58 @@ export function resolveUserPriceWon(
 ): number {
   const m = meta || {};
   if (Number(m.userPriceWon) > 0) return Number(m.userPriceWon);
-  const raw = mergedData?.price ?? mergedData?.sale_price;
+  return resolveRawPriceFieldWon(mergedData);
+}
+
+export function resolveRawPriceFieldWon(
+  mergedData?: Record<string, unknown> | null,
+): number {
+  const raw = mergedData?.price ?? mergedData?.sale_price ?? mergedData?.salePrice;
   if (raw == null || raw === '') return 0;
   const num = Number(String(raw).replace(/,/g, '')) || 0;
+  if (num <= 0) return 0;
   return num > 1_000_000 ? num : num * 10_000;
+}
+
+/** 탐정 요약 구버전: price 필드를 원화로 간주 */
+export function parseRawPriceNaiveWon(raw: unknown): number {
+  if (raw == null || raw === '') return 0;
+  return Number(String(raw).replace(/,/g, '')) || 0;
+}
+
+export type UserPriceMismatch = {
+  canonicalWon: number;
+  conflictingWon: number;
+  ratio: number;
+  message: string;
+};
+
+export function detectUserPriceMismatch(
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): UserPriceMismatch | null {
+  const canonical = resolveUserPriceWon(meta, mergedData);
+  if (canonical <= 0) return null;
+
+  const raw = mergedData?.price ?? mergedData?.sale_price ?? mergedData?.salePrice;
+  if (raw == null || raw === '') return null;
+
+  const naiveWon = parseRawPriceNaiveWon(raw);
+  if (naiveWon <= 0) return null;
+
+  const ratio = canonical / naiveWon;
+  if (ratio < 100 && ratio > 0.01) return null;
+
+  const ratioLabel = ratio >= 1
+    ? `${Math.round(ratio).toLocaleString()}배`
+    : `1/${Math.round(1 / ratio).toLocaleString()}배`;
+
+  return {
+    canonicalWon: canonical,
+    conflictingWon: naiveWon,
+    ratio,
+    message: `제시가 단위 불일치: AI 분석 ${formatEokCompact(canonical)}원 vs 입력값 ${formatEokCompact(naiveWon)}원 (${ratioLabel} 차이). 만원/원 입력을 확인해 주세요.`,
+  };
 }
 
 /** 토지·빌딩·아파트별 면적 라벨 (「전용」은 아파트 등에만) */

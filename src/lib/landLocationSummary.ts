@@ -99,7 +99,7 @@ function getZoningExplanation(zoning: string) {
     if (clean.includes('제3종일반주거')) return { title: '제3종 일반주거지역', desc: '층수 제한이 없는 고층 아파트 중심의 주거 개발지로, 용적률이 높고 개발 사업성이 매우 뛰어납니다.', badge: '주거지역', type: 'good' as const };
     if (clean.includes('준주거')) return { title: '준주거지역', desc: '주거 기능과 상업 기능이 유기적으로 결합된 땅으로, 오피스텔이나 상가주택 개발에 최적의 가치를 지닙니다.', badge: '주거지역', type: 'good' as const };
     if (clean.includes('중심상업')) return { title: '중심상업지역', desc: '도심의 핵심 상권으로 용적률과 건폐율이 가장 높습니다. 고층 빌딩 및 대형 상가 개발이 가능하나, 순수 단독주택은 지을 수 없습니다.', badge: '상업지역', type: 'good' as const };
-    if (clean.includes('일반상업')) return { title: '일반상업지역', desc: '일반적인 시내 상권 및 주 상권 업무지구입니다. 고부가가치의 주상복합 건물이나 상업 빌딩 건축에 매우 적합합니다.', badge: '상업지역', type: 'good' as const };
+    if (clean.includes('일반상업')) return { title: '일반상업지역', desc: '시내 상권·업무지구. 국토계획법 법정 상한 용적률 1,300%이나, 실제 적용값은 시·군·구 조례·확인서 기준(지방은 통상 600~900% 내외). 도로·대지·사선 등에 따라 실현 용적률은 달라짐.', badge: '상업지역', type: 'good' as const };
     if (clean.includes('근린상업')) return { title: '근린상업지역', desc: '주택가 인근에 밀접한 근린 생활 상권입니다. 동네 대형 상가나 병원, 학원 건물 용도로 활용하기 좋습니다.', badge: '상업지역', type: 'good' as const };
     if (clean.includes('유통상업')) return { title: '유통상업지역', desc: '도시 내 물류센터 및 대형 도매시장 전용 영토입니다. 일반 주택이나 아파트 등 주거용 건물은 절대 들어설 수 없습니다.', badge: '상업지역', type: 'warning' as const };
     if (clean.includes('전용공업')) return { title: '전용공업지역', desc: '중화학공장이나 공해 유발 공장 전용입니다. 주거용 및 생활 편의 시설은 법적으로 절대 들어설 수 없습니다.', badge: '공업지역', type: 'danger' as const };

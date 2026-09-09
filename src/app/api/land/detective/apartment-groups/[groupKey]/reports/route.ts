@@ -11,9 +11,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
         const encodedKey = encodeURIComponent(groupKey);
         const scope = request.nextUrl.searchParams.get('scope');
         const aiCompletedOnly = request.nextUrl.searchParams.get('aiCompletedOnly');
+        const includeReportId = request.nextUrl.searchParams.get('includeReportId');
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
         if (aiCompletedOnly) params.set('aiCompletedOnly', aiCompletedOnly);
+        if (includeReportId) params.set('includeReportId', includeReportId);
         const query = params.toString() ? `?${params.toString()}` : '';
         const url = `${backendUrl}/api/land/detective/apartment-groups/${encodedKey}/reports${query}`;
 

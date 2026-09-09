@@ -84,13 +84,15 @@ export function extractDevelopmentGrid(
   return [
     { label: '용도지역', value: zoning },
     {
-      label: '법정 / 현재 용적률',
+      label: '법정 상한 / 현재 용적률',
       value: legalFar != null && currentFar != null
         ? `${legalFar.toLocaleString()}% / ${currentFar}%`
-        : (currentFar != null ? `${currentFar}%` : '-'),
+        : (legalFar != null
+          ? `법정 상한 ${legalFar.toLocaleString()}%`
+          : (currentFar != null ? `${currentFar}%` : '-')),
     },
     {
-      label: '용적률 갭',
+      label: '용적률 갭 (법정 상한 기준)',
       value: farGap != null ? `+${farGap.toLocaleString(undefined, { maximumFractionDigits: 1 })}%p` : '-',
       positive: farGap != null && farGap > 100,
     },

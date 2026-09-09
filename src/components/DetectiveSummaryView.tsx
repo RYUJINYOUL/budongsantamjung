@@ -17,6 +17,10 @@ import {
     parseAreaMapping,
     resolveAreaGroupKey,
 } from '../lib/apartmentAreaMapping';
+import {
+    detectUserPriceMismatch,
+    resolveUserPriceWon,
+} from '../lib/analysisV31Helpers';
 
 // 포맷터 유틸리티
 const formatKoreanCurrency = (val: number): string => {
@@ -302,6 +306,7 @@ export type DetectiveShortsSection = 'pyungTrades' | 'landSummary' | 'market';
 interface DetectiveSummaryViewProps {
     rawData: any;
     category?: string;
+    analysisMetadata?: Record<string, unknown> | null;
     /** 쇼츠 캡처: 버튼·계산기 등 인터랙션 숨김 */
     shortsMode?: boolean;
     /** 지정 시 해당 섹션만 렌더 (쇼츠 프레임용) */
@@ -311,6 +316,7 @@ interface DetectiveSummaryViewProps {
 export default function DetectiveSummaryView({
     rawData = {},
     category: categoryProp,
+    analysisMetadata,
     shortsMode = false,
     shortsSections,
 }: DetectiveSummaryViewProps) {
@@ -460,9 +466,7 @@ export default function DetectiveSummaryView({
             const rentText = monthlyRent ? `월세 ${formatValWon(monthlyRent)}` : '월세 -';
             return `${depText} / ${rentText}`;
         } else {
-            if (userPrice > 0) {
-                return formatKoreanCurrency(userPrice > 1000000 ? userPrice : userPrice * 10000);
-            }
+            if (userPrice > 0) return formatKoreanCurrency(userPrice);
             if (priceVal) return formatValWon(priceVal);
             return '미입력';
         }
@@ -576,8 +580,8 @@ export default function DetectiveSummaryView({
     // ──────────────────────────────────────────
     // 📊 주변 비교 아파트 (Compared Apartments)
     // ──────────────────────────────────────────
-    const userPriceRaw = findValue(rawData, 'price') || findValue(rawData, 'sale_price') || findValue(rawData, 'deposit');
-    const userPrice = parseFloat(String(userPriceRaw || '').replace(/,/g, '')) || 0;
+    const userPrice = resolveUserPriceWon(analysisMetadata, rawData);
+    const priceMismatch = detectUserPriceMismatch(analysisMetadata, rawData);
 
     let targetPrice = 0;
     if (backendTargetTrades.length > 0) {
@@ -775,8 +779,21 @@ export default function DetectiveSummaryView({
         return <div className="space-y-0">{blocks}</div>;
     }
 
+    const renderPriceMismatchBanner = () => {
+        if (!priceMismatch) return null;
+        return (
+            <div className="p-4 rounded-2xl border border-amber-500/35 bg-amber-500/10 flex gap-3 items-start">
+                <ShieldAlert className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+                <p className="text-amber-100/90 text-xs font-semibold leading-relaxed">
+                    {priceMismatch.message}
+                </p>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-8 pb-12">
+            {renderPriceMismatchBanner()}
             {renderRedevelopmentBadge()}
             <NearbyInfrastructurePanel
                 data={(rawData?.investmentContext?.nearbyInfrastructure

@@ -13,6 +13,7 @@ import {
   priceBarMarkerPercent,
   resolveEstimateRange,
   resolveUserPriceWon,
+  detectUserPriceMismatch,
 } from '../../lib/analysisV31Helpers';
 
 type Props = {
@@ -40,6 +41,7 @@ export default function AnalysisPriceSnapshot({
   const tags = extractSummaryTags(ai, meta);
 
   const userPriceWon = resolveUserPriceWon(meta, mergedData);
+  const priceMismatch = detectUserPriceMismatch(meta, mergedData);
   const targetArea = getTargetArea(meta, mergedData, v31Cat);
   const { min, max, source } = resolveEstimateRange(meta, priceReas, mergedData, v31Cat);
   const estimateLabel = buildEstimateRangeLabel(source);
@@ -57,6 +59,14 @@ export default function AnalysisPriceSnapshot({
 
   return (
     <section className="rounded-[20px] border border-white/[0.08] bg-[#0f172a]/55 p-5 sm:p-6 shadow-[0_0_25px_rgba(14,165,233,0.04)]">
+      {priceMismatch && (
+        <div className="mb-4 p-3 rounded-xl border border-amber-500/35 bg-amber-500/10 flex gap-2 items-start">
+          <span className="text-amber-300 text-sm shrink-0">⚠</span>
+          <p className="text-amber-100/90 text-[11px] font-semibold leading-relaxed">
+            {priceMismatch.message}
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] p-4">
           <div className="text-[11px] font-medium text-white/45 mb-1.5">제시 매매가</div>
