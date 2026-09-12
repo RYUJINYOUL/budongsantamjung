@@ -82,15 +82,20 @@ import {
   mergeDiscoverWithR114Lite,
 } from '../lib/fetchR114LiteDiscover';
 import {
+  buildRecomApartmentPriceDisplay,
+  fetchRecomApartmentReports,
   fetchRecomReports,
   investmentDiscoverToRecomFilters,
   mapRecomReportToFeedItem,
 } from '../lib/fetchRecom';
 import {
   applyRecomInvestmentQuickPick,
+  isRecomApartmentListingCategory,
   normalizeRecomCategory,
+  normalizeListingsCategory,
   recomHasActiveFilters,
   RECOM_CATEGORIES,
+  LISTINGS_CATEGORIES,
   RECOM_HIDDEN_APT_FILTER_SECTIONS,
   RECOM_LIST_TAGLINE,
   LISTINGS_LIST_TAGLINE,
@@ -159,6 +164,10 @@ interface Analysis {
   avgWolseMonthlyRent1m?: number | null;
   /** 토지·빌딩 등 — 제시가/추정가 (만원) */
   budgetMan?: number | null;
+  listingPriceMan?: number | null;
+  estimatedTotalMan?: number | null;
+  priceGapPercent?: number | null;
+  priceGapLabel?: string | null;
   passBadge?: PassBadge | null;
   passBadgeLabel?: string | null;
   listingRatio?: number | null;
@@ -237,7 +246,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   const [showMobileMap, setShowMobileMap] = useState(true);
   const [selectedProperty, setSelectedProperty] = useState<Analysis | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(
-    feedMode === 'recom' ? '토지' : 'all',
+    feedMode === 'recom' ? '토지' : feedMode === 'listings' ? '아파트' : 'all',
   );
   const [mapBounds, setMapBounds] = useState<{ neLat: number; neLng: number; swLat: number; swLng: number } | null>(null);
   const [mapPosition, setMapPosition] = useState<MapPosition>(DEFAULT_MAP_POSITION);
@@ -413,6 +422,25 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     });
     return () => { cancelled = true; };
   }, [activePanel, searchParams]);
+
+  const auctionIdFromUrl = searchParams.get('auctionId');
+  const [auctionAnalyzePrefill, setAuctionAnalyzePrefill] = useState<{
+    timestamp: number;
+    auctionItemId: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (activePanel !== 'analyze') {
+      setAuctionAnalyzePrefill(null);
+      return;
+    }
+    const id = Number(auctionIdFromUrl);
+    if (!Number.isFinite(id) || id <= 0) {
+      setAuctionAnalyzePrefill(null);
+      return;
+    }
+    setAuctionAnalyzePrefill({ timestamp: Date.now(), auctionItemId: id });
+  }, [activePanel, auctionIdFromUrl]);
 
   const analyzePanelPrefill = r114AnalyzePrefill
     ?? (analyzeDeepLinkBase && analyzePrefillStamp
@@ -610,9 +638,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     }
 
     if (isMapHomePanel(panel)) {
-      const normalizeCategory = feedMode === 'recom' || feedMode === 'listings'
+      const normalizeCategory = feedMode === 'recom'
         ? normalizeRecomCategory
-        : normalizeMapCategory;
+        : feedMode === 'listings'
+          ? normalizeListingsCategory
+          : normalizeMapCategory;
       if (category) {
         setSelectedCategory(normalizeCategory(category));
       } else if (geoReady) {
@@ -677,6 +707,17 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
           signal: abortController.signal,
           headers,
         };
+
+        if (isRecomApartmentListingCategory(category)) {
+          const { items } = await fetchRecomApartmentReports({
+            ...recomFetchOpts,
+            maxPriceGap: 5,
+            minAiScore: 50,
+          });
+          setAnalyses(items.map(mapRecomReportToFeedItem) as Analysis[]);
+          hasTimelineLoadedRef.current = true;
+          return;
+        }
 
         if (isInvestmentDiscoverCategory(category)) {
           const { items } = await fetchRecomReports(
@@ -1481,7 +1522,11 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
   }, [selectedProperty, selectedRankingApt, analyzeLocation, activePanel, searchParams]);
 
   const CATEGORIES = ['all', '아파트', '토지', '주택', '상가', '빌딩'];
-  const panelCategories = feedMode === 'recom' || feedMode === 'listings' ? RECOM_CATEGORIES : CATEGORIES;
+  const panelCategories = feedMode === 'recom'
+    ? RECOM_CATEGORIES
+    : feedMode === 'listings'
+      ? LISTINGS_CATEGORIES
+      : CATEGORIES;
   const recomGuestView = feedMode === 'recom' && !user && RECOM_QUICK_PICKS_ENABLED;
   const CATEGORY_LABELS: Record<string, string> = { all: '전체', '토지': '토지', '주택': '주택', '아파트': '아파트', '상가': '상가', '빌딩': '빌딩' };
   const [listSearchQuery, setListSearchQuery] = useState('');
@@ -1579,31 +1624,39 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       const isLiteFeedItem = Boolean(analysis.id?.startsWith('lite-') || analysis.liteBadge);
       const areaLocked = isPyeongFilterActive(discoverFilters) && !isLiteFeedItem;
       let aptDisplay =
-        useApartmentDiscoverFeed && isApartmentAnalysis(analysis)
-          ? isLiteFeedItem
-            ? buildLiteCardDisplay(discoverFilters.dealMode, {
-                riseRate6m: analysis.riseRate6m,
-                avgPrice1m: analysis.avgPrice1m,
-                area: analysis.exclusiveArea ?? analysis.area ?? null,
-                jeonseRiseRate6m: analysis.jeonseRiseRate6m,
-                avgJeonseDeposit1m: analysis.avgJeonseDeposit1m,
-                wolseRiseRate6m: analysis.wolseRiseRate6m,
-                avgWolseMonthlyRent1m: analysis.avgWolseMonthlyRent1m,
-              })
-            : buildApartmentCardDisplay(
-              discoverFilters.dealMode,
-              cardSnap,
-              {
-                riseRate6m: cardSnap?.riseRate6m ?? analysis.riseRate6m,
-                avgPrice1m: cardSnap?.avgPrice1m ?? analysis.avgPrice1m,
-                area: resolveAreaForCard(
-                  typeof centerM2 === 'number' ? centerM2 : null,
-                  analysis.exclusiveArea ?? analysis.area ?? null,
-                ),
-              },
-              { areaLocked },
-            )
-          : undefined;
+        feedMode === 'recom' && analysis.priceGapPercent != null
+          ? buildRecomApartmentPriceDisplay({
+              listingPriceMan: analysis.listingPriceMan ?? analysis.budgetMan,
+              estimatedTotalMan: analysis.estimatedTotalMan,
+              priceGapPercent: analysis.priceGapPercent,
+              priceGapLabel: analysis.priceGapLabel,
+              exclusiveAreaM2: analysis.exclusiveArea ?? analysis.area ?? null,
+            })
+          : useApartmentDiscoverFeed && isApartmentAnalysis(analysis)
+            ? isLiteFeedItem
+              ? buildLiteCardDisplay(discoverFilters.dealMode, {
+                  riseRate6m: analysis.riseRate6m,
+                  avgPrice1m: analysis.avgPrice1m,
+                  area: analysis.exclusiveArea ?? analysis.area ?? null,
+                  jeonseRiseRate6m: analysis.jeonseRiseRate6m,
+                  avgJeonseDeposit1m: analysis.avgJeonseDeposit1m,
+                  wolseRiseRate6m: analysis.wolseRiseRate6m,
+                  avgWolseMonthlyRent1m: analysis.avgWolseMonthlyRent1m,
+                })
+              : buildApartmentCardDisplay(
+                discoverFilters.dealMode,
+                cardSnap,
+                {
+                  riseRate6m: cardSnap?.riseRate6m ?? analysis.riseRate6m,
+                  avgPrice1m: cardSnap?.avgPrice1m ?? analysis.avgPrice1m,
+                  area: resolveAreaForCard(
+                    typeof centerM2 === 'number' ? centerM2 : null,
+                    analysis.exclusiveArea ?? analysis.area ?? null,
+                  ),
+                },
+                { areaLocked },
+              )
+            : undefined;
       const resolvedLocation = aptAddressById[analysis.id]
         ? { name: aptAddressById[analysis.id], address: aptAddressById[analysis.id] }
         : analysis.location;
@@ -1640,6 +1693,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       discoverFilters,
       useApartmentDiscoverFeed,
       aptAddressById,
+      feedMode,
     ],
   );
 
@@ -1649,6 +1703,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
     }
     let list = searchFilteredAnalyses;
     if (selectedCategory === '아파트') {
+      if (feedMode === 'recom') {
+        return list.filter((a) => isApartmentAnalysis(a) || a.priceGapPercent != null);
+      }
       if (apartmentTabDiscover && feedMode !== 'recom') {
         return sortApartmentDiscoverList(list, discoverFilters, (a) => {
           if (a.id?.startsWith('lite-')) {
@@ -2047,6 +2104,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
             <div className={`relative flex-1 min-h-0 ${activePanel === 'analyze' ? 'flex flex-col' : (showMobileMap ? 'hidden lg:flex lg:flex-col' : 'flex flex-col')}`}>
               <AnalyzePanel
                 urlPrefill={analyzePanelPrefill}
+                auctionPrefill={auctionAnalyzePrefill}
                 onLocationSelect={(lat, lng, address, polygon) => {
                   setAnalyzeLocation({ lat, lng, address });
                   setMapCenter({ lat, lng });
@@ -2118,7 +2176,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                   </div>
                 </div>
 
-                {selectedCategory === '아파트' && feedMode !== 'listings' && (
+                {selectedCategory === '아파트' && feedMode !== 'listings' && feedMode !== 'recom' && (
                   <ApartmentDiscoverToolbar
                     filters={discoverFilters}
                     risePresetPlacement="top"
@@ -2267,7 +2325,9 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
                     </>
                   ) : feedMode === 'recom' && !listSearchQuery ? (
                     <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">
-                      필터 상세 설정 또는 위치를 이동하세요.
+                      {selectedCategory === '아파트'
+                        ? '제시가 대비 AI 추정가 +5% 이하 매물만 표시합니다. 지도를 이동하거나 AI 분석 매물을 추가해 보세요.'
+                        : '필터 상세 설정 또는 위치를 이동하세요.'}
                     </p>
                   ) : feedMode === 'listings' && !listSearchQuery ? (
                     <p className="text-slate-600 font-medium text-sm text-center leading-relaxed">

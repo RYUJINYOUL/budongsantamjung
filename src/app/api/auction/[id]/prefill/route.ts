@@ -1,0 +1,42 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { resolveBackendUrl } from '@/lib/backendUrl';
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await context.params;
+    const backendUrl = resolveBackendUrl();
+    const url = `${backendUrl}/api/auction/${encodeURIComponent(id)}/prefill`;
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: request.signal,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return NextResponse.json(
+        {
+          success: false,
+          message: errorData.error || errorData.message || '경매 prefill 조회에 실패했습니다.',
+        },
+        { status: response.status },
+      );
+    }
+
+    return NextResponse.json(await response.json());
+  } catch (error: unknown) {
+    const err = error as { name?: string; message?: string };
+    if (err.name === 'AbortError' || request.signal.aborted) {
+      return new Response('Aborted', { status: 499 });
+    }
+    return NextResponse.json(
+      { success: false, message: err.message || '서버 연결에 실패했습니다.' },
+      { status: 500 },
+    );
+  }
+}
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;

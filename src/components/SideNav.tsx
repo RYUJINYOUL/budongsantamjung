@@ -30,6 +30,12 @@ const NAV_ITEMS = [
     icon: '/a5.png',
   },
   {
+    id: 'auction',
+    label: '경매',
+    href: '/auction',
+    icon: '/build.svg',
+  },
+  {
     id: 'listings',
     label: '매물',
     href: '/listings',
@@ -99,6 +105,7 @@ function SideNavInner() {
     if (href === '/?panel=analyze') return pathname === '/' && searchParams.get('panel') === 'analyze';
     if (href === '/ranking') return pathname === '/ranking' || pathname.startsWith('/ranking/');
     if (href === '/recom') return pathname.startsWith('/recom');
+    if (href === '/auction') return pathname.startsWith('/auction');
     if (href === '/discover') return pathname.startsWith('/discover');
     if (href === '/presale') return pathname.startsWith('/presale');
     if (href === '/profile') return pathname.startsWith('/profile');

@@ -17,6 +17,12 @@ import { fetchR114LiteComplex, resolveR114LiteAptSeq } from '../lib/r114LiteApi'
 import type { R114LiteResolveAptSeqResponse } from '../lib/r114LiteTypes';
 import { createAdminListing } from '../lib/listingInventory';
 import R114LiteAptSeqResolveForm from './R114LiteAptSeqResolveForm';
+import AuctionPickerPanel from './AuctionPickerPanel';
+import AuctionAnalysisContextSection, { type AuctionAnalysisContext } from './AuctionAnalysisContextSection';
+import type { AuctionAnalyzePrefill } from '../lib/auctionAnalyze';
+import { analyzeCategoryLabel } from '../lib/auctionAnalyze';
+import type { AuctionListItem } from '../lib/auctionTypes';
+import { buildAuctionSpecialNotes, parseFloorFromAuctionAddress } from '../lib/parseAuctionAddress';
 import {
   PANEL_CARD,
   PANEL_CARD_INNER,
@@ -78,6 +84,12 @@ interface AnalyzePanelProps {
     rtmsAptSeq?: string;
     placeName?: string;
     r114PropId?: string;
+    auctionItemId?: number;
+  } | null;
+  /** /?panel=analyze&auctionId=… deep link */
+  auctionPrefill?: {
+    timestamp: number;
+    auctionItemId: number;
   } | null;
 }
 
@@ -169,7 +181,7 @@ function SearchInputSpinnerSlot({ busy }: { busy: boolean }) {
   );
 }
 
-export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill, adminSampleMode, listingRegisterMode }: AnalyzePanelProps) {
+export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAdditionalParcelsChange, externalClickParcel, onMobileButtonClick, urlPrefill, auctionPrefill, adminSampleMode, listingRegisterMode }: AnalyzePanelProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [canAnalyze, setCanAnalyze] = useState(true);
@@ -223,6 +235,13 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [prefilledPlaceName, setPrefilledPlaceName] = useState<string | null>(null);
   const [prefilledR114PropId, setPrefilledR114PropId] = useState<string | null>(null);
 
+  const [panelMode, setPanelMode] = useState<'standard' | 'auction'>('standard');
+  const [selectedAuctionItemId, setSelectedAuctionItemId] = useState<number | null>(null);
+  const [linkedAuctionReportId, setLinkedAuctionReportId] = useState<number | null>(null);
+  const [auctionPrefillLoading, setAuctionPrefillLoading] = useState(false);
+  const [auctionPrefillError, setAuctionPrefillError] = useState<string | null>(null);
+  const [auctionContext, setAuctionContext] = useState<AuctionAnalysisContext | null>(null);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const [noTradeDataModal, setNoTradeDataModal] = useState<{ aptName: string | null; reason: string } | null>(null);
@@ -242,6 +261,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const parcelSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressSearchSeqRef = useRef(0);
   const parcelSearchSeqRef = useRef(0);
+  const onLocationSelectRef = useRef(onLocationSelect);
+  const loadedAuctionPrefillIdRef = useRef<number | null>(null);
+  const loadingAuctionPrefillIdRef = useRef<number | null>(null);
+  onLocationSelectRef.current = onLocationSelect;
 
   const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -566,6 +589,113 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     }
   };
 
+  const applyAuctionFormFromPrefill = useCallback((prefill: AuctionAnalyzePrefill) => {
+    const ctx: AuctionAnalysisContext = {
+      caseNumber: prefill.caseNumber,
+      courtName: prefill.courtName,
+      usageType: prefill.usageType,
+      minPriceMan: prefill.minPriceMan,
+      appraisalPriceMan: prefill.appraisalPriceMan,
+      failCount: prefill.failCount ?? 0,
+      saleDate: prefill.saleDate,
+    };
+    setAuctionContext(ctx);
+    const parsedFloor = parseFloorFromAuctionAddress(prefill.address);
+    setDetailInput({
+      ...defaultAnalysisDetailInput(),
+      transactionType: '매매',
+      salePrice: prefill.minPriceMan ?? '',
+      floor: parsedFloor,
+    });
+    setPendingSpecialNotes(buildAuctionSpecialNotes(ctx));
+  }, []);
+
+  const applyAuctionPrefillData = useCallback(async (prefill: AuctionAnalyzePrefill) => {
+    if (!prefill.category || !prefill.address || prefill.lat == null || prefill.lng == null) {
+      setAuctionPrefillError('주소 좌표를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      return false;
+    }
+    setSelectedAuctionItemId(prefill.auctionItemId);
+    setLinkedAuctionReportId(prefill.linkedReportId);
+    setSelectedCategory(prefill.category);
+    setAddress(prefill.address);
+    setLat(prefill.lat);
+    setLng(prefill.lng);
+    setPrimaryPnu(prefill.pnu ?? null);
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsMultiParcel(false);
+    setAdditionalParcels([]);
+    setAuctionPrefillError(null);
+    applyAuctionFormFromPrefill(prefill);
+    onLocationSelectRef.current?.(prefill.lat, prefill.lng, prefill.address, null);
+    return true;
+  }, [applyAuctionFormFromPrefill]);
+
+  const loadAuctionPrefill = useCallback(async (auctionItemId: number) => {
+    if (loadingAuctionPrefillIdRef.current === auctionItemId) return null;
+    loadingAuctionPrefillIdRef.current = auctionItemId;
+    setAuctionPrefillLoading(true);
+    setAuctionPrefillError(null);
+    try {
+      const res = await fetch(`/api/auction/${auctionItemId}/prefill`);
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.prefill) {
+        throw new Error(data.error || data.message || '경매 prefill 실패');
+      }
+      if (data.prefill.linkedReportId) {
+        setLinkedAuctionReportId(data.prefill.linkedReportId);
+        setSelectedAuctionItemId(auctionItemId);
+        setSelectedCategory(data.prefill.category);
+        applyAuctionFormFromPrefill(data.prefill as AuctionAnalyzePrefill);
+        return data.prefill as AuctionAnalyzePrefill;
+      }
+      await applyAuctionPrefillData(data.prefill as AuctionAnalyzePrefill);
+      return data.prefill as AuctionAnalyzePrefill;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '경매 물건 불러오기 실패';
+      setAuctionPrefillError(message);
+      return null;
+    } finally {
+      loadingAuctionPrefillIdRef.current = null;
+      setAuctionPrefillLoading(false);
+    }
+  }, [applyAuctionFormFromPrefill, applyAuctionPrefillData]);
+
+  const handleAuctionPick = useCallback(async (item: AuctionListItem) => {
+    if (selectedAuctionItemId === item.id && !item.linkedReportId) return;
+    setPanelMode('auction');
+    setAuctionPrefillError(null);
+    loadedAuctionPrefillIdRef.current = null;
+    if (item.linkedReportId) {
+      setSelectedAuctionItemId(item.id);
+      setLinkedAuctionReportId(item.linkedReportId);
+      setAuctionContext({
+        caseNumber: item.caseNumber,
+        courtName: item.courtName,
+        usageType: item.usageType,
+        minPriceMan: item.minPriceMan,
+        appraisalPriceMan: item.appraisalPriceMan,
+        failCount: item.failCount,
+        saleDate: item.saleDate,
+      });
+      return;
+    }
+    loadedAuctionPrefillIdRef.current = null;
+    await loadAuctionPrefill(item.id);
+    loadedAuctionPrefillIdRef.current = item.id;
+  }, [loadAuctionPrefill, selectedAuctionItemId]);
+
+  useEffect(() => {
+    const id = auctionPrefill?.auctionItemId;
+    if (!id) return;
+    if (loadedAuctionPrefillIdRef.current === id) return;
+    loadedAuctionPrefillIdRef.current = id;
+    setPanelMode('auction');
+    void loadAuctionPrefill(id);
+    // loadAuctionPrefill: onLocationSelect ref로 안정화 — id당 1회만
+  }, [auctionPrefill?.auctionItemId]);
+
   const clearSelectedLocation = () => {
     setAddress('');
     setLat(null);
@@ -630,6 +760,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       if (prefilledRtmsAptSeq) payload.rtmsAptSeq = prefilledRtmsAptSeq;
       if (prefilledPlaceName) payload.placeName = prefilledPlaceName;
       if (prefilledR114PropId) payload.r114PropId = prefilledR114PropId;
+      if (selectedAuctionItemId) payload.auctionItemId = selectedAuctionItemId;
 
       const res = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
@@ -664,6 +795,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     prefilledRtmsAptSeq,
     primaryPolygon,
     router,
+    selectedAuctionItemId,
     selectedCategory,
     user,
   ]);
@@ -844,71 +976,186 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         <p className={PANEL_SECTION_DESC}>
           {listingRegisterMode
             ? '위치·가격 입력 후 Lite 매물 페이지로 이동합니다'
-            : '카테고리와 위치를 선택한 뒤 리포트를 생성하세요'}
+            : panelMode === 'auction'
+              ? '경매 물건 선택 후 탐정 정밀 분석 리포트를 생성하세요'
+              : '카테고리와 위치를 선택한 뒤 리포트를 생성하세요'}
         </p>
+        {!listingRegisterMode && (
+          <div className="flex w-full mt-3 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                setPanelMode('standard');
+                setSelectedAuctionItemId(null);
+                setLinkedAuctionReportId(null);
+                setAuctionContext(null);
+                setAuctionPrefillError(null);
+                setDetailInput(defaultAnalysisDetailInput());
+                setPendingSpecialNotes('');
+              }}
+              className={`flex-1 py-2 rounded-lg text-xs font-extrabold transition-all ${
+                panelMode === 'standard'
+                  ? 'bg-white text-emerald-800 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              일반 분석
+            </button>
+            <button
+              type="button"
+              onClick={() => setPanelMode('auction')}
+              className={`flex-1 py-2 rounded-lg text-xs font-extrabold transition-all ${
+                panelMode === 'auction'
+                  ? 'bg-white text-emerald-800 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              경매
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 lg:px-5 py-4 space-y-3">
+        {panelMode === 'auction' && !listingRegisterMode && (
+          <>
+            <AuctionPickerPanel
+              selectedId={selectedAuctionItemId}
+              onSelect={handleAuctionPick}
+            />
+            {auctionPrefillLoading && (
+              <p className="text-xs font-bold text-slate-500 text-center py-2">경매 물건 좌표 확인 중…</p>
+            )}
+            {auctionPrefillError && (
+              <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
+                <p className="text-xs font-bold text-rose-700">{auctionPrefillError}</p>
+              </div>
+            )}
+            {linkedAuctionReportId && selectedAuctionItemId && (
+              <section className={`${PANEL_CARD} border-emerald-200 bg-emerald-50/40`}>
+                <p className={PANEL_SECTION_LABEL}>탐정 분석 완료</p>
+                <p className={`${PANEL_SECTION_DESC} mt-1`}>이 경매 물건은 이미 정밀 분석 리포트가 연결되어 있습니다.</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/analyze/${makeAnalyzeSlug(linkedAuctionReportId)}`)}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold"
+                  >
+                    리포트 보기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkedAuctionReportId(null);
+                      loadedAuctionPrefillIdRef.current = null;
+                      void loadAuctionPrefill(selectedAuctionItemId);
+                    }}
+                    className="w-full py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50"
+                  >
+                    다시 분석 (용도·카테고리 수정 반영)
+                  </button>
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
         {/* ① 카테고리 */}
-        <section className={PANEL_CARD}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className={panelStepBadge(1)}>1</span>
-            <div>
-              <p className={PANEL_SECTION_LABEL}>카테고리</p>
-              <p className={PANEL_SECTION_DESC}>분석할 매물 유형</p>
+        {panelMode === 'auction' ? (
+          <section className={PANEL_CARD}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={panelStepBadge(1)}>1</span>
+              <div>
+                <p className={PANEL_SECTION_LABEL}>분석 유형</p>
+                <p className={PANEL_SECTION_DESC}>경매 물건 용도에 따라 자동 설정</p>
+              </div>
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <div className="grid grid-cols-3 gap-1.5">
-              {CATEGORIES.slice(0, 3).map(cat => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory(cat.id);
-                    setIsMultiParcel(false);
-                    setAdditionalParcels([]);
-                    setDetailInput(defaultAnalysisDetailInput());
-                  }}
-                  className={panelCategoryBtn(selectedCategory === cat.id)}
-                >
-                  <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
-                  <span className={`text-[11px] font-extrabold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>
-                    {cat.label}
-                  </span>
-                </button>
-              ))}
+            {auctionPrefillLoading ? (
+              <div className="h-14 rounded-xl bg-slate-100 animate-pulse" />
+            ) : selectedCategory && selectedAuctionItemId ? (
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-3">
+                <img
+                  src={CATEGORIES.find((c) => c.id === selectedCategory)?.icon || '/land.svg'}
+                  alt=""
+                  className="w-8 h-8 object-contain shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-emerald-800">
+                    {analyzeCategoryLabel(selectedCategory as 'land' | 'house' | 'apartment' | 'store' | 'building')}
+                  </p>
+                  <p className="text-[11px] font-bold text-slate-600 truncate">
+                    {auctionContext?.usageType || '경매'} · {auctionContext?.caseNumber || '사건번호'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs font-bold text-slate-500 py-2">위 목록에서 경매 물건을 선택하세요.</p>
+            )}
+          </section>
+        ) : (
+          <section className={PANEL_CARD}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className={panelStepBadge(1)}>1</span>
+              <div>
+                <p className={PANEL_SECTION_LABEL}>카테고리</p>
+                <p className={PANEL_SECTION_DESC}>분석할 매물 유형</p>
+              </div>
             </div>
-            <div className={`grid gap-1.5 ${listingRegisterMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
-              {CATEGORIES.slice(3).map(cat => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory(cat.id);
-                    setIsMultiParcel(false);
-                    setAdditionalParcels([]);
-                    setDetailInput(defaultAnalysisDetailInput());
-                  }}
-                  className={panelCategoryBtn(selectedCategory === cat.id)}
-                >
-                  <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
-                  <span className={`text-[11px] font-extrabold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>
-                    {cat.label}
-                  </span>
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
+                {CATEGORIES.slice(0, 3).map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      setIsMultiParcel(false);
+                      setAdditionalParcels([]);
+                      setDetailInput(defaultAnalysisDetailInput());
+                    }}
+                    className={panelCategoryBtn(selectedCategory === cat.id)}
+                  >
+                    <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
+                    <span className={`text-[11px] font-extrabold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {cat.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className={`grid gap-1.5 ${listingRegisterMode ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {CATEGORIES.slice(3).map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.id);
+                      setIsMultiParcel(false);
+                      setAdditionalParcels([]);
+                      setDetailInput(defaultAnalysisDetailInput());
+                    }}
+                    className={panelCategoryBtn(selectedCategory === cat.id)}
+                  >
+                    <img src={cat.icon} alt="" className="w-6 h-6 object-contain" />
+                    <span className={`text-[11px] font-extrabold leading-none ${selectedCategory === cat.id ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {cat.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* ② 위치 */}
+        {!(panelMode === 'auction' && linkedAuctionReportId) && (
         <section className={PANEL_CARD}>
           <div className="flex items-center gap-2 mb-3">
             <span className={panelStepBadge(2)}>2</span>
             <div>
               <p className={PANEL_SECTION_LABEL}>매물 위치</p>
-              <p className={PANEL_SECTION_DESC}>주소 검색 또는 지도에서 선택</p>
+              <p className={PANEL_SECTION_DESC}>
+                {panelMode === 'auction' ? '경매 물건 주소 (자동)' : '주소 검색 또는 지도에서 선택'}
+              </p>
             </div>
           </div>
 
@@ -923,6 +1170,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 className={PANEL_INPUT}
                 value={searchQuery}
                 onChange={e => handleSearch(e.target.value)}
+                readOnly={panelMode === 'auction' && Boolean(selectedAuctionItemId)}
               />
               <SearchInputLocationTrailing
                 busy={isSearching || isLocating}
@@ -969,9 +1217,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             </div>
           )}
         </section>
+        )}
 
         {/* 다중 필지 */}
-        {(selectedCategory === 'land' || selectedCategory === 'building') && address && (
+        {!(panelMode === 'auction' && linkedAuctionReportId) && (selectedCategory === 'land' || selectedCategory === 'building') && address && (
           <section className={PANEL_CARD}>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1097,21 +1346,36 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         )}
 
         {/* ③ 상세 정보 */}
-        {selectedCategory && address && (
+        {selectedCategory && address && !(panelMode === 'auction' && linkedAuctionReportId) && (
           <section className={PANEL_CARD}>
             <div className="flex items-center gap-2 mb-4">
               <span className={panelStepBadge(3)}>3</span>
               <div>
-                <p className={PANEL_SECTION_LABEL}>매물 정보</p>
-                <p className={PANEL_SECTION_DESC}>거래 조건 · 선택사항</p>
+                <p className={PANEL_SECTION_LABEL}>
+                  {panelMode === 'auction' ? '경매 조건' : '매물 정보'}
+                </p>
+                <p className={PANEL_SECTION_DESC}>
+                  {panelMode === 'auction'
+                    ? '법원 목록 데이터 · 층수·면적은 선택'
+                    : '거래 조건 · 선택사항'}
+                </p>
               </div>
             </div>
-            <AnalysisDetailInputSection
-              category={selectedCategory}
-              input={detailInput}
-              onChange={patchDetailInput}
-              mode={listingRegisterMode ? 'listing' : 'default'}
-            />
+            {panelMode === 'auction' && auctionContext ? (
+              <AuctionAnalysisContextSection
+                context={auctionContext}
+                category={selectedCategory}
+                input={detailInput}
+                onChange={patchDetailInput}
+              />
+            ) : (
+              <AnalysisDetailInputSection
+                category={selectedCategory}
+                input={detailInput}
+                onChange={patchDetailInput}
+                mode={listingRegisterMode ? 'listing' : 'default'}
+              />
+            )}
           </section>
         )}
 
@@ -1145,7 +1409,14 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
           <button
             type="button"
             onClick={handleAnalyze}
-            disabled={isAnalyzing || isCheckingAvailability || !selectedCategory || !address}
+            disabled={
+              isAnalyzing
+              || isCheckingAvailability
+              || auctionPrefillLoading
+              || !selectedCategory
+              || !address
+              || Boolean(panelMode === 'auction' && linkedAuctionReportId)
+            }
             className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-35 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-all shadow-sm shadow-emerald-500/15 flex items-center justify-center gap-2"
           >
             {isCheckingAvailability ? (
@@ -1157,6 +1428,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               listingRegisterMode ? '매물 등록 중...' : '데이터 수집 중...'
             ) : listingRegisterMode ? (
               '매물 등록 → Lite 페이지'
+            ) : panelMode === 'auction' ? (
+              '경매 · 탐정 정밀 분석 시작'
             ) : (
               '공공데이터 수집 리포트 생성'
             )}
