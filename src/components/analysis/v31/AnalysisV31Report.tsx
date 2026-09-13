@@ -9,6 +9,8 @@ import AnalysisV31Header from './AnalysisV31Header';
 import AnalysisV31MarketSection from './AnalysisV31MarketSection';
 import AnalysisV31Nav from './AnalysisV31Nav';
 import AnalysisV31PriceSection from './AnalysisV31PriceSection';
+import ReferenceAppraisalBlock from '../ReferenceAppraisalBlock';
+import { extractReferenceAppraisal } from '../../../lib/referenceAppraisalHelpers';
 import AnalysisV31RiskSection from './AnalysisV31RiskSection';
 import AnalysisV31Summary from './AnalysisV31Summary';
 import {
@@ -57,6 +59,9 @@ export default function AnalysisV31Report({
           analysisMetadata={analysisMetadata}
           category={category}
         />
+        {extractReferenceAppraisal(ai) && (
+          <ReferenceAppraisalBlock ai={ai} />
+        )}
         <AnalysisV31DevelopmentSection
           ai={ai}
           mergedData={mergedData}

@@ -629,11 +629,12 @@ export function extractFinalVerdictDetails(ai: Record<string, unknown>): {
   grade: string;
   reason: string;
   condition: string;
+  conditionSanitized: boolean;
 } | null {
   const raw = ai['8_finalVerdict'];
   if (!raw) return null;
   if (typeof raw === 'string') {
-    return { verdict: raw, grade: '-', reason: '-', condition: '' };
+    return { verdict: raw, grade: '-', reason: '-', condition: '', conditionSanitized: false };
   }
   if (typeof raw === 'object' && raw !== null) {
     const v = raw as Record<string, unknown>;
@@ -642,6 +643,7 @@ export function extractFinalVerdictDetails(ai: Record<string, unknown>): {
       grade: String(v.investmentGrade || '-'),
       reason: String(v.reason || '-'),
       condition: String(v.condition || ''),
+      conditionSanitized: v._conditionSanitized === true,
     };
   }
   return null;

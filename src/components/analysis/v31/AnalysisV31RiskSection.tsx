@@ -129,7 +129,16 @@ export default function AnalysisV31RiskSection({ ai, mergedData, category }: Pro
           <div className="analysis-v31-details-body">
             <p><strong>결론: {verdict.verdict}{verdict.grade !== '-' ? ` (등급 ${verdict.grade})` : ''}</strong></p>
             {verdict.reason !== '-' && <p><strong>분석 근거:</strong> {verdict.reason}</p>}
-            {verdict.condition && <p><strong>전제 조건:</strong> {verdict.condition}</p>}
+            {verdict.condition && (
+              <p>
+                <strong>전제 조건:</strong> {verdict.condition}
+                {verdict.conditionSanitized && (
+                  <span className="block text-[11px] text-amber-700/90 mt-1">
+                    AI가 제시한 가격 임계값 문장은 서버 정책에 따라 대체되었습니다.
+                  </span>
+                )}
+              </p>
+            )}
             <p>
               <strong>데이터:</strong> {String(meta.method || '공시지가배율')} · 비교사례 {comparables}건 · 신뢰 {confidenceGrade}
               {Number(meta.conditionRelaxLevel) > 0 ? ` · Level ${meta.conditionRelaxLevel}` : ''}.

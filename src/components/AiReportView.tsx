@@ -4,6 +4,8 @@ import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import PremiumRiskGauge from './PremiumRiskGauge';
 import AnalysisPriceSnapshot from './analysis/AnalysisPriceSnapshot';
+import ReferenceAppraisalBlock from './analysis/ReferenceAppraisalBlock';
+import { extractReferenceAppraisal } from '@/lib/referenceAppraisalHelpers';
 import {
     dedupeScoreItems,
     resolveScoreItemWeight,
@@ -26,6 +28,7 @@ import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 import { formatHojaeTierSummary, pickHojaeTierFields, resolveHojaeTierCeiling } from '@/lib/hojaeTier';
 import { resolveLandUiTrack, shouldShowFullMarketProof, shouldShowReferenceMarketProof } from '@/lib/landAssetTrack';
 import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal, buildCohortEstimateTitle } from '../lib/analysisV31Helpers';
+import { isRhCostApproach, getRhCostApproachSummary } from '@/lib/houseRhHelpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
 const REPORT_PASTEL_PALETTE = [
@@ -461,7 +464,7 @@ const getAreaSizeHint = (compArea: number, targetArea: number): 'small' | 'large
     return 'normal';
 };
 
-const resolveComparableMetrics = (c: any, targetArea: number) => {
+const resolveComparableMetrics = (c: any, targetArea: number, opts?: { rhCostMode?: boolean }) => {
     const platPlc = c.platPlc || '';
     const platAddr = c.platAddr || '';
     const umdNm = c.umdNm || '';
@@ -471,8 +474,16 @@ const resolveComparableMetrics = (c: any, targetArea: number) => {
     const dealWon = normalizeDealAmountWon(c.dealAmount);
     const area = Number(c.area || c.plottageAr || c.excluUseAr || c.buildingAr) || 0;
     const rawSqm = Number(c.pricePerSqm) || (dealWon > 0 && area > 0 ? dealWon / area : 0);
-    const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
-    const adjTotalWon = targetArea > 0 ? adjSqm * targetArea : 0;
+    const rhCostMode = opts?.rhCostMode === true || c.rhDisplayMode === 'cost_ratio';
+    const rhImpliedTargetPrice = Number(c.rhImpliedTargetPrice) || 0;
+    const marketCostRatio = c.marketCostRatio != null ? Number(c.marketCostRatio) : null;
+    const costTotal = Number(c.costTotal) || 0;
+    const adjSqm = rhCostMode && targetArea > 0 && Number(c.adjustedPricePerSqm) > 0
+      ? Number(c.adjustedPricePerSqm)
+      : (Number(c.adjustedPricePerSqm) || rawSqm);
+    const adjTotalWon = rhCostMode && rhImpliedTargetPrice > 0
+      ? rhImpliedTargetPrice
+      : (targetArea > 0 ? adjSqm * targetArea : 0);
 
     const simVal = Number(c.similarityScore || c.score) || 0;
     const simRounded = simVal > 0 ? Math.round(simVal) : 0;
@@ -513,6 +524,11 @@ const resolveComparableMetrics = (c: any, targetArea: number) => {
         realizedOfficialRatio: c.realizedOfficialRatio != null
             ? Number(c.realizedOfficialRatio)
             : (c.officialPrice > 0 && rawSqm > 0 ? rawSqm / Number(c.officialPrice) : null),
+        rhCostMode,
+        rhImpliedTargetPrice,
+        marketCostRatio,
+        costTotal,
+        landShareSqm: Number(c.landShareSqm) || 0,
     };
 };
 
@@ -524,15 +540,19 @@ const ComparableCaseCard = ({
     targetArea,
     accent = PRICE_METHOD_ACCENTS.comparables,
     cohortMedianRatio,
+    isRhUnit = false,
+    rhCostMode = false,
 }: {
     c: any;
     index: number;
     targetArea: number;
     accent?: string;
     cohortMedianRatio?: number | null;
+    isRhUnit?: boolean;
+    rhCostMode?: boolean;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
-    const m = resolveComparableMetrics(c, targetArea);
+    const m = resolveComparableMetrics(c, targetArea, { rhCostMode });
     const paletteColor = getPastelAccent(index);
 
     return (
@@ -550,17 +570,17 @@ const ComparableCaseCard = ({
                         <span className="text-white text-xs font-bold">#{index + 1} {m.addr || `사례 ${index + 1}`}</span>
                         {m.areaSizeHint === 'small' && (
                             <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
-                                소형 필지
+                                {isRhUnit ? '소형 호' : '소형 필지'}
                             </span>
                         )}
                         {m.areaSizeHint === 'large' && (
                             <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/30">
-                                대형 필지
+                                {isRhUnit ? '대형 호' : '대형 필지'}
                             </span>
                         )}
                         {m.areaSizeHint === 'normal' && (
                             <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-sky-400/10 text-sky-300 border border-sky-400/25">
-                                동일 필지
+                                {isRhUnit ? '면적 유사' : '동일 필지'}
                             </span>
                         )}
                         {m.comparableRole === 'floor_anchor' && (
@@ -606,20 +626,27 @@ const ComparableCaseCard = ({
                 }}
             >
                 <div className="flex items-baseline justify-between gap-2 min-w-0">
-                    <span className="text-[9px] font-semibold shrink-0" style={{ color: hexToRgba(accent, 0.8) }}>본 매물 대입</span>
+                    <span className="text-[9px] font-semibold shrink-0" style={{ color: hexToRgba(accent, 0.8) }}>
+                        {m.rhCostMode ? '적산 비율 대입' : '본 매물 대입'}
+                    </span>
                     <p className="text-lg font-black leading-none truncate" style={{ color: accent }}>{m.adjTotalEok}원</p>
                 </div>
-                {targetArea > 0 && (
+                {m.rhCostMode ? (
+                    <p className="text-[9px] text-white/35 leading-tight truncate">
+                        실거래 {m.dealEok}원 ÷ 적산 {m.costTotal > 0 ? formatEokCompact(m.costTotal) : '-'}원
+                        {m.marketCostRatio != null ? ` = ×${m.marketCostRatio.toFixed(2)}` : ''}
+                    </p>
+                ) : targetArea > 0 ? (
                     <p className="text-[9px] text-white/35 leading-tight truncate">
                         ㎡당 {m.adjSqmStr} × {targetArea.toLocaleString()}㎡
                     </p>
-                )}
+                ) : null}
             </div>
 
             {/* Sub: 실거래 + 면적/용도 */}
             <div className="px-4 pb-3 flex flex-col gap-1.5">
                 <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-white/35">그 필지 실거래 ({m.date})</span>
+                    <span className="text-white/35">{isRhUnit ? '해당 호 실거래' : '그 필지 실거래'} ({m.date})</span>
                     <span className="text-white/60 font-semibold">{m.dealEok}원</span>
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
@@ -635,7 +662,8 @@ const ComparableCaseCard = ({
                     )}
                     <span>{m.rawSqmStr}</span>
                     {m.zoning !== '-' && <span>{m.zoning}</span>}
-                    {m.jimok && <span>지목 {m.jimok}</span>}
+                    {!isRhUnit && m.jimok && <span>지목 {m.jimok}</span>}
+                    {isRhUnit && m.area > 0 && <span>전용 {m.area.toLocaleString()}㎡</span>}
                     {m.isRedevelopment && (
                         <span className="text-amber-400/80">정비사업</span>
                     )}
@@ -722,9 +750,9 @@ const parseBuildingValueNote = (note: string) => {
     };
 };
 
-const getLandAdjSpectrum = (comparables: any[], targetArea: number) => {
+const getLandAdjSpectrum = (comparables: any[], targetArea: number, rhCostMode = false) => {
     const totals = comparables
-        .map(c => resolveComparableMetrics(c, targetArea).adjTotalWon)
+        .map(c => resolveComparableMetrics(c, targetArea, { rhCostMode }).adjTotalWon)
         .filter(v => v > 0);
     if (totals.length === 0) return null;
     return { min: Math.min(...totals), max: Math.max(...totals), count: totals.length };
@@ -804,12 +832,16 @@ const ComparableHorizontalScroll = ({
     startIndex = 0,
     accent = PRICE_METHOD_ACCENTS.comparables,
     cohortMedianRatio,
+    isRhUnit = false,
+    rhCostMode = false,
 }: {
     items: any[];
     targetArea: number;
     startIndex?: number;
     accent?: string;
     cohortMedianRatio?: number | null;
+    rhCostMode?: boolean;
+    isRhUnit?: boolean;
 }) => (
     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory -mx-1 px-1">
         {items.map((c, index) => (
@@ -820,6 +852,8 @@ const ComparableHorizontalScroll = ({
                     targetArea={targetArea}
                     accent={accent}
                     cohortMedianRatio={cohortMedianRatio}
+                    isRhUnit={isRhUnit}
+                    rhCostMode={rhCostMode}
                 />
             </div>
         ))}
@@ -973,12 +1007,15 @@ const LandComparableValueSection = ({
     regionName: string;
     onMapOpen?: () => void;
 }) => {
+    const isRhUnit = meta.rhUnitMode === true || meta.houseTarget?.isRhUnit === true;
+    const rhCostMode = isRhCostApproach(meta);
+    const rhCost = getRhCostApproachSummary(meta);
     const methodLabel = meta.method || meta.tierLabel || '-';
     const confidenceGrade = meta.confidenceGrade || '';
-    const ratioTier = meta.ratioTier || '';
-    const cohortMedianRatio = meta.cohortMedianRatio ?? null;
+    const ratioTier = meta.ratioTier || meta.ratioTierLabel || '';
+    const cohortMedianRatio = meta.cohortMedianRatio ?? meta.medianRatio ?? meta.costApproachRatio ?? null;
     const locationLevel = meta.locationLevel || '';
-    const landSpectrum = getLandAdjSpectrum(comparables, targetArea);
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea, rhCostMode);
     const landMin = landSpectrum?.min ?? 0;
     const landMax = landSpectrum?.max ?? 0;
     const hasRange = landMin > 0;
@@ -1012,17 +1049,59 @@ const LandComparableValueSection = ({
             ) : undefined}
             chips={(
                 <>
-                    {targetArea > 0 && metaChip(`대상 ${targetArea.toLocaleString()}㎡`, accent)}
+                    {targetArea > 0 && metaChip(
+                        isRhUnit ? `전용 ${targetArea.toLocaleString()}㎡` : `대상 ${targetArea.toLocaleString()}㎡`,
+                        accent,
+                    )}
                     {metaChip(methodLabel)}
                     {confidenceGrade && metaChip(`신뢰 ${confidenceGrade}`, accent)}
                     {ratioTier && metaChip(ratioTier)}
+                    {rhCost?.landShareSqm ? metaChip(`대지권 ${rhCost.landShareSqm}㎡`, accent) : null}
+                    {rhCost?.landShareSource ? metaChip(rhCost.landShareSource, accent) : null}
                     {locationLevel === 'same_umd_strict' && metaChip('동일 동 · 면적 유사', accent)}
                     {locationLevel === 'same_umd' && metaChip('동일 법정동', accent)}
                     {isBuildingCat && metaChip('토지 대입 + 건물 별도', PRICE_METHOD_ACCENTS.building)}
                 </>
             )}
         >
-            {hasRange && (
+            {rhCostMode && rhCost && (
+                <div
+                    className="rounded-xl px-4 py-3 flex flex-col gap-2"
+                    style={{
+                        background: `linear-gradient(to bottom right, ${hexToRgba(accent, 0.12)}, ${hexToRgba(accent, 0.05)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.3)}`,
+                    }}
+                >
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
+                        서버 추정 (적산+비율 · 호 단위)
+                    </span>
+                    <p className="text-xl font-black leading-none" style={{ color: accent }}>
+                        {rhCost.estimatedTotalPrice > 0 ? `${formatEokCompact(rhCost.estimatedTotalPrice)}원` : '-'}
+                    </p>
+                    <p className="text-[10px] text-white/40 leading-relaxed">
+                        토지(적산) {formatEokCompact(rhCost.landValueEstimate)} + NTS {formatEokCompact(rhCost.buildingCostEstimate)}
+                        {' = '}적산 {formatEokCompact(rhCost.costApproachTotal)}
+                        {rhCost.marketComparablePrice > 0 && (
+                            <>
+                                {' → '}사례대입 {formatEokCompact(rhCost.marketComparablePrice)}
+                                {' (×'}{rhCost.costApproachRatio.toFixed(2)}{')'}
+                            </>
+                        )}
+                    </p>
+                    <p className="text-[9px] text-white/35 leading-relaxed">
+                        대지권 {rhCost.landShareSqm}㎡ · 공시토지 {formatEokCompact(rhCost.landValueOfficial || 0)}
+                        {rhCost.landMarketMultiplier > 1 ? ` × ${rhCost.landMarketMultiplier}` : ''}
+                        {' · '}{rhCost.landShareSource || '추정'}
+                    </p>
+                    {rhCost.platArea > 0 && (
+                        <p className="text-[9px] text-amber-300/70 leading-relaxed">
+                            참고: 필지 전체 {rhCost.platArea.toLocaleString()}㎡ — 호 가격 판정에 사용하지 않음
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {hasRange && !rhCostMode && (
                 <div
                     className="rounded-xl px-4 py-3"
                     style={{
@@ -1030,7 +1109,9 @@ const LandComparableValueSection = ({
                         border: `1px solid ${hexToRgba(accent, 0.3)}`,
                     }}
                 >
-                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>토지 대입 추정 범위</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
+                        {isRhUnit ? '전용면적 대입 추정 범위' : '토지 대입 추정 범위'}
+                    </span>
                     <p className="text-xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                         {landMin === landMax
                             ? `${formatEokCompact(landMin)}원`
@@ -1038,8 +1119,16 @@ const LandComparableValueSection = ({
                     </p>
                     <p className="text-[10px] text-white/35 mt-1.5">
                         비교사례 {landSpectrum?.count ?? comparables.length}건 · 보정 단가 × {targetArea.toLocaleString()}㎡
+                        {isRhUnit ? ' (전용)' : ''}
                     </p>
                 </div>
+            )}
+
+            {rhCostMode && hasRange && landMin !== landMax && (
+                <p className="text-[10px] text-white/35">
+                    사례별 적산비율 대입 범위: {formatEokCompact(landMin)} ~ {formatEokCompact(landMax)}원
+                    (서버 확정값과 다를 수 있음 · median 기준)
+                </p>
             )}
 
             {comparables.length === 0 ? (
@@ -1088,6 +1177,8 @@ const LandComparableValueSection = ({
                             targetArea={targetArea}
                             accent={accent}
                             cohortMedianRatio={cohortMedianRatio}
+                            isRhUnit={isRhUnit}
+                            rhCostMode={rhCostMode}
                         />
                     )}
                 </>
@@ -2797,6 +2888,23 @@ export default function AiReportView({
         () => analysisMetadataProp || ai?.analysisMetadata || mergedData?.analysisMetadata || {},
         [analysisMetadataProp, ai?.analysisMetadata, mergedData?.analysisMetadata],
     );
+    const isRhUnitHouse = resolvedAnalysisMetadata.rhUnitMode === true
+        || resolvedAnalysisMetadata.houseTarget?.isRhUnit === true;
+    const rhExclusiveArea = (() => {
+        const ht = resolvedAnalysisMetadata.houseTarget || {};
+        const raw = resolvedAnalysisMetadata.targetArea ?? ht.exclusiveArea ?? ht.exclusiveArea_sqm;
+        const n = parseFloat(String(raw ?? ''));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+    })();
+    const rhParcelLandArea = (() => {
+        const multi = mergedData?.vitals?.multiPnu;
+        if (multi?.parcelCount > 1 && parseFloat(multi.totalArea) > 0) {
+            return parseFloat(multi.totalArea);
+        }
+        const fromMeta = parseFloat(String(resolvedAnalysisMetadata.platArea ?? ''));
+        if (Number.isFinite(fromMeta) && fromMeta > 0) return fromMeta;
+        return 0;
+    })();
     const riskFactsContext = React.useMemo(
         () => ({ mergedData, analysisMetadata: resolvedAnalysisMetadata }),
         [mergedData, resolvedAnalysisMetadata],
@@ -2853,9 +2961,10 @@ export default function AiReportView({
     try {
         const meta = ai?.analysisMetadata || {};
         const t = meta.target || {};
+        const rhExclusive = meta.houseTarget?.exclusiveArea ?? meta.houseTarget?.exclusiveArea_sqm;
         const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
             ? parseFloat(meta.targetArea.toString())
-            : null;
+            : (rhExclusive != null && Number(rhExclusive) > 0 ? parseFloat(String(rhExclusive)) : null);
         if (directTargetArea !== null && directTargetArea > 0) {
             targetArea = directTargetArea;
         } else if (categoryStr === 'building') {
@@ -3915,6 +4024,10 @@ export default function AiReportView({
                 />
             )}
 
+            {!isV31 && extractReferenceAppraisal(ai) && (
+                <ReferenceAppraisalBlock ai={ai} />
+            )}
+
             {!isV31 && isLand && (() => {
                 const mp = resolvedAnalysisMetadata.marketProof as MarketProofPayload | undefined;
                 if (!mp?.status) return null;
@@ -4334,25 +4447,57 @@ export default function AiReportView({
                 )
             )}
 
-            {/* 11. 대지 정보 규격 */}
-            {!isV31 && Object.keys(areaInfo).length > 0 && (
+            {/* 11. 대지 정보 규격 — RH 호는 전용㎡ 우선, 필지 면적은 참고 */}
+            {!isV31 && (isRhUnitHouse ? rhExclusiveArea > 0 : Object.keys(areaInfo).length > 0) && (
                 <div className="p-6 bg-[#0f172a]/55 border border-[#fad2e1]/20 rounded-[40px] shadow-[0_0_25px_rgba(250,210,225,0.04)]">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 bg-[#fad2e1]/12 border border-[#fad2e1]/30 rounded-xl">
                             <Layers className="w-4 h-4 text-[#fad2e1]" />
                         </div>
-                        <span className="text-white text-base font-bold tracking-tight">대지 정보 규격</span>
+                        <span className="text-white text-base font-bold tracking-tight">
+                            {isRhUnitHouse ? '면적 정보 (호 단위)' : '대지 정보 규격'}
+                        </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
-                            <span className="text-white/38 text-[11px] font-bold">대지 면적</span>
-                            <span className="text-white text-sm font-black">{areaInfo.landArea || '-'}</span>
+                    {isRhUnitHouse ? (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
+                                    <span className="text-white/38 text-[11px] font-bold">전용면적 (분석 기준)</span>
+                                    <span className="text-white text-sm font-black">
+                                        {rhExclusiveArea.toFixed(1)}㎡ ({(rhExclusiveArea * 0.3025).toFixed(1)}평)
+                                    </span>
+                                </div>
+                                {(rhParcelLandArea > 0 || areaInfo.landArea) && (
+                                    <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
+                                        <span className="text-white/38 text-[11px] font-bold">
+                                            {mergedData?.vitals?.multiPnu?.parcelCount > 1
+                                                ? `합필 대지 (${mergedData.vitals.multiPnu.parcelCount}필지·참고)`
+                                                : '대지 면적 (필지 전체·참고)'}
+                                        </span>
+                                        <span className="text-white/70 text-sm font-black">
+                                            {rhParcelLandArea > 0
+                                                ? `${rhParcelLandArea.toLocaleString()}㎡ (${(rhParcelLandArea * 0.3025).toFixed(1)}평)`
+                                                : areaInfo.landArea}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                            <p className="text-[11px] text-white/40 leading-relaxed">
+                                호 단위 매매 분석입니다. 대지·토지 공시지가는 건물 전체 필지 기준이며 호 가격과 직접 비교하지 마세요.
+                            </p>
                         </div>
-                        <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
-                            <span className="text-white/38 text-[11px] font-bold">연면적</span>
-                            <span className="text-white text-sm font-black">{areaInfo.floorArea || '-'}</span>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
+                                <span className="text-white/38 text-[11px] font-bold">대지 면적</span>
+                                <span className="text-white text-sm font-black">{areaInfo.landArea || '-'}</span>
+                            </div>
+                            <div className="p-4 bg-white/2 border border-white/5 rounded-2xl flex flex-col gap-1.5">
+                                <span className="text-white/38 text-[11px] font-bold">연면적</span>
+                                <span className="text-white text-sm font-black">{areaInfo.floorArea || '-'}</span>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             )}
 
@@ -4374,6 +4519,7 @@ export default function AiReportView({
                                         const grade = verdict.investmentGrade || '-';
                                         const reason = verdict.reason || '-';
                                         const condition = verdict.condition || '';
+                                        const conditionSanitized = verdict._conditionSanitized === true;
 
                                         return (
                                             <div className="flex flex-col gap-5">
@@ -4393,6 +4539,11 @@ export default function AiReportView({
                                                     <div className="flex flex-col gap-2 pt-4 border-t border-[#eceef1]">
                                                         <span className="text-[11px] font-semibold text-[#64748b]">전제 조건</span>
                                                         <span className="text-xs leading-relaxed italic text-[#64748b]">{condition}</span>
+                                                        {conditionSanitized && (
+                                                            <span className="text-[10px] text-amber-700/80 leading-relaxed">
+                                                                AI가 제시한 가격 임계값 문장은 서버 정책에 따라 대체되었습니다.
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -4421,6 +4572,7 @@ export default function AiReportView({
                         const grade = verdict.investmentGrade || '-';
                         const reason = verdict.reason || '-';
                         const condition = verdict.condition || '';
+                        const conditionSanitized = verdict._conditionSanitized === true;
 
                         return (
                             <div className="flex flex-col gap-5">
@@ -4440,6 +4592,11 @@ export default function AiReportView({
                                     <div className="flex flex-col gap-2 pt-4 border-t border-white/[0.06]">
                                         <span className="text-white/45 text-[11px] font-semibold">전제 조건</span>
                                         <span className="text-white/55 text-xs leading-relaxed italic">{condition}</span>
+                                        {conditionSanitized && (
+                                            <span className="text-[10px] text-amber-300/80 leading-relaxed">
+                                                AI가 제시한 가격 임계값 문장은 서버 정책에 따라 대체되었습니다.
+                                            </span>
+                                        )}
                                     </div>
                                 )}
                             </div>
