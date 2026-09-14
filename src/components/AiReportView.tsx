@@ -4025,7 +4025,7 @@ export default function AiReportView({
             )}
 
             {!isV31 && extractReferenceAppraisal(ai) && (
-                <ReferenceAppraisalBlock ai={ai} />
+                <ReferenceAppraisalBlock ai={ai} mergedData={mergedData} category={categoryStr} />
             )}
 
             {!isV31 && isLand && (() => {

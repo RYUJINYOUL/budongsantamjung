@@ -60,7 +60,7 @@ export default function AnalysisV31Report({
           category={category}
         />
         {extractReferenceAppraisal(ai) && (
-          <ReferenceAppraisalBlock ai={ai} />
+          <ReferenceAppraisalBlock ai={ai} mergedData={mergedData} category={category} />
         )}
         <AnalysisV31DevelopmentSection
           ai={ai}

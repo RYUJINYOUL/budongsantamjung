@@ -6,19 +6,28 @@ import {
   extractReferenceAppraisal,
   formatReferenceAppraisalGap,
   formatReferenceAppraisalPrice,
+  resolveServerEstimateDisplay,
 } from '../../lib/referenceAppraisalHelpers';
 import { formatManwon } from '../../lib/formatAuctionPrice';
 
 type Props = {
   ai: Record<string, unknown>;
+  mergedData?: Record<string, unknown> | null;
+  category?: string;
   compact?: boolean;
 };
 
-export default function ReferenceAppraisalBlock({ ai, compact = false }: Props) {
+export default function ReferenceAppraisalBlock({
+  ai,
+  mergedData,
+  category,
+  compact = false,
+}: Props) {
   const ref = extractReferenceAppraisal(ai);
   if (!ref) return null;
 
   const gapLabel = formatReferenceAppraisalGap(ref);
+  const serverEstimate = resolveServerEstimateDisplay(ai, { mergedData, category });
 
   if (compact) {
     return (
@@ -32,8 +41,13 @@ export default function ReferenceAppraisalBlock({ ai, compact = false }: Props) 
             <p className="text-lg font-black text-slate-100 mt-0.5">
               {formatReferenceAppraisalPrice(ref)}
             </p>
+            {serverEstimate && (
+              <p className="text-[10px] text-amber-200/90 mt-1.5">
+                AI 추정가 {serverEstimate.primary}
+              </p>
+            )}
             {gapLabel && (
-              <p className="text-[10px] text-slate-400 mt-1">{gapLabel} (추정가와 별도)</p>
+              <p className="text-[10px] text-slate-400 mt-1">{gapLabel}</p>
             )}
           </div>
         </div>
@@ -53,7 +67,15 @@ export default function ReferenceAppraisalBlock({ ai, compact = false }: Props) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div
+        className={`grid grid-cols-1 gap-3 ${
+          serverEstimate && ref.minPriceMan != null && ref.minPriceMan > 0
+            ? 'sm:grid-cols-3'
+            : serverEstimate || (ref.minPriceMan != null && ref.minPriceMan > 0)
+              ? 'sm:grid-cols-2'
+              : ''
+        }`}
+      >
         <div className="rounded-xl border border-slate-400/15 bg-black/10 p-4">
           <p className="text-[11px] text-slate-400 mb-1">감정평가액</p>
           <p className="text-2xl font-black text-slate-100">{formatReferenceAppraisalPrice(ref)}</p>
@@ -61,6 +83,15 @@ export default function ReferenceAppraisalBlock({ ai, compact = false }: Props) 
             {Number(ref.appraisalPriceMan).toLocaleString('ko-KR')}만원
           </p>
         </div>
+        {serverEstimate && (
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
+            <p className="text-[11px] text-amber-200/80 mb-1">AI 추정가</p>
+            <p className="text-2xl font-black text-amber-100">{serverEstimate.primary}</p>
+            {serverEstimate.subline && (
+              <p className="text-[10px] text-amber-200/50 mt-1">{serverEstimate.subline}</p>
+            )}
+          </div>
+        )}
         {ref.minPriceMan != null && ref.minPriceMan > 0 && (
           <div className="rounded-xl border border-slate-400/15 bg-black/10 p-4">
             <p className="text-[11px] text-slate-400 mb-1">최저입찰가</p>
