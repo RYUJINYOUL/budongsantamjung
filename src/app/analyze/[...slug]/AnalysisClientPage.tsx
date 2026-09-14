@@ -4265,8 +4265,17 @@ export default function AnalysisDetailPage({
                                 return (
                                     <>
                                         {isMulti && (
-                                            <div className="text-sky-500 font-black text-lg">
-                                                총 {multiPnu.parcelCount}개 필지 정보
+                                            <div className="rounded-2xl border border-sky-500/25 bg-sky-500/10 p-4 space-y-2">
+                                                <div className="text-sky-400 font-black text-lg">
+                                                    합필 {multiPnu.parcelCount}필지 · 대지 {formatSqmWithPyeong(Number(multiPnu.totalArea) || 0)}
+                                                </div>
+                                                {Number(multiPnu.combinedOfficialTotal) > 0 && (
+                                                    <p className="text-sm text-sky-100/85 leading-relaxed">
+                                                        토지 공시지가 합계(필지별 ㎡×단가 합산) 약{' '}
+                                                        <strong className="text-white">{formatKoreanCurrency(Number(multiPnu.combinedOfficialTotal))}원</strong>
+                                                        {' '}— 아래는 필지별 상세입니다.
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
                                         {parcelsToRender.map((parcel: any, idx: number) => {

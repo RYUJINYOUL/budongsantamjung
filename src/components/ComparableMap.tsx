@@ -216,8 +216,10 @@ export default function ComparableMap({
         const adjSqm = Number(c.adjustedPricePerSqm) || rawSqm;
         const adjTotalWon = targetAreaVal > 0 ? adjSqm * targetAreaVal : 0;
 
-        const simVal = Number(c.similarityScore || c.score) || 0;
-        const simRounded = simVal > 0 ? Math.round(simVal) : 0;
+        let simVal = Number(c.similarityScore || c.score) || 0;
+        if (simVal > 100 && simVal <= 10000) simVal = Math.min(100, Math.round(simVal / 100));
+        else simVal = Math.min(100, Math.round(simVal));
+        const simRounded = simVal > 0 ? simVal : 0;
         const distVal = Number(c.distance ?? c.distanceFromTarget) || 0;
         const month = String(c.dealMonth || '?').padStart(2, '0');
         const date = c.dealYear ? `${c.dealYear}.${month}` : '-';
@@ -375,12 +377,29 @@ export default function ComparableMap({
                     interactiveTargetOverlay.setMap(kakaoMap);
                 }
 
+                const coordStack = new Map<string, number>();
+                const offsetLatLng = (lat: number, lng: number, stackIndex: number) => {
+                    if (stackIndex <= 0) return { lat, lng };
+                    const meters = 14 * stackIndex;
+                    const dLat = meters / 111000;
+                    const dLng = meters / (111000 * Math.cos((lat * Math.PI) / 180));
+                    const angle = stackIndex * 1.25;
+                    return {
+                        lat: lat + dLat * Math.sin(angle),
+                        lng: lng + dLng * Math.cos(angle),
+                    };
+                };
+
                 // Render Comparable Markers
                 comparables.forEach((c: any, index: number) => {
                     const cLat = parseFloat(c.lat);
                     const cLng = parseFloat(c.lng);
 
                     if (!isNaN(cLat) && !isNaN(cLng)) {
+                        const coordKey = `${cLat.toFixed(5)},${cLng.toFixed(5)}`;
+                        const stackIndex = coordStack.get(coordKey) || 0;
+                        coordStack.set(coordKey, stackIndex + 1);
+                        const { lat: mLat, lng: mLng } = offsetLatLng(cLat, cLng, stackIndex);
                         const isCohortExcluded = c.cohortTrade && c.inSimilarityBand === false;
                         const markerColor = isCohortExcluded ? '#94a3b8' : '#7dd3c0';
                         const markerOpacity = isCohortExcluded ? '0.55' : '1';
@@ -404,7 +423,7 @@ export default function ComparableMap({
                         });
 
                         const compOverlay = new kakao.maps.CustomOverlay({
-                            position: new kakao.maps.LatLng(cLat, cLng),
+                            position: new kakao.maps.LatLng(mLat, mLng),
                             content: contentEl,
                             yAnchor: 1.0,
                             zIndex: 20,

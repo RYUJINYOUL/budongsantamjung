@@ -94,8 +94,13 @@ export function detectUserPriceMismatch(
   };
 }
 
-/** 토지·빌딩·아파트별 면적 라벨 (「전용」은 아파트 등에만) */
-export function getTargetAreaLabel(category = 'land'): string {
+/** 토지·빌딩·아파트별 면적 라벨 (오피스텔·상가 호 단위는 전용) */
+export function getTargetAreaLabel(
+  category = 'land',
+  meta?: Record<string, unknown> | null,
+): string {
+  const m = meta || {};
+  if (m.otUnitMode || m.stUnitMode) return '전용';
   const cat = String(category || 'land').toLowerCase();
   if (cat === 'land' || cat === '토지') return '토지';
   if (cat === 'building' || cat === '빌딩' || cat === 'store' || cat === '상가') return '연면적';
@@ -106,8 +111,9 @@ export function formatTargetAreaSubline(
   targetArea: number,
   perPyeong: number,
   category = 'land',
+  meta?: Record<string, unknown> | null,
 ): string {
-  const label = getTargetAreaLabel(category);
+  const label = getTargetAreaLabel(category, meta);
   return `평당 약 ${perPyeong.toLocaleString()}만 · ${label} ${Math.round(targetArea)}㎡`;
 }
 
@@ -123,6 +129,12 @@ export function getTargetArea(
 
   const t = (m.target || {}) as Record<string, unknown>;
   if (cat === 'building' || cat === 'store') {
+    if (m.otUnitMode || m.stUnitMode) {
+      if (Number.isFinite(direct) && direct > 0) return direct;
+      return parseFloat(String(
+        t.exclusiveArea_sqm || t.area_sqm || mergedData?.exclusiveArea_sqm || mergedData?.area || '0',
+      )) || 0;
+    }
     return parseFloat(String(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0')) || 0;
   }
   return parseFloat(String(
@@ -165,6 +177,10 @@ export function resolveCohortEstimateTotal(
   category = 'land',
 ): number {
   const m = meta || {};
+  if (m.otUnitMode || m.stUnitMode) {
+    const hoTotal = Number(m.estimatedTotalPrice) || Number(m.weightedTotalPrice) || 0;
+    if (hoTotal > 0) return hoTotal;
+  }
   const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
   const obs = opr?.observedRatio as Record<string, unknown> | undefined;
   const estPerSqm = Number(opr?.estimatedPerSqm) || Number(m.estimatedPricePerSqm) || 0;
@@ -192,6 +208,14 @@ export function buildEstimateRangeLabel(source: string): string {
   if (source === 'cohort') return '동일수급권 추정가';
   if (source === 'comparables') return '비교사례 추정 범위';
   return 'AI 추정 범위';
+}
+
+/** 비교사례 유사도 — 0~100점 (비정상 가중치 표시 방지) */
+export function normalizeComparableSimilarityScore(raw: unknown): number {
+  const n = Number(raw) || 0;
+  if (n <= 0) return 0;
+  if (n > 100 && n <= 10000) return Math.min(100, Math.round(n / 100));
+  return Math.min(100, Math.round(n));
 }
 
 export function isCohortOfficialPricing(

@@ -453,6 +453,12 @@ const formatSqmManwon = (wonPerSqm: number): string => {
     return `${Math.round(man).toLocaleString()}만/㎡`;
 };
 
+const formatPyeongManwon = (wonPerPyeong: number): string => {
+    if (!wonPerPyeong || wonPerPyeong <= 0) return '-';
+    const man = wonPerPyeong >= 10000 ? wonPerPyeong / 10000 : wonPerPyeong;
+    return `${Math.round(man).toLocaleString()}만/평`;
+};
+
 const AREA_SIZE_RATIO_SMALL = 1 / 3;  // 사례 면적 < 대상 1/3 → 소형
 const AREA_SIZE_RATIO_LARGE = 2;      // 사례 면적 > 대상 2배 → 대형
 
@@ -481,6 +487,8 @@ const resolveComparableMetrics = (c: any, targetArea: number, opts?: { rhCostMod
     const adjSqm = rhCostMode && targetArea > 0 && Number(c.adjustedPricePerSqm) > 0
       ? Number(c.adjustedPricePerSqm)
       : (Number(c.adjustedPricePerSqm) || rawSqm);
+    const rawPyeong = Number(c.pricePerPyeong) || (rawSqm > 0 ? rawSqm * 3.3058 : 0);
+    const adjPyeong = Number(c.adjustedPricePerPyeong) || rawPyeong;
     const adjTotalWon = rhCostMode && rhImpliedTargetPrice > 0
       ? rhImpliedTargetPrice
       : (targetArea > 0 ? adjSqm * targetArea : 0);
@@ -503,6 +511,7 @@ const resolveComparableMetrics = (c: any, targetArea: number, opts?: { rhCostMod
         adjTotalEok: formatEokCompact(adjTotalWon),
         rawSqmStr: formatSqmManwon(rawSqm),
         adjSqmStr: formatSqmManwon(adjSqm),
+        adjPyeongStr: formatPyeongManwon(adjPyeong),
         simVal,
         simRounded,
         simStr: simRounded > 0 ? `${simRounded}%` : '참고용',
@@ -638,7 +647,7 @@ const ComparableCaseCard = ({
                     </p>
                 ) : targetArea > 0 ? (
                     <p className="text-[9px] text-white/35 leading-tight truncate">
-                        ㎡당 {m.adjSqmStr} × {targetArea.toLocaleString()}㎡
+                        ㎡당 {m.adjSqmStr} (평당 {m.adjPyeongStr}) × 전용 {targetArea.toLocaleString()}㎡
                     </p>
                 ) : null}
             </div>
@@ -1008,6 +1017,8 @@ const LandComparableValueSection = ({
     onMapOpen?: () => void;
 }) => {
     const isRhUnit = meta.rhUnitMode === true || meta.houseTarget?.isRhUnit === true;
+    const isOtUnit = meta.otUnitMode === true || meta.buildingTarget?.isOtUnit === true;
+    const isStUnit = meta.stUnitMode === true || meta.buildingTarget?.isStUnit === true;
     const rhCostMode = isRhCostApproach(meta);
     const rhCost = getRhCostApproachSummary(meta);
     const methodLabel = meta.method || meta.tierLabel || '-';
@@ -1050,9 +1061,12 @@ const LandComparableValueSection = ({
             chips={(
                 <>
                     {targetArea > 0 && metaChip(
-                        isRhUnit ? `전용 ${targetArea.toLocaleString()}㎡` : `대상 ${targetArea.toLocaleString()}㎡`,
+                        (isRhUnit || isOtUnit || isStUnit)
+                            ? `전용 ${targetArea.toLocaleString()}㎡`
+                            : `대상 ${targetArea.toLocaleString()}㎡`,
                         accent,
                     )}
+                    {(isOtUnit || isStUnit) && metaChip('오피스텔·점포 호 단위', accent)}
                     {metaChip(methodLabel)}
                     {confidenceGrade && metaChip(`신뢰 ${confidenceGrade}`, accent)}
                     {ratioTier && metaChip(ratioTier)}
@@ -1232,6 +1246,9 @@ const BuildingResidualSection = ({
     mergedData: any;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
+    if (meta?.otUnitMode || meta?.stUnitMode || mergedData?.buildingData?.skipCapRate) {
+        return null;
+    }
     const buildingResidualWon = Number(meta.buildingResidualValue) || 0;
     const buildingFloorAi = spectrum?.buildingFloor || '';
     const noteParsed = parseBuildingValueNote(meta.buildingValueNote || '');
@@ -1555,6 +1572,9 @@ const OfficialMultiplierSection = ({
 
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
+    const cohortArea = (meta.otUnitMode || meta.stUnitMode)
+        ? (Number(meta.landCohortTargetArea) || targetArea)
+        : targetArea;
     const obs = opr?.observedRatio;
     const hojae = pickHojaeTierFields({ ...(meta as Record<string, unknown>), observedRatio: obs, officialPriceRatio: opr });
     const hojaeSummary = formatHojaeTierSummary(hojae);
@@ -1574,8 +1594,10 @@ const OfficialMultiplierSection = ({
         const isFiltered = opr.dynamicStatus === 'cohort';
         const accent = PRICE_METHOD_ACCENTS.comparables;
         const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || '동일수급권';
-        const estimatedTotal = resolveCohortEstimateTotal(meta, undefined, 'land')
-            || ((opr.estimatedPerSqm || 0) * targetArea);
+        const estimatedTotal = (meta.otUnitMode || meta.stUnitMode)
+            ? (Number(meta.landCohortEstimatedTotal) || ((opr.estimatedPerSqm || 0) * cohortArea))
+            : (resolveCohortEstimateTotal(meta, undefined, 'land')
+                || ((opr.estimatedPerSqm || 0) * cohortArea));
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
         const { applied: appliedSamples, all: allSamples } = normalizeCohortSamples(opr, obs);
@@ -1656,10 +1678,11 @@ const OfficialMultiplierSection = ({
                     <div className="px-4 pb-3 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/30">
                         {obs?.cohortKey && <span>키 {obs.cohortKey}</span>}
                         {obs?.similarityBand && <span>similarity {obs.similarityBand}</span>}
-                        {opr.targetOfficialPerSqm > 0 && targetArea > 0 && opr.appliedMultiplier > 0 && (
+                        {opr.targetOfficialPerSqm > 0 && cohortArea > 0 && opr.appliedMultiplier > 0 && (
                             <span>
                                 {formatSqmManwon(opr.targetOfficialPerSqm)} × {Number(opr.appliedMultiplier).toFixed(2)}배
-                                = {formatSqmManwon(opr.estimatedPerSqm)} × {targetArea.toLocaleString()}㎡
+                                = {formatSqmManwon(opr.estimatedPerSqm)} × {cohortArea.toLocaleString()}㎡
+                                {(meta.otUnitMode || meta.stUnitMode) ? ' (합필 대지)' : ''}
                             </span>
                         )}
                     </div>
@@ -2495,6 +2518,18 @@ const IncomeApproachSection = ({
     const lowerCat = categoryStr.toLowerCase().trim();
     if (lowerCat !== 'building' && lowerCat !== '빌딩') return null;
 
+    const analysisMeta = (ai?.analysisMetadata || mergedData?.analysisMetadata || {}) as Record<string, unknown>;
+    const buildingDataEarly = findDeepValue(mergedData, 'buildingData') as Record<string, unknown> | undefined;
+    if (
+      analysisMeta.otUnitMode
+      || analysisMeta.stUnitMode
+      || buildingDataEarly?.skipCapRate
+      || buildingDataEarly?.otUnitMode
+      || buildingDataEarly?.stUnitMode
+    ) {
+        return null;
+    }
+
     const accent = PRICE_METHOD_ACCENTS.income;
     const { depositWon, monthlyRentWon, isEstimated, isEmpty, buildingData } = resolveBuildingIncomeInputs(mergedData);
 
@@ -2956,23 +2991,47 @@ export default function AiReportView({
         return '해당 지역';
     }, [mergedData]);
 
-    // Target Area Calculation
+    // Target Area — OT/ST 호는 전용㎡, 토지 코호트는 meta.landCohortTargetArea (OfficialMultiplierSection)
     let targetArea = 0;
     try {
-        const meta = ai?.analysisMetadata || {};
+        const meta = resolvedAnalysisMetadata;
         const t = meta.target || {};
+        const isOtSt = meta.otUnitMode || meta.stUnitMode;
+        const bt = meta.buildingTarget || {};
         const rhExclusive = meta.houseTarget?.exclusiveArea ?? meta.houseTarget?.exclusiveArea_sqm;
-        const directTargetArea = meta.targetArea !== undefined && meta.targetArea !== null
-            ? parseFloat(meta.targetArea.toString())
-            : (rhExclusive != null && Number(rhExclusive) > 0 ? parseFloat(String(rhExclusive)) : null);
+        const otExclusive = bt.exclusiveArea ?? meta.targetArea;
+        const directTargetArea = isOtSt && otExclusive != null && Number(otExclusive) > 0
+            ? parseFloat(String(otExclusive))
+            : (meta.targetArea != null && Number(meta.targetArea) > 0
+                ? parseFloat(String(meta.targetArea))
+                : (rhExclusive != null && Number(rhExclusive) > 0 ? parseFloat(String(rhExclusive)) : null));
         if (directTargetArea !== null && directTargetArea > 0) {
             targetArea = directTargetArea;
-        } else if (categoryStr === 'building') {
-            targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+        } else if (categoryStr === 'building' || categoryStr === 'store') {
+            if (isOtSt) {
+                targetArea = parseFloat(String(
+                    mergedData?.target?.exclusiveArea_sqm
+                    || mergedData?.exclusiveArea_sqm
+                    || '0',
+                )) || 0;
+            }
+            if (targetArea <= 0) {
+                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+            }
         } else {
             targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
         }
     } catch (_) { }
+
+    const cohortLandArea = (() => {
+        const m = resolvedAnalysisMetadata;
+        const fromMeta = Number(m.landCohortTargetArea);
+        if (Number.isFinite(fromMeta) && fromMeta > 0) return fromMeta;
+        if (rhParcelLandArea > 0) return rhParcelLandArea;
+        const multi = mergedData?.vitals?.multiPnu;
+        if (multi?.totalArea > 0) return parseFloat(String(multi.totalArea));
+        return 0;
+    })();
 
     const renderPriceReasonMethods = (spectrum: any, opts?: { omitMethodCards?: boolean }) => {
         if (!spectrum) return null;
@@ -3011,7 +3070,7 @@ export default function AiReportView({
                             attached={attachedMultiplier}
                             meta={meta}
                             comparables={comparables}
-                            targetArea={targetArea}
+                            targetArea={cohortLandArea > 0 ? cohortLandArea : targetArea}
                             isListAppended={meta.isListAppended}
                             estimateNarrative={officialMultiplierEstimate}
                             onMapOpen={(samples) => {
@@ -3682,7 +3741,11 @@ export default function AiReportView({
                             const dateStr = `${c.dealYear || '?'}.${String(c.dealMonth || '?').padStart(2, '0')}`;
                             const floor = c.floor ? `${c.floor}층` : '-';
                             const areaStr = c.area ? `${parseFloat(c.area.toString()).toFixed(1)}㎡` : '-';
-                            const score = c.similarityScore || 0;
+                            const score = (() => {
+                                const n = Number(c.similarityScore) || 0;
+                                if (n > 100 && n <= 10000) return Math.min(100, Math.round(n / 100));
+                                return Math.min(100, Math.round(n));
+                            })();
                             const isSame = c.isSameDanji === true;
 
                             const dealAmountWon = c.dealAmount || 0;

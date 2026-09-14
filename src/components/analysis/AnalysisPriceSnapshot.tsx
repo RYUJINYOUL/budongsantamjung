@@ -75,7 +75,7 @@ export default function AnalysisPriceSnapshot({
           </div>
           {userPriceWon > 0 && targetArea > 0 && (
             <div className="mt-1 text-[11px] text-white/40">
-              {formatTargetAreaSubline(targetArea, perPyeong, v31Cat)}
+              {formatTargetAreaSubline(targetArea, perPyeong, v31Cat, meta)}
             </div>
           )}
         </div>

@@ -145,7 +145,7 @@ export default function AnalysisV31Summary({
               </div>
               {userPriceWon > 0 && targetArea > 0 && (
                 <div className="analysis-v31-metric-sub">
-                  {formatTargetAreaSubline(targetArea, perPyeong, category)}
+                  {formatTargetAreaSubline(targetArea, perPyeong, category, meta)}
                 </div>
               )}
             </div>
