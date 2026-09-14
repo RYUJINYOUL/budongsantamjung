@@ -2,6 +2,12 @@ import type { AuctionListItem } from './auctionTypes';
 
 export type AnalyzeCategory = 'land' | 'house' | 'apartment' | 'store' | 'building';
 
+export interface AuctionParcelPrefill {
+  jibun: string | null;
+  pnu: string | null;
+  isPrimary?: boolean;
+}
+
 export interface AuctionAnalyzePrefill {
   auctionItemId: number;
   category: AnalyzeCategory;
@@ -9,6 +15,10 @@ export interface AuctionAnalyzePrefill {
   lat: number | null;
   lng: number | null;
   pnu: string | null;
+  pnuList?: string[];
+  isMultiPnu?: boolean;
+  parcelJibuns?: string[];
+  parcels?: AuctionParcelPrefill[];
   usageType: string | null;
   caseNumber: string | null;
   courtName: string | null;

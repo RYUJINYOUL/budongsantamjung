@@ -22,10 +22,13 @@ export type RecomQuickPick = {
   category: string;
 };
 
+/** 추천(/recom) 카테고리 — 아파트는 일단 숨김 */
 export const RECOM_CATEGORIES = ['토지', '빌딩'] as const;
 
+export const LISTINGS_CATEGORIES = ['아파트', '토지', '빌딩'] as const;
+
 /** 추천 목록·로그인 게이트 공통 부제 */
-export const RECOM_LIST_TAGLINE = '분석 2만+건 중 높은 점수 7.5%만 추천합니다.';
+export const RECOM_LIST_TAGLINE = 'AI 점수가 높은 토지·빌딩 매물을 큐레이션합니다.';
 
 
 /** 지도·목록 퀵픽 UI 노출 (false = 엄선 추천 패널 전체 숨김) */
@@ -69,21 +72,38 @@ export function recomQuickPickCategory(id: RecomQuickPickId): string {
   return RECOM_QUICK_PICKS.find((p) => p.id === id)?.category ?? '토지';
 }
 
-/** 추천 페이지 — 토지·빌딩만, 기본 토지 */
+export function isRecomApartmentListingCategory(category: string): boolean {
+  const c = (category || '').trim().toLowerCase();
+  return c.includes('apartment') || c === '아파트';
+}
+
+/** 추천(/recom) — 기본 토지 */
 export function normalizeRecomCategory(raw: string | null | undefined): string {
   const c = (raw ?? '').trim().toLowerCase();
   if (!c || c === 'all' || c === '전체') return '토지';
+  if (c.includes('apartment') || c === '아파트') return '토지';
   if (c.includes('land') || c === '토지') return '토지';
   if (c.includes('building') || c === '빌딩') return '빌딩';
   return '토지';
 }
 
-/** 추천 — 토지·빌딩은 기본 50점+·최신순으로 즉시 조회 */
+/** 매물(/listings) — 기본 아파트 */
+export function normalizeListingsCategory(raw: string | null | undefined): string {
+  const c = (raw ?? '').trim().toLowerCase();
+  if (!c || c === 'all' || c === '전체') return '아파트';
+  if (c.includes('apartment') || c === '아파트') return '아파트';
+  if (c.includes('land') || c === '토지') return '토지';
+  if (c.includes('building') || c === '빌딩') return '빌딩';
+  return '아파트';
+}
+
+/** 추천 — 아파트(제시가 비교)·토지·빌딩은 로그인 후 즉시 조회 */
 export function recomHasActiveFilters(
   category: string,
   discoverFilters: ApartmentDiscoverFilters,
   investmentFilters: InvestmentDiscoverFilters,
 ): boolean {
+  if (isRecomApartmentListingCategory(category)) return true;
   if (isInvestmentDiscoverCategory(category)) return true;
 
   const aptActive =

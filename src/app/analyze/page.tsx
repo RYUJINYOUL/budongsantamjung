@@ -547,11 +547,13 @@ export default function UnifiedAnalyzePage() {
               )}
 
               {/* 추가 필지 일괄매매 설정 */}
-              {['land', 'building'].includes(selectedCategory) && address && lat !== null && (
+              {['land', 'building', 'house'].includes(selectedCategory) && address && lat !== null && (
                 <div className="mt-6 pt-6 border-t border-slate-100">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-xs font-extrabold text-slate-800 tracking-tight">다중 필지 일괄매매 (선택)</h3>
+                      <h3 className="text-xs font-extrabold text-slate-800 tracking-tight">
+                        {selectedCategory === 'house' ? '다중 필지 합필 건물 (선택)' : '다중 필지 일괄매매 (선택)'}
+                      </h3>
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">합필되거나 공동 매매로 진행되는 필지를 추가합니다.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">

@@ -43,6 +43,10 @@ export type RecomReportItem = {
   bldNm?: string | null;
   budgetMan?: number | null;
   listingPriceMan?: number | null;
+  estimatedTotalMan?: number | null;
+  exclusiveAreaM2?: number | null;
+  priceGapPercent?: number | null;
+  priceGapLabel?: string | null;
   zoningGroup?: string | null;
   zoningLabel?: string | null;
   aiScore: number | null;
@@ -86,6 +90,44 @@ export async function fetchRecomApartments(
     headers: options?.headers,
   });
   if (!res.ok) return { items: [] };
+  const data = await res.json();
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    meta: data.meta,
+  };
+}
+
+export async function fetchRecomApartmentReports(
+  options?: {
+    limit?: number;
+    geo?: GeoOpts | null;
+    maxPriceGap?: number;
+    minAiScore?: number;
+    signal?: AbortSignal;
+    headers?: Record<string, string>;
+  },
+): Promise<{ items: RecomReportItem[]; meta?: Record<string, unknown> }> {
+  const params = new URLSearchParams();
+  params.set('limit', String(options?.limit ?? 50));
+  params.set('minAiScore', String(options?.minAiScore ?? RECOM_INVESTMENT_MIN_AI_SCORE));
+  if (options?.maxPriceGap != null) {
+    params.set('maxPriceGap', String(options.maxPriceGap));
+  }
+  appendGeo(params, options?.geo);
+
+  const res = await fetch(`/api/recom/apartment-reports?${params.toString()}`, {
+    cache: 'no-store',
+    signal: options?.signal,
+    headers: options?.headers,
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const msg = (errBody as { message?: string }).message
+      || (res.status === 404
+        ? '백엔드에 /api/recom/apartment-reports 가 아직 배포되지 않았습니다.'
+        : `추천 아파트 조회 실패 (${res.status})`);
+    throw new Error(msg);
+  }
   const data = await res.json();
   return {
     items: Array.isArray(data.items) ? data.items : [],
@@ -176,6 +218,40 @@ export function mapRecomApartmentToFeedItem(item: RecomApartmentItem) {
   return mapR114LiteDiscoverToFeedItem(lite);
 }
 
+function formatManToEokShort(man: number | null | undefined): string {
+  if (man == null || !Number.isFinite(man) || man <= 0) return '-';
+  if (man >= 10000) {
+    const eok = man / 10000;
+    return `${eok >= 10 ? Math.round(eok) : eok.toFixed(1).replace(/\.0$/, '')}억`;
+  }
+  return `${Math.round(man).toLocaleString()}만`;
+}
+
+export function buildRecomApartmentPriceDisplay(item: Pick<
+  RecomReportItem,
+  'listingPriceMan' | 'estimatedTotalMan' | 'priceGapPercent' | 'priceGapLabel' | 'exclusiveAreaM2'
+>) {
+  const gap = item.priceGapPercent;
+  const gapText = gap != null && Number.isFinite(gap)
+    ? `${gap > 0 ? '+' : ''}${gap.toFixed(1)}% ${item.priceGapLabel || ''}`.trim()
+    : '-';
+  const gapTone = gap != null && Number.isFinite(gap)
+    ? (gap <= -5 ? 'text-emerald-600' : gap >= 5 ? 'text-rose-600' : 'text-slate-600')
+    : 'text-slate-500';
+
+  return {
+    col1Label: '제시가',
+    col1Value: formatManToEokShort(item.listingPriceMan),
+    col1ValueClassName: 'text-slate-800',
+    col2Label: 'AI추정',
+    col2Value: formatManToEokShort(item.estimatedTotalMan),
+    col2ValueClassName: 'text-amber-700',
+    col3Label: item.exclusiveAreaM2 != null ? `${item.exclusiveAreaM2}㎡` : '괴리',
+    col3Value: gapText,
+    col3ValueClassName: gapTone,
+  };
+}
+
 export function mapRecomReportToFeedItem(item: RecomReportItem) {
   const aiScore = item.aiScore ?? 0;
   const hasReport = item.hasReport !== false;
@@ -196,8 +272,13 @@ export function mapRecomReportToFeedItem(item: RecomReportItem) {
       reason: '',
       riskScore: String(aiScore),
     } : undefined),
-    budgetMan: item.budgetMan ?? null,
+    budgetMan: item.budgetMan ?? item.listingPriceMan ?? null,
     listingPriceMan: item.listingPriceMan ?? null,
+    estimatedTotalMan: item.estimatedTotalMan ?? null,
+    priceGapPercent: item.priceGapPercent ?? null,
+    priceGapLabel: item.priceGapLabel ?? null,
+    exclusiveArea: item.exclusiveAreaM2 ?? null,
+    listingRatio: item.listingRatio ?? null,
     zoningGroup: item.zoningGroup ?? null,
     zoningLabel: item.zoningLabel ?? null,
     hasReport,

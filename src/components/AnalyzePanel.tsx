@@ -115,6 +115,8 @@ const STEP_ICONS = [
   '/3d/suzip.svg',
 ];
 
+const MULTI_PARCEL_CATEGORIES = new Set(['land', 'building', 'house']);
+
 const CATEGORIES = [
   { id: 'land', label: '토지', icon: '/land.svg' },
   { id: 'house', label: '주택', icon: '/jutack.svg' },
@@ -317,7 +319,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     const { lat: latVal, lng: lngVal, address: addr, pnu, polygon } = externalClickParcel;
 
     // 만약 다중 필지 일괄매매가 활성화되어 있고 토지/빌딩 카테고리라면, 추가 필지로 처리!
-    if (isMultiParcel && (selectedCategory === 'land' || selectedCategory === 'building')) {
+    if (isMultiParcel && selectedCategory && MULTI_PARCEL_CATEGORIES.has(selectedCategory)) {
       if (address === addr || (primaryPnu && primaryPnu === pnu)) return; // 주필지와 중복 방지
       if (additionalParcels.some(p => p.address === addr || (p.pnu && p.pnu === pnu))) return; // 이미 추가된 필지 중복 방지
       if (additionalParcels.length >= 4) return; // 최대 4개 제한
@@ -376,17 +378,45 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     );
   }, [urlPrefill?.timestamp]);
 
+  const parseVworldParcel = (data: unknown): { pnu: string | null; polygon: { lat: number; lng: number }[] | null } => {
+    const pnu =
+      (data as { response?: { result?: { featureCollection?: { features?: { properties?: { pnu?: string } }[] } } } })
+        ?.response?.result?.featureCollection?.features?.[0]?.properties?.pnu?.toString() || null;
+    const polygon = parseParcelPolygonFromVworldResponse(data);
+    return { pnu, polygon };
+  };
+
   const getPnuAndPolygonFromCoords = async (latV: number, lngV: number): Promise<{ pnu: string | null; polygon: { lat: number; lng: number }[] | null }> => {
     try {
       const res = await fetch(`/api/vworld?lat=${latV}&lng=${lngV}`);
       if (!res.ok) return { pnu: null, polygon: null };
-      const data = await res.json();
-      const pnu = data?.response?.result?.featureCollection?.features?.[0]?.properties?.pnu?.toString() || null;
-      const polygon = parseParcelPolygonFromVworldResponse(data);
-      return { pnu, polygon };
-    } catch { 
-      return { pnu: null, polygon: null }; 
+      return parseVworldParcel(await res.json());
+    } catch {
+      return { pnu: null, polygon: null };
     }
+  };
+
+  /** prefill PNU 우선 → 좌표 fallback (경매·딥링크 필지 표시) */
+  const getPnuAndPolygonForPrefill = async (
+    latV: number,
+    lngV: number,
+    knownPnu?: string | null,
+  ): Promise<{ pnu: string | null; polygon: { lat: number; lng: number }[] | null }> => {
+    if (knownPnu) {
+      try {
+        const res = await fetch(
+          `/api/vworld?pnu=${encodeURIComponent(knownPnu)}&lat=${latV}&lng=${lngV}`,
+        );
+        if (res.ok) {
+          const parsed = parseVworldParcel(await res.json());
+          if (parsed.polygon?.length) {
+            return { pnu: knownPnu || parsed.pnu, polygon: parsed.polygon };
+          }
+        }
+      } catch { /* coords fallback */ }
+    }
+    const fromCoords = await getPnuAndPolygonFromCoords(latV, lngV);
+    return { pnu: knownPnu || fromCoords.pnu, polygon: fromCoords.polygon };
   };
 
   const getPnuFromCoords = async (latV: number, lngV: number): Promise<string | null> => {
@@ -621,14 +651,42 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setAddress(prefill.address);
     setLat(prefill.lat);
     setLng(prefill.lng);
-    setPrimaryPnu(prefill.pnu ?? null);
     setSearchQuery('');
     setSearchResults([]);
-    setIsMultiParcel(false);
-    setAdditionalParcels([]);
     setAuctionPrefillError(null);
     applyAuctionFormFromPrefill(prefill);
-    onLocationSelectRef.current?.(prefill.lat, prefill.lng, prefill.address, null);
+
+    const primaryFromList = prefill.pnuList?.[0] ?? prefill.pnu ?? null;
+    const hasMultiFromPrefill = Boolean(prefill.isMultiPnu && prefill.pnuList && prefill.pnuList.length > 1);
+
+    if (hasMultiFromPrefill && prefill.pnuList) {
+      setIsMultiParcel(true);
+      const extras = prefill.pnuList.slice(1).map((extraPnu, idx) => {
+        const parcelMeta = prefill.parcels?.find((p) => p.pnu === extraPnu)
+          ?? prefill.parcels?.[idx + 1];
+        return {
+          address: parcelMeta?.jibun ? `${parcelMeta.jibun} (합필)` : `추가 필지 ${idx + 2}`,
+          lat: prefill.lat ?? 0,
+          lng: prefill.lng ?? 0,
+          pnu: extraPnu,
+          isLoadingPnu: false,
+        };
+      });
+      setAdditionalParcels(extras);
+    } else {
+      setIsMultiParcel(false);
+      setAdditionalParcels([]);
+    }
+
+    const { pnu, polygon } = await getPnuAndPolygonForPrefill(
+      prefill.lat,
+      prefill.lng,
+      primaryFromList,
+    );
+    setPrimaryPnu(pnu);
+    setPrimaryPolygon(polygon);
+    onLocationSelectRef.current?.(prefill.lat, prefill.lng, prefill.address, polygon);
+
     return true;
   }, [applyAuctionFormFromPrefill]);
 
@@ -721,7 +779,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     try {
       const idToken = await user.getIdToken();
       const allParcels = [{ address, lat, lng, pnu: resolvedPnu }];
-      if (isMultiParcel && (selectedCategory === 'land' || selectedCategory === 'building')) {
+      if (isMultiParcel && selectedCategory && MULTI_PARCEL_CATEGORIES.has(selectedCategory)) {
         additionalParcels.forEach(p => { if (p.pnu) allParcels.push(p); });
       }
       const pnuList = allParcels.map(p => p.pnu).filter(Boolean);
@@ -761,6 +819,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       if (prefilledPlaceName) payload.placeName = prefilledPlaceName;
       if (prefilledR114PropId) payload.r114PropId = prefilledR114PropId;
       if (selectedAuctionItemId) payload.auctionItemId = selectedAuctionItemId;
+      if (auctionContext?.usageType) payload.auctionUsageType = auctionContext.usageType;
 
       const res = await fetch('/api/land/detective/analyze-with-report', {
         method: 'POST',
@@ -795,6 +854,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     prefilledRtmsAptSeq,
     primaryPolygon,
     router,
+    auctionContext?.usageType,
     selectedAuctionItemId,
     selectedCategory,
     user,
@@ -1220,11 +1280,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         )}
 
         {/* 다중 필지 */}
-        {!(panelMode === 'auction' && linkedAuctionReportId) && (selectedCategory === 'land' || selectedCategory === 'building') && address && (
+        {!(panelMode === 'auction' && linkedAuctionReportId) && selectedCategory && MULTI_PARCEL_CATEGORIES.has(selectedCategory) && address && (
           <section className={PANEL_CARD}>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className={PANEL_SECTION_LABEL}>다중 필지 일괄매매</p>
+                <p className={PANEL_SECTION_LABEL}>다중 필지 {selectedCategory === 'house' ? '(합필 건물)' : '일괄매매'}</p>
                 <p className={PANEL_SECTION_DESC}>최대 4필지 추가 · 선택사항</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer shrink-0">

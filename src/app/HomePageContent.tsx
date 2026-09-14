@@ -1706,7 +1706,7 @@ export function HomePageContent({ feedMode = 'home' }: { feedMode?: MapFeedMode 
       if (feedMode === 'recom') {
         return list.filter((a) => isApartmentAnalysis(a) || a.priceGapPercent != null);
       }
-      if (apartmentTabDiscover && feedMode !== 'recom') {
+      if (apartmentTabDiscover) {
         return sortApartmentDiscoverList(list, discoverFilters, (a) => {
           if (a.id?.startsWith('lite-')) {
             return {

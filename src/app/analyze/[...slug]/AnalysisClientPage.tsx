@@ -76,6 +76,7 @@ import {
     formatWeightedScoreLabel,
 } from '../../../lib/landScoreWeights';
 import { resolveEstimateRange } from '../../../lib/analysisV31Helpers';
+import { formatRegionalTradeLabel, getRhTargetArea, isRhUnitAnalysis } from '../../../lib/houseRhHelpers';
 import {
     completeActiveAiAnalysis,
     dismissActiveAiAnalysis,
@@ -2108,6 +2109,10 @@ export default function AnalysisDetailPage({
         }
         return base;
     }, [analysisData]);
+
+    const analysisMeta = (analysisData?.analysisMetadata || {}) as Record<string, unknown>;
+    const isRhUnitHouse = isRhUnitAnalysis(analysisMeta);
+    const rhExclusiveArea = getRhTargetArea(analysisMeta);
 
     const address = report?.address || mergedData?.address || '';
     const rawBldNm = report?.bldNm || mergedData?.bldNm || '';
@@ -4237,6 +4242,15 @@ export default function AnalysisDetailPage({
                     )}
                     {activeTab === 'land' && (
                         <motion.div key="land" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                            {isRhUnitHouse && (
+                                <div className="p-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-100/90 text-sm leading-relaxed">
+                                    <span className="font-bold text-emerald-300">호 단위 분석 매물</span>
+                                    {' '}— 아래 토지 면적·공시지가는 <strong>필지 전체(건물 대지)</strong> 기준입니다.
+                                    {rhExclusiveArea > 0 && (
+                                        <> 분석에 사용한 전용면적은 <strong>{rhExclusiveArea.toFixed(1)}㎡</strong>입니다.</>
+                                    )}
+                                </div>
+                            )}
                             {(() => {
                                 const multiPnu = rawData?.vitals?.multiPnu;
                                 const isMulti = multiPnu && multiPnu.parcelCount > 1;
@@ -4600,6 +4614,15 @@ export default function AnalysisDetailPage({
 
                     {activeTab === 'price' && (
                         <motion.div key="price" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                            {isRhUnitHouse && (
+                                <div className="p-4 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-100/90 text-sm leading-relaxed">
+                                    <span className="font-bold text-emerald-300">호 단위 분석 매물</span>
+                                    {' '}— 공시지가·면적은 <strong>필지 전체</strong> 기준이며, 개별 호 매매가와 직접 비교하지 마세요.
+                                    {rhExclusiveArea > 0 && (
+                                        <> AI 비교 분석 전용면적: <strong>{rhExclusiveArea.toFixed(1)}㎡</strong>.</>
+                                    )}
+                                </div>
+                            )}
                             {(() => {
                                 const multiPnu = rawData?.vitals?.multiPnu;
                                 const isMulti = multiPnu && multiPnu.parcelCount > 1;
@@ -5602,13 +5625,13 @@ export default function AnalysisDetailPage({
                                                             <div key={i} className="group p-3 bg-white/[0.01] hover:bg-white/[0.03] rounded-xl border border-white/[0.04] hover:border-white/[0.08] transition-all">
                                                                 <div className="flex items-center justify-between mb-1.5 gap-4">
                                                                     <p className="text-[13px] font-bold text-slate-200 truncate flex-1">
-                                                                        {trade.aptNm || trade.mhouseNm || trade.offiNm || trade.roadNm || trade.sggNm || '지정 건축물'}
+                                                                        {formatRegionalTradeLabel(trade)}
                                                                     </p>
                                                                     <span className="text-[13px] font-extrabold text-emerald-400 shrink-0">{priceVal}</span>
                                                                 </div>
                                                                 <div className="flex items-center justify-between text-[10px] text-slate-400">
                                                                     <p className="font-medium">
-                                                                        {trade.dealYear}.{String(trade.dealMonth).padStart(2, '0')}.{String(trade.dealDay).padStart(2, '0')} · {trade.floor ? `${trade.floor}층` : trade.buildYear ? `${trade.buildYear}년 준공` : '다중건물'} · {trade.excluUseAr || trade.exArea || trade.area || trade.plottage || trade.totArea || '-'}㎡
+                                                                        {trade.dealYear}.{String(trade.dealMonth).padStart(2, '0')}.{String(trade.dealDay).padStart(2, '0')} · {trade.floor ? `${trade.floor}층` : trade.buildYear ? `${trade.buildYear}년 준공` : '다중건물'} · {trade.excluUseAr || trade.exArea || trade.totalFloorAr || trade.landAr || trade.area || trade.plottage || trade.totArea || '-'}㎡
                                                                     </p>
                                                                     <span className="text-slate-500 font-semibold uppercase">{trade.contractType || '일반'}</span>
                                                                 </div>

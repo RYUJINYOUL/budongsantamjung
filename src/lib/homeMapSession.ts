@@ -54,7 +54,8 @@ export function writeHomeMapSession(
   if (typeof window === 'undefined') return;
   try {
     const prev = readHomeMapSession(scope);
-    const defaultCategory = scope === 'recom' || scope === 'listings' ? '아파트' : 'all';
+    const defaultCategory =
+      scope === 'recom' ? '토지' : scope === 'listings' ? '아파트' : 'all';
     const next: HomeMapSession = {
       lat: partial.lat ?? prev?.lat ?? 37.5665,
       lng: partial.lng ?? prev?.lng ?? 126.978,

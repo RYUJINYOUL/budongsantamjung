@@ -21,6 +21,7 @@ import {
     detectUserPriceMismatch,
     resolveUserPriceWon,
 } from '../lib/analysisV31Helpers';
+import { getRhTargetArea, isRhUnitAnalysis } from '../lib/houseRhHelpers';
 
 // 포맷터 유틸리티
 const formatKoreanCurrency = (val: number): string => {
@@ -353,6 +354,9 @@ export default function DetectiveSummaryView({
     const rawCategory = categoryProp || rawData.category || findValue(rawData, 'category') || 'land';
     const category = String(rawCategory).toLowerCase().trim();
     const isApartment = category === 'apartment' || category === '아파트';
+    const meta = (analysisMetadata || {}) as Record<string, unknown>;
+    const isRhUnit = isRhUnitAnalysis(meta);
+    const rhTargetArea = getRhTargetArea(meta);
 
     const formatDate = (dateStr: any): string => {
         if (!dateStr) return '정보없음';
@@ -763,7 +767,7 @@ export default function DetectiveSummaryView({
             if (pyung) blocks.push(pyung);
         }
         if (shortsSections.includes('landSummary')) {
-            blocks.push(renderLandSummarySection());
+            blocks.push(isRhUnit && category === 'house' ? renderRhUnitSummarySection() : renderLandSummarySection());
         }
         if (shortsSections.includes('market')) {
             const market = renderMarketSummarySection();
@@ -837,8 +841,8 @@ export default function DetectiveSummaryView({
                 </>
             ) : (
                 <>
-                    {/* 토지 상세 요약 */}
-                    {renderLandSummarySection()}
+                    {/* RH 호: 전용㎡ 기준 요약 / 그 외: 토지 상세 */}
+                    {isRhUnit && category === 'house' ? renderRhUnitSummarySection() : renderLandSummarySection()}
 
                     {/* 건물 상세 요약 */}
                     {renderBuildingSummarySection()}
@@ -1341,6 +1345,63 @@ export default function DetectiveSummaryView({
                                 </div>
                             ))}
                         </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    function renderRhUnitSummarySection() {
+        const estimatedTotal = parseFloat(String(meta.estimatedTotalPrice || '0')) || 0;
+        const priceGap = parseFloat(String(meta.priceGapPercent ?? ''));
+        const gapLabel = Number.isFinite(priceGap) && priceGap !== 0
+            ? `${priceGap > 0 ? '+' : ''}${priceGap.toFixed(1)}%`
+            : null;
+        const parcelArea = areaVal > 0 ? `${areaVal.toFixed(1)}㎡ (${pyeongVal.toFixed(1)}평)` : null;
+
+        return (
+            <div className="p-6 bg-[#13131a]/80 border border-white/[0.08] rounded-[32px] shadow-[0_24px_50px_-12px_rgba(0,0,0,0.7)] backdrop-blur-2xl space-y-6">
+                <div className="flex items-center gap-2">
+                    <Home className="w-5 h-5 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
+                    <span className="text-white text-base font-bold tracking-tight">호 단위 분석 요약</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 p-5 bg-white/[0.02] border border-white/[0.05] rounded-[24px]">
+                    <SummaryItem
+                        label="제시 매매가"
+                        value={userPrice > 0 ? `${formatKoreanCurrency(userPrice)}원` : '정보없음'}
+                        icon={DollarSign}
+                        color="text-sky-400"
+                    />
+                    <SummaryItem
+                        label="전용면적"
+                        value={rhTargetArea > 0 ? `${rhTargetArea.toFixed(1)}㎡ (${(rhTargetArea * 0.3025).toFixed(1)}평)` : '정보없음'}
+                        icon={Ruler}
+                        color="text-emerald-400"
+                    />
+                    <SummaryItem
+                        label="AI 추정가 (호)"
+                        value={estimatedTotal > 0 ? `${formatKoreanCurrency(estimatedTotal)}원` : '정보없음'}
+                        icon={TrendingUp}
+                        color="text-purple-400"
+                        trailing={gapLabel && userPrice > 0 ? (
+                            <span className="px-2 py-0.5 bg-purple-500/10 text-purple-300 rounded-lg border border-purple-500/20 text-[10px] font-black shrink-0">
+                                제시가 대비 {gapLabel}
+                            </span>
+                        ) : undefined}
+                    />
+                    <SummaryItem
+                        label="핵심 용도지역"
+                        value={primaryLandData.zoning || '정보없음'}
+                        icon={Map}
+                        color="text-amber-400"
+                    />
+                </div>
+                {parcelArea && (
+                    <div className="p-4 bg-white/[0.02] border border-white/[0.05] rounded-2xl text-xs text-white/45 leading-relaxed">
+                        <span className="text-white/60 font-bold">필지 참고(건물 전체): </span>
+                        대지 {parcelArea}
+                        {totalOfficialPrice > 0 ? ` · 토지 공시지가 ${formatKoreanCurrency(totalOfficialPrice)}원` : ''}
+                        {' '}— 호 단위 매매가와 직접 비교하지 마세요.
                     </div>
                 )}
             </div>
