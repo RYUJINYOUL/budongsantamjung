@@ -68,6 +68,7 @@ import { parseAnalyzeSlug, makeAnalyzeSlug } from '../../../lib/slug';
 import {
     buildTenYearHistoryCopyText,
     buildTenYearOutlookKeywordsCopyText,
+    formatKoreanCurrency,
 } from '../../../lib/shortsSceneData';
 import { AI_ANALYSIS_STEPS } from '../../../lib/aiAnalysisSteps';
 import {
@@ -592,7 +593,7 @@ function buildAiReportCopyText(
     const compListRows: string[] = [];
 
     sortedComps.slice(0, 3).forEach((c, i) => {
-        const areaVal = c.area || c.plottageAr || c.excluUseAr || c.buildingAr || 0;
+        const areaVal = c.area || c.excluUseAr || c.exArea || c.buildingAr || c.plottageAr || 0;
         const areaStr = areaVal ? `${parseFloat(areaVal.toString()).toFixed(2)}㎡` : '-';
 
         let dateStr = '';
@@ -4406,16 +4407,6 @@ export default function AnalysisDetailPage({
 
                                                     {/* 토지 입지 및 형상 분석 요약 */}
                                                     {(() => {
-                                                        const formatKoreanCurrency = (val: number) => {
-                                                            if (val === 0) return '0';
-                                                            if (val >= 100000000) {
-                                                                return `${(val / 100000000).toLocaleString(undefined, { maximumFractionDigits: 2 })}억`;
-                                                            } else if (val >= 10000) {
-                                                                return `${Math.round(val / 10000).toLocaleString()}만`;
-                                                            }
-                                                            return val.toLocaleString();
-                                                        };
-
                                                         const getRoadConnectionExplanation = (road: string) => {
                                                             if (!road || road === '정보없음') return null;
                                                             const cleanConn = road.replace(/\s+/g, '');
@@ -5640,7 +5631,7 @@ export default function AnalysisDetailPage({
                                                                 </div>
                                                                 <div className="flex items-center justify-between text-[10px] text-slate-400">
                                                                     <p className="font-medium">
-                                                                        {trade.dealYear}.{String(trade.dealMonth).padStart(2, '0')}.{String(trade.dealDay).padStart(2, '0')} · {trade.floor ? `${trade.floor}층` : trade.buildYear ? `${trade.buildYear}년 준공` : '다중건물'} · {trade.excluUseAr || trade.exArea || trade.totalFloorAr || trade.landAr || trade.area || trade.plottage || trade.totArea || '-'}㎡
+                                                                        {trade.dealYear}.{String(trade.dealMonth).padStart(2, '0')}.{String(trade.dealDay).padStart(2, '0')} · {trade.floor ? `${trade.floor}층` : trade.buildYear ? `${trade.buildYear}년 준공` : '다중건물'} · {trade.excluUseAr || trade.exArea || trade.dealArea || trade.buildingAr || trade.totalFloorAr || trade.landAr || trade.plottageAr || trade.area || trade.plottage || trade.totArea || '-'}㎡
                                                                     </p>
                                                                     <span className="text-slate-500 font-semibold uppercase">{trade.contractType || '일반'}</span>
                                                                 </div>

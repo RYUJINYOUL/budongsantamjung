@@ -44,11 +44,11 @@ export default function AnalysisPriceSnapshot({
   const priceMismatch = detectUserPriceMismatch(meta, mergedData);
   const targetArea = getTargetArea(meta, mergedData, v31Cat);
   const { min, max, source } = resolveEstimateRange(meta, priceReas, mergedData, v31Cat);
-  const estimateLabel = buildEstimateRangeLabel(source);
+  const estimateLabel = buildEstimateRangeLabel(source, meta);
   const markerPct = priceBarMarkerPercent(userPriceWon, min, max);
   const pricePosition = formatPricePositionLabel(userPriceWon, min, max);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-  const rangeCaption = buildCohortMultiplierCaption(meta, priceReas);
+  const rangeCaption = buildCohortMultiplierCaption(meta, priceReas, mergedData);
   const comparableSub = buildComparableSub(meta);
   const perPyeong = userPriceWon > 0 && targetArea > 0
     ? Math.round(userPriceWon / (targetArea / 3.3058) / 10_000)

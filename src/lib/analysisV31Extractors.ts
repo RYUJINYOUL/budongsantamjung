@@ -4,6 +4,7 @@ import { buildRiskItemFacts } from './apartmentRiskItemFacts';
 import {
   formatEokCompact,
   getTargetArea,
+  isOtStUnitMeta,
   SCORE_LABEL_MAP,
   v31ShouldHideScoreItem,
 } from './analysisV31Helpers';
@@ -481,8 +482,10 @@ export function resolveReportHeader(
 
 export function extractPriceMapListItems(
   analysisMetadata?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
 ): { title: string; sub: string }[] {
   const meta = analysisMetadata || {};
+  const hideLandCohort = isOtStUnitMeta(meta, mergedData);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables.length : 0;
   const regional = Array.isArray(meta.uiAttachedRegionalTrades)
     ? meta.uiAttachedRegionalTrades.reduce((s: number, g: Record<string, unknown>) => s + (Array.isArray(g.data) ? g.data.length : 0), 0)
@@ -493,7 +496,7 @@ export function extractPriceMapListItems(
   const perSqm = Number(cbd?.officialPerSqm || opr?.targetOfficialPerSqm) || 0;
   const area = Number(meta.targetArea) || 0;
 
-  return [
+  const items = [
     {
       title: '비교사례 (동일 조건)',
       sub: `${comparables}건 · 신뢰 ${meta.confidenceGrade || '-'} · L${meta.conditionRelaxLevel || 0}`,
@@ -515,6 +518,10 @@ export function extractPriceMapListItems(
         : (attached?.midMult ? `${attached.midMult}배 · ${String(attached.zoning || '')}` : '-'),
     },
   ];
+  if (hideLandCohort) {
+    return items.filter((row) => row.title !== '동일수급권 배율');
+  }
+  return items;
 }
 
 export type ComparableEmptyCopy = {

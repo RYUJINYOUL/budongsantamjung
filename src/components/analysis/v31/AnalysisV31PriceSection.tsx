@@ -10,6 +10,7 @@ import {
   extractPriceMethods,
   formatEokCompact,
   getTargetArea,
+  isOtStUnitMeta,
 } from '../../../lib/analysisV31Helpers';
 import { buildComparableEmptyCopy, extractPriceMapListItems } from '../../../lib/analysisV31Extractors';
 
@@ -32,7 +33,7 @@ export default function AnalysisV31PriceSection({
   const meta = analysisMetadata || (ai.analysisMetadata as Record<string, unknown>) || {};
   const priceReas = (ai['5_priceReasonableness'] || {}) as Record<string, unknown>;
   const methods = extractPriceMethods(meta, priceReas, mergedData, category);
-  const ledgerRows = buildPriceLedgerRows(meta, priceReas);
+  const ledgerRows = buildPriceLedgerRows(meta, priceReas, mergedData);
   const ledgerFactors = extractLedgerFactorItems(meta, category);
   const ledgerProduct = computeLedgerFactorProduct(meta);
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
@@ -46,7 +47,7 @@ export default function AnalysisV31PriceSection({
     ? Math.round(midTotal / (targetArea / 3.3058) / 10_000)
     : 0;
   const emptyCopy = buildComparableEmptyCopy(meta);
-  const mapList = extractPriceMapListItems(meta);
+  const mapList = extractPriceMapListItems(meta, mergedData);
 
   const hasCoords = meta.lat && meta.lng;
 
@@ -67,7 +68,7 @@ export default function AnalysisV31PriceSection({
   };
 
   let caption = '';
-  if (midTotal > 0 && targetArea > 0) {
+  if (!isOtStUnitMeta(meta, mergedData) && midTotal > 0 && targetArea > 0) {
     caption = `보수적 추정 약 ${formatEokCompact(midTotal)}`;
     if (perPyeongMan > 0) caption += ` (평당 ${perPyeongMan.toLocaleString()}만)`;
   }

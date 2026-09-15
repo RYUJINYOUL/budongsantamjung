@@ -27,7 +27,20 @@ import MarketProofCard, { type MarketProofPayload } from './analysis/v31/MarketP
 import { COHORT_MULTIPLIER_DISCLAIMER } from '@/lib/cohortMultiplierDisclaimer';
 import { formatHojaeTierSummary, pickHojaeTierFields, resolveHojaeTierCeiling } from '@/lib/hojaeTier';
 import { resolveLandUiTrack, shouldShowFullMarketProof, shouldShowReferenceMarketProof } from '@/lib/landAssetTrack';
-import { computeLedgerFactorProduct, getV31SectionMeta, resolveCohortEstimateTotal, buildCohortEstimateTitle } from '../lib/analysisV31Helpers';
+import {
+    computeLedgerFactorProduct,
+    getV31SectionMeta,
+    resolveCohortEstimateTotal,
+    buildCohortEstimateTitle,
+    isOtStUnitMeta,
+    computeOtUnitIncomeReference,
+    manwonInputToWon,
+    wonToManwonInput,
+    resolveOtUnitMarketHint,
+    resolveOtStUnitReportRentWon,
+    resolveOtUnitIncomeCapFromContext,
+    getUnitSpectrumFromMeta,
+} from '../lib/analysisV31Helpers';
 import { isRhCostApproach, getRhCostApproachSummary } from '@/lib/houseRhHelpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
@@ -759,7 +772,16 @@ const parseBuildingValueNote = (note: string) => {
     };
 };
 
-const getLandAdjSpectrum = (comparables: any[], targetArea: number, rhCostMode = false) => {
+const getLandAdjSpectrum = (
+    comparables: any[],
+    targetArea: number,
+    rhCostMode = false,
+    meta?: Record<string, unknown> | null,
+) => {
+    const unitSpec = meta && getUnitSpectrumFromMeta(meta);
+    if (unitSpec) {
+        return { min: unitSpec.min, max: unitSpec.max, count: comparables.length, unitP25P75: true };
+    }
     const totals = comparables
         .map(c => resolveComparableMetrics(c, targetArea, { rhCostMode }).adjTotalWon)
         .filter(v => v > 0);
@@ -1019,6 +1041,7 @@ const LandComparableValueSection = ({
     const isRhUnit = meta.rhUnitMode === true || meta.houseTarget?.isRhUnit === true;
     const isOtUnit = meta.otUnitMode === true || meta.buildingTarget?.isOtUnit === true;
     const isStUnit = meta.stUnitMode === true || meta.buildingTarget?.isStUnit === true;
+    const isUnitComparable = isRhUnit || isOtUnit || isStUnit;
     const rhCostMode = isRhCostApproach(meta);
     const rhCost = getRhCostApproachSummary(meta);
     const methodLabel = meta.method || meta.tierLabel || '-';
@@ -1026,7 +1049,7 @@ const LandComparableValueSection = ({
     const ratioTier = meta.ratioTier || meta.ratioTierLabel || '';
     const cohortMedianRatio = meta.cohortMedianRatio ?? meta.medianRatio ?? meta.costApproachRatio ?? null;
     const locationLevel = meta.locationLevel || '';
-    const landSpectrum = getLandAdjSpectrum(comparables, targetArea, rhCostMode);
+    const landSpectrum = getLandAdjSpectrum(comparables, targetArea, rhCostMode, meta);
     const landMin = landSpectrum?.min ?? 0;
     const landMax = landSpectrum?.max ?? 0;
     const hasRange = landMin > 0;
@@ -1074,7 +1097,7 @@ const LandComparableValueSection = ({
                     {rhCost?.landShareSource ? metaChip(rhCost.landShareSource, accent) : null}
                     {locationLevel === 'same_umd_strict' && metaChip('동일 동 · 면적 유사', accent)}
                     {locationLevel === 'same_umd' && metaChip('동일 법정동', accent)}
-                    {isBuildingCat && metaChip('토지 대입 + 건물 별도', PRICE_METHOD_ACCENTS.building)}
+                    {isBuildingCat && !isOtUnit && !isStUnit && metaChip('토지 대입 + 건물 별도', PRICE_METHOD_ACCENTS.building)}
                 </>
             )}
         >
@@ -1124,7 +1147,9 @@ const LandComparableValueSection = ({
                     }}
                 >
                     <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
-                        {isRhUnit ? '전용면적 대입 추정 범위' : '토지 대입 추정 범위'}
+                        {isRhUnit || isOtUnit || isStUnit
+                            ? '전용면적 대입 추정 범위'
+                            : '토지 대입 추정 범위'}
                     </span>
                     <p className="text-xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                         {landMin === landMax
@@ -1134,6 +1159,7 @@ const LandComparableValueSection = ({
                     <p className="text-[10px] text-white/35 mt-1.5">
                         비교사례 {landSpectrum?.count ?? comparables.length}건 · 보정 단가 × {targetArea.toLocaleString()}㎡
                         {isRhUnit ? ' (전용)' : ''}
+                        {(landSpectrum as { unitP25P75?: boolean })?.unitP25P75 ? ' · p25~p75 (면적 유사)' : ''}
                     </p>
                 </div>
             )}
@@ -1167,6 +1193,7 @@ const LandComparableValueSection = ({
                                         startIndex={0}
                                         accent={accent}
                                         cohortMedianRatio={cohortMedianRatio}
+                                        isRhUnit={isUnitComparable}
                                     />
                                 )}
                             </div>
@@ -1181,6 +1208,7 @@ const LandComparableValueSection = ({
                                         startIndex={(meta.tier1Comparables || []).length}
                                         accent={accent}
                                         cohortMedianRatio={cohortMedianRatio}
+                                        isRhUnit={isUnitComparable}
                                     />
                                 </div>
                             )}
@@ -1191,7 +1219,7 @@ const LandComparableValueSection = ({
                             targetArea={targetArea}
                             accent={accent}
                             cohortMedianRatio={cohortMedianRatio}
-                            isRhUnit={isRhUnit}
+                            isRhUnit={isUnitComparable}
                             rhCostMode={rhCostMode}
                         />
                     )}
@@ -1246,7 +1274,7 @@ const BuildingResidualSection = ({
     mergedData: any;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
-    if (meta?.otUnitMode || meta?.stUnitMode || mergedData?.buildingData?.skipCapRate) {
+    if (meta?.otUnitMode || meta?.stUnitMode) {
         return null;
     }
     const buildingResidualWon = Number(meta.buildingResidualValue) || 0;
@@ -1553,6 +1581,7 @@ const OfficialMultiplierSection = ({
     isListAppended,
     estimateNarrative,
     onMapOpen,
+    mergedData,
 }: {
     attached: any;
     meta: any;
@@ -1561,6 +1590,7 @@ const OfficialMultiplierSection = ({
     isListAppended?: boolean;
     estimateNarrative?: string;
     onMapOpen?: (samples: any[]) => void;
+    mergedData?: any;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
     const [showAllCohortTrades, setShowAllCohortTrades] = React.useState(false);
@@ -1570,10 +1600,15 @@ const OfficialMultiplierSection = ({
         setCohortListVisible(COHORT_LIST_INITIAL);
     }, [showAllCohortTrades]);
 
+    if (isOtStUnitMeta(meta, mergedData) || meta?.uiHideLandCohortSection === true) {
+        return null;
+    }
+
     // v21: 동적 공시지가 배율법 UI 렌더링
     const opr = meta.officialPriceRatio;
-    const cohortArea = (meta.otUnitMode || meta.stUnitMode)
-        ? (Number(meta.landCohortTargetArea) || targetArea)
+    const isOtSt = isOtStUnitMeta(meta);
+    const cohortArea = isOtSt
+        ? (Number(meta.landCohortTargetArea) || 0)
         : targetArea;
     const obs = opr?.observedRatio;
     const hojae = pickHojaeTierFields({ ...(meta as Record<string, unknown>), observedRatio: obs, officialPriceRatio: opr });
@@ -1594,10 +1629,13 @@ const OfficialMultiplierSection = ({
         const isFiltered = opr.dynamicStatus === 'cohort';
         const accent = PRICE_METHOD_ACCENTS.comparables;
         const levelLabel = obs?.resolverLevel?.replace(/_/g, ' ') || '동일수급권';
-        const estimatedTotal = (meta.otUnitMode || meta.stUnitMode)
-            ? (Number(meta.landCohortEstimatedTotal) || ((opr.estimatedPerSqm || 0) * cohortArea))
+        const estimatedTotal = isOtSt
+            ? (Number(meta.landCohortEstimatedTotal) || 0)
             : (resolveCohortEstimateTotal(meta, undefined, 'land')
                 || ((opr.estimatedPerSqm || 0) * cohortArea));
+        const cohortCardTitle = isOtSt && meta.landCohortReference
+            ? '합필 대지 참고 · 동일수급권 배율'
+            : '동일수급권 배율 (실거래 ÷ 공시)';
         const cohortN = obs?.cohortSampleCount ?? opr.sampleCount ?? 0;
         const filteredN = obs?.filteredSampleCount ?? 0;
         const { applied: appliedSamples, all: allSamples } = normalizeCohortSamples(opr, obs);
@@ -1616,10 +1654,11 @@ const OfficialMultiplierSection = ({
         return (
             <PriceReasonMethodCard
                 icon={Percent}
-                title="동일수급권 배율 (실거래 ÷ 공시)"
+                title={cohortCardTitle}
                 accent={accent}
                 chips={(
                     <div className="flex flex-wrap items-center gap-2 w-full">
+                        {isOtSt && meta.landCohortReference && metaChip('호 추정가는 오피스텔 실거래', accent)}
                         {metaChip(isFiltered ? 'similarity 필터' : '동일수급권 전체', accent)}
                         {metaChip(levelLabel, accent)}
                         {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
@@ -1658,10 +1697,12 @@ const OfficialMultiplierSection = ({
                         }}
                     >
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
-                            {buildCohortEstimateTitle(hojae, hojae.hojaeTierCapped === true)}
+                            {isOtSt && meta.landCohortReference
+                                ? '합필 대지 median 추정 (참고)'
+                                : buildCohortEstimateTitle(hojae, hojae.hojaeTierCapped === true)}
                         </span>
                         <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
-                            {formatEokCompact(estimatedTotal)}
+                            {estimatedTotal > 0 ? formatEokCompact(estimatedTotal) : (isOtSt ? '—' : formatEokCompact(0))}
                         </p>
                         {opr.appliedMultiplier > 0 && (
                             <p className="text-[10px] text-white/35 mt-1.5">
@@ -1682,8 +1723,11 @@ const OfficialMultiplierSection = ({
                             <span>
                                 {formatSqmManwon(opr.targetOfficialPerSqm)} × {Number(opr.appliedMultiplier).toFixed(2)}배
                                 = {formatSqmManwon(opr.estimatedPerSqm)} × {cohortArea.toLocaleString()}㎡
-                                {(meta.otUnitMode || meta.stUnitMode) ? ' (합필 대지)' : ''}
+                                {isOtSt ? ' (합필 대지)' : ''}
                             </span>
+                        )}
+                        {isOtSt && meta.landCohortReference && (
+                            <span className="text-white/45">전용㎡×토지 단가는 호 SSOT에 사용하지 않습니다.</span>
                         )}
                     </div>
 
@@ -2406,42 +2450,17 @@ const resolveBuildingIncomeInputs = (mergedData: any) => {
 
 const resolveIncomeCapRates = (mergedData: any, ai: any) => {
     const metadata = ai?.analysisMetadata || mergedData?.analysisMetadata || {};
-
-    let officeCapRate = parseFloat(String(
-        metadata.officeCapRate
-        ?? mergedData?.officeCapRate
-        ?? findDeepValue(mergedData, 'officeCapRate')
-        ?? metadata.capRate
-        ?? mergedData?.capRate
-        ?? 0,
-    )) || 0;
-
-    if (officeCapRate <= 0) {
-        const ind = mergedData?.marketIndicators || findDeepValue(mergedData, 'marketIndicators');
-        const incomeSeries = ind?.yieldRates?.income?.data;
-        if (Array.isArray(incomeSeries) && incomeSeries.length > 0) {
-            const sorted = [...incomeSeries].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-            officeCapRate = parseFloat(String(sorted[sorted.length - 1]?.value)) || 0;
-        }
-    }
-
+    const ind = mergedData?.marketIndicators || findDeepValue(mergedData, 'marketIndicators');
     const macro = mergedData?.macroIndicators || findDeepValue(mergedData, 'macroIndicators');
-    let householdLoanRate = parseFloat(String(
-        metadata.householdLoanRate
-        ?? mergedData?.householdLoanRate
-        ?? findDeepValue(mergedData, 'householdLoanRate')
-        ?? macro?.loanRate?.value
-        ?? 0,
-    )) || 0;
+    const otIncome = metadata.otUnitIncome as Record<string, unknown> | undefined;
 
-    if (householdLoanRate <= 0) {
-        householdLoanRate = 4.43;
-    }
+    const { capRatePct, isRoneBased, householdLoanRate } = resolveOtUnitIncomeCapFromContext(
+        mergedData,
+        ai,
+        otIncome,
+    );
 
-    const capRate = officeCapRate > 0 ? officeCapRate : householdLoanRate;
-    const isRoneBased = officeCapRate > 0;
-
-    return { capRate, householdLoanRate, isRoneBased };
+    return { capRate: capRatePct, householdLoanRate, isRoneBased };
 };
 
 const formatIncomePriceEok = (won: number): string => {
@@ -2506,6 +2525,192 @@ const FloorBreakdownTable = ({
     </div>
 );
 
+const OtUnitIncomeApproachCard = ({
+    mergedData,
+    ai,
+    otIncome,
+    analysisMeta,
+}: {
+    mergedData: any;
+    ai: any;
+    otIncome?: Record<string, unknown>;
+    analysisMeta: Record<string, unknown>;
+}) => {
+    const accent = PRICE_METHOD_ACCENTS.income;
+    const marketHint = React.useMemo(() => resolveOtUnitMarketHint(otIncome), [otIncome]);
+    const reportRent = React.useMemo(() => resolveOtStUnitReportRentWon(mergedData), [mergedData]);
+    const { capRatePct, householdLoanRate, isRoneBased } = React.useMemo(
+        () => resolveOtUnitIncomeCapFromContext(mergedData, ai, otIncome),
+        [mergedData, ai, otIncome],
+    );
+
+    const initialDepositMan = React.useMemo(() => {
+        if (reportRent.depositWon > 0) return wonToManwonInput(reportRent.depositWon);
+        if (marketHint?.depositWon) return wonToManwonInput(marketHint.depositWon);
+        return '';
+    }, [reportRent.depositWon, marketHint?.depositWon]);
+
+    const initialRentMan = React.useMemo(() => {
+        if (reportRent.monthlyRentWon > 0) return wonToManwonInput(reportRent.monthlyRentWon);
+        if (marketHint?.monthlyRentWon) return wonToManwonInput(marketHint.monthlyRentWon);
+        return '';
+    }, [reportRent.monthlyRentWon, marketHint?.monthlyRentWon]);
+
+    const [depositMan, setDepositMan] = React.useState(initialDepositMan);
+    const [rentMan, setRentMan] = React.useState(initialRentMan);
+    const [calcResult, setCalcResult] = React.useState<ReturnType<typeof computeOtUnitIncomeReference>>(null);
+    const [calcError, setCalcError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        setDepositMan(initialDepositMan);
+        setRentMan(initialRentMan);
+        setCalcResult(null);
+        setCalcError(null);
+    }, [initialDepositMan, initialRentMan, mergedData?.id]);
+
+    const runCalculate = React.useCallback(() => {
+        const depositWon = manwonInputToWon(depositMan);
+        const monthlyRentWon = manwonInputToWon(rentMan);
+        const result = computeOtUnitIncomeReference({
+            depositWon,
+            monthlyRentWon,
+            capRatePct: capRatePct,
+            depositYieldPct: householdLoanRate,
+        });
+        if (!result) {
+            setCalcResult(null);
+            setCalcError('보증금 또는 월세(만원)를 입력해 주세요.');
+            return;
+        }
+        setCalcError(null);
+        setCalcResult(result);
+    }, [depositMan, rentMan, capRatePct, householdLoanRate]);
+
+    const applyMarketHint = React.useCallback(() => {
+        if (!marketHint) return;
+        setDepositMan(wonToManwonInput(marketHint.depositWon));
+        setRentMan(wonToManwonInput(marketHint.monthlyRentWon));
+        setCalcError(null);
+    }, [marketHint]);
+
+    const isSt = analysisMeta.stUnitMode === true;
+    const title = isSt ? '상가·호 임대 수익환원 (참고)' : '오피스텔 호 임대 수익환원 (참고)';
+
+    return (
+        <PriceReasonMethodCard
+            icon={TrendingUp}
+            title={title}
+            accent={accent}
+            chips={(
+                <>
+                    {metaChip('수익환원법', accent)}
+                    {metaChip('호 단위 · 매매 SSOT 별도', accent)}
+                    {capRatePct > 0 && metaChip(`CAP ${capRatePct.toFixed(2)}%`, accent)}
+                    {marketHint?.tierLabel && metaChip(marketHint.tierLabel, accent)}
+                    {marketHint && marketHint.sampleCount > 0 && metaChip(`${marketHint.sampleCount}건`, accent)}
+                </>
+            )}
+        >
+            <div className="flex flex-col gap-4 px-1">
+                <p className="text-[11px] text-white/45 leading-relaxed">
+                    매매 추정가(실거래 호)와 별도입니다. 호 단위 임대 실거래 매칭이 없을 수 있어 주변 전월세는 참고용이며,
+                    아래에 알고 계신 보증금·월세를 넣고 계산하면 더 정확한 임대 관점 참고가를 볼 수 있습니다.
+                </p>
+
+                {marketHint && (
+                    <div
+                        className="rounded-2xl p-3 flex flex-col gap-2 text-[11px]"
+                        style={{
+                            backgroundColor: hexToRgba(accent, 0.06),
+                            border: `1px solid ${hexToRgba(accent, 0.18)}`,
+                        }}
+                    >
+                        <span className="text-white/55 font-bold">주변 전월세 힌트 (자동)</span>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-white/80">
+                            <span>
+                                보증금 {marketHint.depositWon > 0 ? formatEokCompact(marketHint.depositWon) : '—'}
+                            </span>
+                            <span>
+                                월세 {marketHint.monthlyRentWon > 0 ? `${Math.round(marketHint.monthlyRentWon / 10000).toLocaleString()}만` : '—'}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={applyMarketHint}
+                            className="self-start text-[11px] font-bold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/90 transition-colors"
+                        >
+                            입력란에 힌트 적용
+                        </button>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="flex flex-col gap-1.5 text-xs">
+                        <span className="text-white/45 font-bold">보증금 (만원)</span>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="예: 500"
+                            value={depositMan}
+                            onChange={(e) => setDepositMan(e.target.value.replace(/[^\d,]/g, ''))}
+                            className="rounded-xl bg-white/[0.06] border border-white/10 px-3 py-2.5 text-white font-semibold placeholder:text-white/25 focus:outline-none focus:border-white/25"
+                        />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-xs">
+                        <span className="text-white/45 font-bold">월세 (만원)</span>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="예: 138"
+                            value={rentMan}
+                            onChange={(e) => setRentMan(e.target.value.replace(/[^\d,]/g, ''))}
+                            className="rounded-xl bg-white/[0.06] border border-white/10 px-3 py-2.5 text-white font-semibold placeholder:text-white/25 focus:outline-none focus:border-white/25"
+                        />
+                    </label>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={runCalculate}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-black text-sm text-white transition-colors"
+                    style={{
+                        background: `linear-gradient(135deg, ${hexToRgba(accent, 0.35)}, ${hexToRgba(accent, 0.15)})`,
+                        border: `1px solid ${hexToRgba(accent, 0.35)}`,
+                    }}
+                >
+                    <Calculator className="w-4 h-4" />
+                    참고가 계산
+                </button>
+
+                {calcError && (
+                    <p className="text-[11px] text-amber-200/80 text-center">{calcError}</p>
+                )}
+
+                {calcResult && (
+                    <div className="flex flex-col gap-2 pt-1">
+                        <p className="text-[10px] text-white/35">
+                            NOI(연) 약 {Math.round(calcResult.noiAnnualWon / 10000).toLocaleString()}만
+                            · 가계대출금리 {householdLoanRate.toFixed(2)}% 기준 보증금 운용 포함
+                        </p>
+                        <p className="text-lg font-black" style={{ color: accent }}>
+                            임대 관점 참고가 약 {formatEokCompact(calcResult.estimatedPriceWon)}원
+                        </p>
+                        <p className="text-[10px] text-white/30 text-right">
+                            ({Math.round(calcResult.estimatedPriceWon).toLocaleString()}원 · CAP {capRatePct.toFixed(2)}%)
+                        </p>
+                    </div>
+                )}
+
+                {!calcResult && !calcError && marketHint && (
+                    <p className="text-[10px] text-white/30 text-center">
+                        힌트만으로도 「참고가 계산」을 눌러 볼 수 있습니다.
+                    </p>
+                )}
+            </div>
+        </PriceReasonMethodCard>
+    );
+};
+
 const IncomeApproachSection = ({
     mergedData,
     ai,
@@ -2516,22 +2721,28 @@ const IncomeApproachSection = ({
     categoryStr: string;
 }) => {
     const lowerCat = categoryStr.toLowerCase().trim();
-    if (lowerCat !== 'building' && lowerCat !== '빌딩') return null;
+    const isBuildingOrStore = lowerCat === 'building' || lowerCat === '빌딩' || lowerCat === 'store' || lowerCat === '상가';
+    if (!isBuildingOrStore) return null;
 
     const analysisMeta = (ai?.analysisMetadata || mergedData?.analysisMetadata || {}) as Record<string, unknown>;
     const buildingDataEarly = findDeepValue(mergedData, 'buildingData') as Record<string, unknown> | undefined;
-    if (
-      analysisMeta.otUnitMode
-      || analysisMeta.stUnitMode
-      || buildingDataEarly?.skipCapRate
-      || buildingDataEarly?.otUnitMode
-      || buildingDataEarly?.stUnitMode
-    ) {
-        return null;
-    }
+    const otIncome = (analysisMeta.otUnitIncome || buildingDataEarly?.otUnitIncome) as Record<string, unknown> | undefined;
+    const isUnitTrack = isOtStUnitMeta(analysisMeta, mergedData);
+    const unitIncomeCard = isUnitTrack ? (
+        <OtUnitIncomeApproachCard
+            mergedData={mergedData}
+            ai={ai}
+            otIncome={otIncome}
+            analysisMeta={analysisMeta}
+        />
+    ) : null;
 
     const accent = PRICE_METHOD_ACCENTS.income;
     const { depositWon, monthlyRentWon, isEstimated, isEmpty, buildingData } = resolveBuildingIncomeInputs(mergedData);
+
+    if (isUnitTrack && isEmpty) {
+        return unitIncomeCard;
+    }
 
     if (isEmpty) {
         return (
@@ -2575,7 +2786,7 @@ const IncomeApproachSection = ({
 
     const floorBreakdown = Array.isArray(buildingData?.floorBreakdown) ? buildingData.floorBreakdown : [];
 
-    return (
+    const buildingIncomeCard = (
         <PriceReasonMethodCard
             icon={TrendingUp}
             title="수익환원법 기반 빌딩 추정가"
@@ -2585,11 +2796,17 @@ const IncomeApproachSection = ({
                     {metaChip('수익환원법', accent)}
                     {metaChip(`CAP ${capRate.toFixed(2)}%`)}
                     {metaChip('빌딩 전용', accent)}
+                    {isUnitTrack && metaChip('통건물 · 교차검증', accent)}
                     {isEstimated && metaChip('자동 추정', accent)}
                 </>
             )}
         >
             <div className="flex flex-col gap-4">
+                {isUnitTrack && (
+                    <p className="text-[11px] text-white/40 leading-relaxed">
+                        아래는 연면·층별 RentEstimator 기준 통건물 참고가입니다. 호·점포 매매 추정가(SSOT)와 별도입니다.
+                    </p>
+                )}
                 <div className="space-y-2">
                     <span className="text-white/50 text-xs font-bold">
                         {isEstimated ? '[자동 추정된 임대 정보]' : '[입력된 임대 정보]'}
@@ -2729,6 +2946,12 @@ const IncomeApproachSection = ({
             </div>
         </PriceReasonMethodCard>
     );
+
+    if (isUnitTrack) {
+        return unitIncomeCard;
+    }
+
+    return buildingIncomeCard;
 };
 
 const resolveBuildingStores = (mergedData: any): any[] => {
@@ -2919,10 +3142,18 @@ export default function AiReportView({
     v31ExternalSections?: AiReportV31ExternalSection[];
 }) {
     const aiStatus = mergedData?.ai_analysis_status || 'pending';
-    const resolvedAnalysisMetadata = React.useMemo(
-        () => analysisMetadataProp || ai?.analysisMetadata || mergedData?.analysisMetadata || {},
-        [analysisMetadataProp, ai?.analysisMetadata, mergedData?.analysisMetadata],
-    );
+    const resolvedAnalysisMetadata = React.useMemo(() => {
+        const base = {
+            ...(analysisMetadataProp || ai?.analysisMetadata || mergedData?.analysisMetadata || {}),
+        } as Record<string, unknown>;
+        const ua = mergedData?.unitAnalysis as Record<string, unknown> | undefined;
+        if (ua?.otUnitMode === true && !base.otUnitMode) base.otUnitMode = true;
+        if (ua?.stUnitMode === true && !base.stUnitMode) base.stUnitMode = true;
+        if (!base.unitAnalysis && ua) base.unitAnalysis = ua;
+        if (base.otUnitMode && !base.priceValuationTrack) base.priceValuationTrack = 'ot_unit';
+        if (base.stUnitMode && !base.priceValuationTrack) base.priceValuationTrack = 'st_unit';
+        return base;
+    }, [analysisMetadataProp, ai?.analysisMetadata, mergedData?.analysisMetadata, mergedData?.unitAnalysis]);
     const isRhUnitHouse = resolvedAnalysisMetadata.rhUnitMode === true
         || resolvedAnalysisMetadata.houseTarget?.isRhUnit === true;
     const rhExclusiveArea = (() => {
@@ -3040,7 +3271,8 @@ export default function AiReportView({
         if (isApartmentCat) return null;
 
         const narrative = spectrum.narrative || '';
-        const meta = ai.analysisMetadata || {};
+        const meta = resolvedAnalysisMetadata;
+        const hideLandCohortForUnit = isOtStUnitMeta(meta, mergedData);
         const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
         const attachedTrades = Array.isArray(meta.uiAttachedRegionalTrades) ? meta.uiAttachedRegionalTrades : [];
         const attachedMultiplier = meta.uiAttachedMultiplier;
@@ -3066,18 +3298,21 @@ export default function AiReportView({
                             regionName={regionName}
                             onMapOpen={() => setIsMapModalOpen(true)}
                         />
-                        <OfficialMultiplierSection
-                            attached={attachedMultiplier}
-                            meta={meta}
-                            comparables={comparables}
-                            targetArea={cohortLandArea > 0 ? cohortLandArea : targetArea}
-                            isListAppended={meta.isListAppended}
-                            estimateNarrative={officialMultiplierEstimate}
-                            onMapOpen={(samples) => {
-                                setMapCustomComparables(samples);
-                                setIsMapModalOpen(true);
-                            }}
-                        />
+                        {!hideLandCohortForUnit && (
+                            <OfficialMultiplierSection
+                                attached={attachedMultiplier}
+                                meta={meta}
+                                comparables={comparables}
+                                targetArea={cohortLandArea > 0 ? cohortLandArea : targetArea}
+                                isListAppended={meta.isListAppended}
+                                estimateNarrative={officialMultiplierEstimate}
+                                mergedData={mergedData}
+                                onMapOpen={(samples) => {
+                                    setMapCustomComparables(samples);
+                                    setIsMapModalOpen(true);
+                                }}
+                            />
+                        )}
                     </>
                 )}
                 <BuildingResidualSection
@@ -4041,7 +4276,10 @@ export default function AiReportView({
                 omitMethodCards: v31HidesPriceMethodCards,
             })}
 
-            {showLandPriceNotes && priceReas.officialMultiplierEstimate && !ai.analysisMetadata?.uiAttachedMultiplier && (
+            {showLandPriceNotes
+                && !isOtStUnitMeta(resolvedAnalysisMetadata, mergedData)
+                && priceReas.officialMultiplierEstimate
+                && !ai.analysisMetadata?.uiAttachedMultiplier && (
                 priceSubCard(Percent, '공시지가 배율 추정', String(priceReas.officialMultiplierEstimate), PRICE_METHOD_ACCENTS.official)
             )}
 

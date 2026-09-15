@@ -66,6 +66,192 @@ export type UserPriceMismatch = {
   message: string;
 };
 
+/** 오피스텔·상가 호 단위 — meta + raw unitAnalysis + buildingTarget */
+export function isOtStUnitMeta(
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): boolean {
+  const m = meta || {};
+  if (m.otUnitMode === true || m.stUnitMode === true) return true;
+  const track = String(m.priceValuationTrack || '');
+  if (track === 'ot_unit' || track === 'st_unit') return true;
+  const bt = m.buildingTarget as Record<string, unknown> | undefined;
+  if (bt?.isOtUnit === true || bt?.isStUnit === true) return true;
+  const ua = (mergedData?.unitAnalysis || m.unitAnalysis) as Record<string, unknown> | undefined;
+  if (ua?.otUnitMode === true || ua?.stUnitMode === true) return true;
+  return false;
+}
+
+/** 수익환원 카드 입력 — 만원 단위 (1천만 미만) */
+export function manwonInputToWon(raw: unknown): number {
+  if (raw == null || raw === '') return 0;
+  const n = parseFloat(String(raw).replace(/,/g, '').trim());
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n >= 10_000_000) return Math.round(n);
+  return Math.round(n * 10_000);
+}
+
+export function wonToManwonInput(won: number): string {
+  if (!won || won <= 0) return '';
+  return String(Math.round(won / 10_000));
+}
+
+/** R-ONE income 시계열 오류값(0.69% 등) — 백엔드 otUnitIncomeService와 동일 */
+export const MIN_INCOME_CAP_PCT = 2.5;
+export const MAX_INCOME_CAP_PCT = 15;
+
+export function normalizeIncomeCapRatePct(opts: {
+  otIncomeCapRatePct?: number;
+  officeCapRate?: number;
+  incomeSeriesLast?: number;
+  householdLoanRate?: number;
+}): { capRatePct: number; isRoneBased: boolean } {
+  const ot = Number(opts.otIncomeCapRatePct) || 0;
+  if (ot >= MIN_INCOME_CAP_PCT && ot < MAX_INCOME_CAP_PCT) {
+    return { capRatePct: ot, isRoneBased: true };
+  }
+  const office = Number(opts.officeCapRate) || 0;
+  const series = Number(opts.incomeSeriesLast) || 0;
+  if (office >= MIN_INCOME_CAP_PCT && office < MAX_INCOME_CAP_PCT) {
+    if (series >= MIN_INCOME_CAP_PCT && series < MAX_INCOME_CAP_PCT) {
+      return { capRatePct: series, isRoneBased: true };
+    }
+    return { capRatePct: office, isRoneBased: true };
+  }
+  if (series >= MIN_INCOME_CAP_PCT && series < MAX_INCOME_CAP_PCT) {
+    return { capRatePct: series, isRoneBased: true };
+  }
+  const loan = Number(opts.householdLoanRate) || 0;
+  if (loan >= MIN_INCOME_CAP_PCT && loan < MAX_INCOME_CAP_PCT) {
+    return { capRatePct: loan, isRoneBased: false };
+  }
+  return { capRatePct: 4.5, isRoneBased: false };
+}
+
+function lastIncomeYieldFromIndicators(ind: Record<string, unknown> | undefined): number {
+  const incomeSeries = (ind?.yieldRates as Record<string, unknown> | undefined)?.income as
+    | { data?: Array<{ date?: string; value?: unknown }> }
+    | undefined;
+  const data = incomeSeries?.data;
+  if (!Array.isArray(data) || data.length === 0) return 0;
+  const sorted = [...data].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  return parseFloat(String(sorted[sorted.length - 1]?.value)) || 0;
+}
+
+/** 호 단위 임대 카드 — 서버 otUnitIncome.capRatePct 우선 */
+export function resolveOtUnitIncomeCapFromContext(
+  mergedData?: Record<string, unknown> | null,
+  ai?: Record<string, unknown> | null,
+  otIncome?: Record<string, unknown> | null,
+): { capRatePct: number; isRoneBased: boolean; householdLoanRate: number } {
+  const meta = (ai?.analysisMetadata || mergedData?.analysisMetadata || {}) as Record<string, unknown>;
+  const ind = (mergedData?.marketIndicators || meta.marketIndicators) as Record<string, unknown> | undefined;
+  const macro = (mergedData?.macroIndicators || meta.macroIndicators) as Record<string, unknown> | undefined;
+  let householdLoanRate = parseFloat(String(
+    otIncome?.depositYieldPct
+    ?? meta.householdLoanRate
+    ?? mergedData?.householdLoanRate
+    ?? (macro?.loanRate as Record<string, unknown> | undefined)?.value
+    ?? 0,
+  )) || 0;
+  if (householdLoanRate <= 0) householdLoanRate = 4.43;
+
+  const officeCapRate = parseFloat(String(
+    meta.officeCapRate
+    ?? mergedData?.officeCapRate
+    ?? ind?.officeCapRate
+    ?? 0,
+  )) || 0;
+
+  const normalized = normalizeIncomeCapRatePct({
+    otIncomeCapRatePct: Number(otIncome?.capRatePct) || 0,
+    officeCapRate,
+    incomeSeriesLast: lastIncomeYieldFromIndicators(ind),
+    householdLoanRate,
+  });
+
+  return { ...normalized, householdLoanRate };
+}
+
+/** 오피스텔·상가 호 — 임대 참고가 (백엔드 resolveOtUnitIncome과 동일 NOI/CAP) */
+export function computeOtUnitIncomeReference(params: {
+  depositWon: number;
+  monthlyRentWon: number;
+  capRatePct: number;
+  depositYieldPct?: number;
+}): {
+  noiAnnualWon: number;
+  estimatedPriceWon: number;
+  depositIncomeAnnualWon: number;
+  rentAnnualWon: number;
+} | null {
+  const { depositWon, monthlyRentWon, capRatePct } = params;
+  const depositYieldPct = params.depositYieldPct ?? 4.43;
+  if (monthlyRentWon <= 0 && depositWon <= 0) return null;
+  if (capRatePct <= 0) return null;
+  const rentAnnual = monthlyRentWon * 12;
+  const depositIncome = depositWon > 0 ? depositWon * (depositYieldPct / 100) : 0;
+  const noiAnnualWon = Math.round(rentAnnual + depositIncome);
+  const estimatedPriceWon = Math.round(noiAnnualWon / (capRatePct / 100));
+  return {
+    noiAnnualWon,
+    estimatedPriceWon,
+    depositIncomeAnnualWon: Math.round(depositIncome),
+    rentAnnualWon: Math.round(rentAnnual),
+  };
+}
+
+export function resolveOtUnitMarketHint(
+  otIncome?: Record<string, unknown> | null,
+): { depositWon: number; monthlyRentWon: number; tierLabel: string; sampleCount: number } | null {
+  if (!otIncome || otIncome.isEmpty === true) return null;
+  const depositWon = Number(otIncome.depositWon) || 0;
+  const monthlyRentWon = Number(otIncome.monthlyRentWon) || 0;
+  if (depositWon <= 0 && monthlyRentWon <= 0) return null;
+  return {
+    depositWon,
+    monthlyRentWon,
+    tierLabel: String(otIncome.tierLabel || ''),
+    sampleCount: Number(otIncome.sampleCount) || 0,
+  };
+}
+
+export function resolveOtStUnitReportRentWon(
+  mergedData?: Record<string, unknown> | null,
+): { depositWon: number; monthlyRentWon: number } {
+  const depositRaw = mergedData?.deposit ?? mergedData?.totalDeposit ?? mergedData?.total_deposit;
+  const rentRaw = mergedData?.monthlyRent ?? mergedData?.monthly_rent ?? mergedData?.totalMonthlyRent;
+  return {
+    depositWon: manwonInputToWon(depositRaw),
+    monthlyRentWon: manwonInputToWon(rentRaw),
+  };
+}
+
+export function resolveOtStUnitEstimateWon(
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): number {
+  const m = meta || {};
+  if (!isOtStUnitMeta(m, mergedData)) return 0;
+  const compN = Number(m.comparableCount) || 0;
+  const otIncome = m.otUnitIncome as Record<string, unknown> | undefined;
+  const incomeEmpty = !otIncome || otIncome.isEmpty === true;
+  const incomeFallback = m.stUnitIncomeFallback === true
+    || m.valuationPrimary === 'st_unit_income_reference';
+  if (incomeFallback && compN === 0 && incomeEmpty) {
+    return 0;
+  }
+  const direct = Number(m.estimatedTotalPrice) || Number(m.weightedTotalPrice) || 0;
+  if (direct > 0) return direct;
+  const comparables = Array.isArray(m.comparables) ? m.comparables : [];
+  const area = getTargetArea(m, mergedData, 'building');
+  const totals = comparableAdjTotals(comparables, area);
+  if (totals.length === 0) return 0;
+  const sorted = [...totals].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
 export function detectUserPriceMismatch(
   meta?: Record<string, unknown> | null,
   mergedData?: Record<string, unknown> | null,
@@ -98,9 +284,10 @@ export function detectUserPriceMismatch(
 export function getTargetAreaLabel(
   category = 'land',
   meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
 ): string {
   const m = meta || {};
-  if (m.otUnitMode || m.stUnitMode) return '전용';
+  if (isOtStUnitMeta(m, mergedData)) return '전용';
   const cat = String(category || 'land').toLowerCase();
   if (cat === 'land' || cat === '토지') return '토지';
   if (cat === 'building' || cat === '빌딩' || cat === 'store' || cat === '상가') return '연면적';
@@ -112,8 +299,9 @@ export function formatTargetAreaSubline(
   perPyeong: number,
   category = 'land',
   meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
 ): string {
-  const label = getTargetAreaLabel(category, meta);
+  const label = getTargetAreaLabel(category, meta, mergedData);
   return `평당 약 ${perPyeong.toLocaleString()}만 · ${label} ${Math.round(targetArea)}㎡`;
 }
 
@@ -129,10 +317,25 @@ export function getTargetArea(
 
   const t = (m.target || {}) as Record<string, unknown>;
   if (cat === 'building' || cat === 'store') {
-    if (m.otUnitMode || m.stUnitMode) {
-      if (Number.isFinite(direct) && direct > 0) return direct;
+    if (isOtStUnitMeta(m, mergedData)) {
+      const maxUnitSqm = m.otUnitMode === true || String(m.priceValuationTrack || '') === 'ot_unit' ? 120 : 500;
+      const bt = m.buildingTarget as Record<string, unknown> | undefined;
+      const excl = Number(bt?.exclusiveArea) || 0;
+      if (excl > 0 && excl <= maxUnitSqm) return excl;
+      if (Number.isFinite(direct) && direct > 0 && direct <= maxUnitSqm) return direct;
+      const comparables = Array.isArray(m.comparables) ? m.comparables : [];
+      const compAreas = comparables
+        .map((c) => Number((c as Record<string, unknown>).area) || 0)
+        .filter((a) => a > 0 && a <= maxUnitSqm)
+        .sort((a, b) => a - b);
+      if (compAreas.length > 0) {
+        const mid = Math.floor(compAreas.length / 2);
+        return compAreas.length % 2 === 1
+          ? compAreas[mid]
+          : Math.round((compAreas[mid - 1] + compAreas[mid]) / 2);
+      }
       return parseFloat(String(
-        t.exclusiveArea_sqm || t.area_sqm || mergedData?.exclusiveArea_sqm || mergedData?.area || '0',
+        t.exclusiveArea_sqm || mergedData?.exclusiveArea_sqm || '0',
       )) || 0;
     }
     return parseFloat(String(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0')) || 0;
@@ -177,10 +380,13 @@ export function resolveCohortEstimateTotal(
   category = 'land',
 ): number {
   const m = meta || {};
-  if (m.otUnitMode || m.stUnitMode) {
-    const hoTotal = Number(m.estimatedTotalPrice) || Number(m.weightedTotalPrice) || 0;
+  const otStUnit = isOtStUnitMeta(m, mergedData);
+  if (otStUnit) {
+    const hoTotal = resolveOtStUnitEstimateWon(m, mergedData);
     if (hoTotal > 0) return hoTotal;
   }
+  if (otStUnit) return 0;
+
   const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
   const obs = opr?.observedRatio as Record<string, unknown> | undefined;
   const estPerSqm = Number(opr?.estimatedPerSqm) || Number(m.estimatedPricePerSqm) || 0;
@@ -204,9 +410,15 @@ export function resolveCohortEstimateTotal(
   return 0;
 }
 
-export function buildEstimateRangeLabel(source: string): string {
+export function buildEstimateRangeLabel(source: string, meta?: Record<string, unknown> | null): string {
+  if (source === 'ot_unit') return '오피스텔 호 추정가';
+  if (source === 'st_unit') return '상가·점포 호 추정가';
   if (source === 'cohort') return '동일수급권 추정가';
-  if (source === 'comparables') return '비교사례 추정 범위';
+  if (source === 'comparables') {
+    if (meta?.otUnitMode || meta?.priceValuationTrack === 'ot_unit') return '오피스텔 호 추정가';
+    if (meta?.stUnitMode || meta?.priceValuationTrack === 'st_unit') return '상가·점포 호 추정가';
+    return '비교사례 추정 범위';
+  }
   return 'AI 추정 범위';
 }
 
@@ -231,16 +443,51 @@ export function isCohortOfficialPricing(
   return !!opr && ['cohort', 'cohort_relaxed'].includes(String(opr.dynamicStatus || ''));
 }
 
+export function getUnitSpectrumFromMeta(
+  meta: Record<string, unknown> | null | undefined,
+): { min: number; max: number } | null {
+  const m = meta || {};
+  const min = Number(m.unitSpectrumMin) || 0;
+  const max = Number(m.unitSpectrumMax) || 0;
+  if (min > 0 && max > 0) return { min, max };
+  return null;
+}
+
 export function buildCohortMultiplierCaption(
   meta: Record<string, unknown>,
   priceReas: Record<string, unknown> = {},
+  mergedData?: Record<string, unknown> | null,
 ): string {
+  const confidenceGrade = String(
+    meta.confidenceGrade
+    || ((meta.officialPriceRatio as Record<string, unknown> | undefined)?.observedRatio as Record<string, unknown> | undefined)?.confidenceGrade
+    || priceReas.reliabilityGrade
+    || '',
+  ).trim();
+  if (isOtStUnitMeta(meta, mergedData)) {
+    const similar = Number(meta.areaSimilarComparableCount) || 0;
+    const compN = Number(meta.comparableCount) || 0;
+    const incomeFallback = meta.stUnitIncomeFallback === true
+      || meta.valuationPrimary === 'st_unit_income_reference';
+    const otIncome = meta.otUnitIncome as Record<string, unknown> | undefined;
+    const incomeEmpty = !otIncome || otIncome.isEmpty === true;
+    if (incomeFallback && compN === 0) {
+      return [
+        '매매 호 비교 부족',
+        incomeEmpty ? '임대 표본 없음' : '임대 수익환원(참고)',
+        confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
+      ].filter(Boolean).join(' · ');
+    }
+    return [
+      '실거래 호 대입',
+      similar > 0 ? `면적 유사 ${similar}건` : (compN > 0 ? `비교 ${compN}건` : null),
+      confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
   const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
   const obsRatio = opr?.observedRatio as Record<string, unknown> | undefined;
   const cohort = isCohortOfficialPricing(meta);
-  const confidenceGrade = String(
-    meta.confidenceGrade || obsRatio?.confidenceGrade || priceReas.reliabilityGrade || '',
-  ).trim();
   const applied = Number(opr?.appliedMultiplier) || 0;
   const hojae = pickHojaeTierFields({ ...meta, observedRatio: obsRatio, officialPriceRatio: opr });
 
@@ -331,15 +578,26 @@ export function resolveEstimateRange(
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
   const targetArea = getTargetArea(meta, mergedData, category);
   const buildingWon = Number(meta.buildingResidualValue) || 0;
+  const otStUnit = isOtStUnitMeta(meta, mergedData);
 
   let min = 0;
   let max = 0;
   let source = '';
 
-  const cohortTotal = resolveCohortEstimateTotal(meta, mergedData, category);
-  if (cohortTotal > 0) {
-    min = max = cohortTotal;
-    source = 'cohort';
+  if (otStUnit) {
+    const ho = resolveOtStUnitEstimateWon(meta, mergedData);
+    if (ho > 0) {
+      min = max = ho;
+      source = meta.stUnitMode || meta.priceValuationTrack === 'st_unit' ? 'st_unit' : 'ot_unit';
+    }
+  }
+
+  if (min <= 0) {
+    const cohortTotal = resolveCohortEstimateTotal(meta, mergedData, category);
+    if (cohortTotal > 0) {
+      min = max = cohortTotal;
+      source = 'cohort';
+    }
   }
 
   const totals = comparableAdjTotals(comparables, targetArea);
@@ -350,7 +608,7 @@ export function resolveEstimateRange(
   }
 
   const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
-  if (min <= 0 && isCohortOfficialPricing(meta) && opr) {
+  if (!otStUnit && min <= 0 && isCohortOfficialPricing(meta) && opr) {
     const estPrice = Number(opr.estimatedPrice) || 0;
     const estPerSqm = Number(opr.estimatedPerSqm) || 0;
     if (estPrice > 0) {
@@ -375,7 +633,7 @@ export function resolveEstimateRange(
     }
   }
 
-  if (min <= 0 && opr) {
+  if (!otStUnit && min <= 0 && opr) {
     const estPerSqm = Number(opr.estimatedPerSqm) || 0;
     const estPrice = Number(opr.estimatedPrice) || 0;
     if (estPerSqm > 0 && targetArea > 0) {
@@ -501,9 +759,10 @@ export function extractPriceMethods(
   const cbd = meta.cbdMultiplierEstimate as Record<string, unknown> | undefined;
   const badge = confidenceGrade ? `신뢰 ${confidenceGrade}` : undefined;
 
+  const unitSpec = isOtStUnitMeta(meta, mergedData) ? getUnitSpectrumFromMeta(meta) : null;
   const totals = comparableAdjTotals(comparables, targetArea);
-  const compMin = totals.length > 0 ? Math.min(...totals) : 0;
-  const compMax = totals.length > 0 ? Math.max(...totals) : 0;
+  const compMin = unitSpec?.min ?? (totals.length > 0 ? Math.min(...totals) : 0);
+  const compMax = unitSpec?.max ?? (totals.length > 0 ? Math.max(...totals) : 0);
   const searchRadius = Number(opr?.searchRadius) || 0;
   const sampleCount = Number(opr?.sampleCount ?? meta.comparableCount) || 0;
   const detected = Number(meta.totalDetected ?? meta.detectedCount ?? sampleCount) || sampleCount;
@@ -522,6 +781,10 @@ export function extractPriceMethods(
     badge,
     muted: compMin <= 0,
   };
+
+  if (isOtStUnitMeta(meta, mergedData)) {
+    return [comparableCard];
+  }
 
   let officialLabel = '공시지가 배율';
   let officialValue = '-';
@@ -1014,8 +1277,10 @@ export function extractLedgerFactorItems(
 export function buildPriceLedgerRows(
   meta: Record<string, unknown> | null | undefined,
   priceReas: Record<string, unknown> | null | undefined,
+  mergedData?: Record<string, unknown> | null,
 ): { label: string; value: string }[] {
   const m = meta || {};
+  const hideLandCohort = isOtStUnitMeta(m, mergedData) || m.uiHideLandCohortSection === true;
   const comparables = Array.isArray(m.comparables) ? m.comparables : [];
   const opr = m.officialPriceRatio as Record<string, unknown> | undefined;
   const attached = m.uiAttachedMultiplier as Record<string, unknown> | undefined;
@@ -1035,7 +1300,7 @@ export function buildPriceLedgerRows(
   const factorProduct = computeLedgerFactorProduct(m);
   const confidence = [m.confidenceGrade, relax > 0 ? `Level ${relax}` : null].filter(Boolean).join(' · ') || '-';
 
-  return [
+  const rows = [
     {
       label: '실거래 비교',
       value: `${comparables.length}건${searchRadius ? ` (${Math.round(searchRadius / 100) / 10}km)` : ''}`,
@@ -1048,6 +1313,10 @@ export function buildPriceLedgerRows(
     { label: '6요인 보정', value: `합산 ${factorProduct.toFixed(3)}x` },
     { label: '신뢰도', value: confidence },
   ];
+  if (hideLandCohort) {
+    return rows.filter((row) => row.label !== '공시지가 배율');
+  }
+  return rows;
 }
 
 /** 제휴 금융사 계약 전까지 v3.1 대출 상담 CTA 비노출 */

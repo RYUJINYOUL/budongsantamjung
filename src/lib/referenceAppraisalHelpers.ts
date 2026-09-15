@@ -88,7 +88,7 @@ export function resolveServerEstimateDisplay(
   const subParts: string[] = [];
   subParts.push(`${Math.round(won / 10_000).toLocaleString('ko-KR')}만원`);
   if (min > 0 && source) {
-    subParts.push(buildEstimateRangeLabel(source));
+    subParts.push(buildEstimateRangeLabel(source, meta));
   }
 
   return {
