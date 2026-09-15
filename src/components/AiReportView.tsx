@@ -41,7 +41,12 @@ import {
     resolveOtUnitIncomeCapFromContext,
     getUnitSpectrumFromMeta,
 } from '../lib/analysisV31Helpers';
-import { isRhCostApproach, getRhCostApproachSummary } from '@/lib/houseRhHelpers';
+import {
+    isRhCostApproach,
+    getRhCostApproachSummary,
+    isRhUnitAnalysis,
+    getRhTargetArea,
+} from '@/lib/houseRhHelpers';
 
 /** RiskBubbleChart · 세부 리스크 미니바와 동일한 파스텔 팔레트 */
 const REPORT_PASTEL_PALETTE = [
@@ -3154,14 +3159,8 @@ export default function AiReportView({
         if (base.stUnitMode && !base.priceValuationTrack) base.priceValuationTrack = 'st_unit';
         return base;
     }, [analysisMetadataProp, ai?.analysisMetadata, mergedData?.analysisMetadata, mergedData?.unitAnalysis]);
-    const isRhUnitHouse = resolvedAnalysisMetadata.rhUnitMode === true
-        || resolvedAnalysisMetadata.houseTarget?.isRhUnit === true;
-    const rhExclusiveArea = (() => {
-        const ht = resolvedAnalysisMetadata.houseTarget || {};
-        const raw = resolvedAnalysisMetadata.targetArea ?? ht.exclusiveArea ?? ht.exclusiveArea_sqm;
-        const n = parseFloat(String(raw ?? ''));
-        return Number.isFinite(n) && n > 0 ? n : 0;
-    })();
+    const isRhUnitHouse = isRhUnitAnalysis(resolvedAnalysisMetadata);
+    const rhExclusiveArea = getRhTargetArea(resolvedAnalysisMetadata);
     const rhParcelLandArea = (() => {
         const multi = mergedData?.vitals?.multiPnu;
         if (multi?.parcelCount > 1 && parseFloat(multi.totalArea) > 0) {
@@ -3226,10 +3225,11 @@ export default function AiReportView({
     let targetArea = 0;
     try {
         const meta = resolvedAnalysisMetadata;
-        const t = meta.target || {};
+        const t = (meta.target as Record<string, unknown>) || {};
         const isOtSt = meta.otUnitMode || meta.stUnitMode;
-        const bt = meta.buildingTarget || {};
-        const rhExclusive = meta.houseTarget?.exclusiveArea ?? meta.houseTarget?.exclusiveArea_sqm;
+        const bt = (meta.buildingTarget as Record<string, unknown>) || {};
+        const ht = (meta.houseTarget as Record<string, unknown>) || {};
+        const rhExclusive = ht.exclusiveArea ?? ht.exclusiveArea_sqm;
         const otExclusive = bt.exclusiveArea ?? meta.targetArea;
         const directTargetArea = isOtSt && otExclusive != null && Number(otExclusive) > 0
             ? parseFloat(String(otExclusive))
@@ -3247,10 +3247,16 @@ export default function AiReportView({
                 )) || 0;
             }
             if (targetArea <= 0) {
-                targetArea = parseFloat(t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0');
+                targetArea = parseFloat(String(
+                    t.totalArea_sqm || mergedData?.totalArea_sqm || t.area_sqm || mergedData?.area || '0',
+                )) || 0;
             }
         } else {
-            targetArea = parseFloat(t.area_sqm || t.exclusiveArea_sqm || t.land?.area_sqm || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0');
+            const land = t.land as Record<string, unknown> | undefined;
+            targetArea = parseFloat(String(
+                t.area_sqm || t.exclusiveArea_sqm || land?.area_sqm
+                || mergedData?.area || mergedData?.exclusiveArea_sqm || mergedData?.area_sqm || '0',
+            )) || 0;
         }
     } catch (_) { }
 
@@ -3304,7 +3310,7 @@ export default function AiReportView({
                                 meta={meta}
                                 comparables={comparables}
                                 targetArea={cohortLandArea > 0 ? cohortLandArea : targetArea}
-                                isListAppended={meta.isListAppended}
+                                isListAppended={meta.isListAppended === true}
                                 estimateNarrative={officialMultiplierEstimate}
                                 mergedData={mergedData}
                                 onMapOpen={(samples) => {

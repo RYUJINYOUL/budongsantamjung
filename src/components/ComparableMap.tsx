@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MapPin, X, Eye, Map, RefreshCw } from 'lucide-react';
+import { MapPin, X, Eye, Map as MapIcon, RefreshCw } from 'lucide-react';
 import { centerFromKakaoBounds } from '../lib/kakaoMapBounds';
 import {
   fetchParcelBoundaries,
@@ -899,7 +899,7 @@ export default function ComparableMap({
                         }`}
                         title={isRoadview ? "지도 모드로 복귀" : "360° 로드뷰 보기"}
                     >
-                        {isRoadview ? <Map className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {isRoadview ? <MapIcon className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
 
                     {/* 지도 모드일 때만 줌 컨트롤 활성화 */}
