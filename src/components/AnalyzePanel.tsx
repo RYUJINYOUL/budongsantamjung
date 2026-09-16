@@ -243,6 +243,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [auctionPrefillLoading, setAuctionPrefillLoading] = useState(false);
   const [auctionPrefillError, setAuctionPrefillError] = useState<string | null>(null);
   const [auctionAnalysisBlocked, setAuctionAnalysisBlocked] = useState<string | null>(null);
+  const [auctionGeocodeNeedsPin, setAuctionGeocodeNeedsPin] = useState(false);
   const [auctionContext, setAuctionContext] = useState<AuctionAnalysisContext | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -590,6 +591,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setPrimaryPnu(pnu);
     setPrimaryPolygon(polygon ?? null);
     onLocationSelect?.(latVal, lngVal, addr, polygon);
+    setAuctionGeocodeNeedsPin(false);
+    setAuctionPrefillError(null);
   };
 
   const handleMyLocation = async () => {
@@ -653,8 +656,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   }, []);
 
   const applyAuctionPrefillData = useCallback(async (prefill: AuctionAnalyzePrefill) => {
-    if (!prefill.category || !prefill.address || prefill.lat == null || prefill.lng == null) {
-      setAuctionPrefillError('주소 좌표를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    if (!prefill.category || !prefill.address) {
+      setAuctionPrefillError('경매 주소를 불러오지 못했습니다.');
       return false;
     }
     applyAuctionShareGateFromPrefill(prefill);
@@ -662,12 +665,30 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setLinkedAuctionReportId(prefill.linkedReportId);
     setSelectedCategory(prefill.category);
     setAddress(prefill.address);
+    applyAuctionFormFromPrefill(prefill);
+
+    if (prefill.lat == null || prefill.lng == null || prefill.geocodeMissing) {
+      setAuctionGeocodeNeedsPin(true);
+      setLat(null);
+      setLng(null);
+      setPrimaryPnu(null);
+      setPrimaryPolygon(null);
+      setSearchQuery('');
+      setSearchResults([]);
+      setAuctionPrefillError(
+        prefill.analysisBlocked
+          ? (prefill.analysisBlockMessage || '이 물건은 자동 분석 대상이 아닙니다.')
+          : '자동 좌표를 찾지 못했습니다. 아래 주소 검색 또는 지도에서 위치를 지정해 주세요.',
+      );
+      return false;
+    }
+
+    setAuctionGeocodeNeedsPin(false);
     setLat(prefill.lat);
     setLng(prefill.lng);
     setSearchQuery('');
     setSearchResults([]);
     setAuctionPrefillError(null);
-    applyAuctionFormFromPrefill(prefill);
 
     const primaryFromList = prefill.pnuList?.[0] ?? prefill.pnu ?? null;
     const hasMultiFromPrefill = Boolean(prefill.isMultiPnu && prefill.pnuList && prefill.pnuList.length > 1);
@@ -739,6 +760,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setPanelMode('auction');
     setAuctionPrefillError(null);
     setAuctionAnalysisBlocked(null);
+    setAuctionGeocodeNeedsPin(false);
     loadedAuctionPrefillIdRef.current = null;
     if (item.linkedReportId) {
       setSelectedAuctionItemId(item.id);
@@ -1238,7 +1260,11 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             <div>
               <p className={PANEL_SECTION_LABEL}>매물 위치</p>
               <p className={PANEL_SECTION_DESC}>
-                {panelMode === 'auction' ? '경매 물건 주소 (자동)' : '주소 검색 또는 지도에서 선택'}
+                {panelMode === 'auction'
+                  ? (auctionGeocodeNeedsPin
+                    ? '자동 좌표 실패 — 검색·지도에서 핀을 맞춰 주세요'
+                    : '경매 물건 주소 (자동)')
+                  : '주소 검색 또는 지도에서 선택'}
               </p>
             </div>
           </div>
@@ -1254,7 +1280,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 className={PANEL_INPUT}
                 value={searchQuery}
                 onChange={e => handleSearch(e.target.value)}
-                readOnly={panelMode === 'auction' && Boolean(selectedAuctionItemId)}
+                readOnly={panelMode === 'auction' && Boolean(selectedAuctionItemId) && !auctionGeocodeNeedsPin}
               />
               <SearchInputLocationTrailing
                 busy={isSearching || isLocating}
@@ -1499,6 +1525,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               || auctionPrefillLoading
               || !selectedCategory
               || !address
+              || lat == null
+              || lng == null
               || Boolean(panelMode === 'auction' && linkedAuctionReportId)
               || Boolean(panelMode === 'auction' && auctionAnalysisBlocked)
             }

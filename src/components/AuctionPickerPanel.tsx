@@ -55,6 +55,7 @@ export default function AuctionPickerPanel({ selectedId, onSelect }: AuctionPick
           limit: '40',
           sort: 'sale_date',
           excludeDuplicateCase: '1',
+          scheduledOnly: '1',
         });
         if (usageFilter !== 'all') params.set('usage', usageFilter);
         if (keyword.trim()) params.set('q', keyword.trim());
