@@ -82,6 +82,28 @@ export function isOtStUnitMeta(
   return false;
 }
 
+/** 분석 리포트 헤더·SEO — DB category + unit 메타 (엔진 로직과 분리, 표시 전용) */
+export function resolveCategoryDisplayLabel(
+  category?: string | null,
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): string {
+  const cat = String(category || mergedData?.category || '').toLowerCase().trim();
+  const m = meta || {};
+  const ua = (mergedData?.unitAnalysis || m.unitAnalysis) as Record<string, unknown> | undefined;
+  const track = String(m.priceValuationTrack || '');
+  const stUnit = m.stUnitMode === true || ua?.stUnitMode === true || track === 'st_unit';
+  const otUnit = m.otUnitMode === true || ua?.otUnitMode === true || track === 'ot_unit';
+
+  if (cat === 'land' || cat === '토지') return '토지';
+  if (cat === 'apartment' || cat === '아파트') return '아파트';
+  if (cat === 'house' || cat === '주택') return '주택';
+  if (stUnit || cat === 'store' || cat === '상가' || cat === 'shop' || cat === 'commercial') return '상가';
+  if (otUnit) return '오피스텔';
+  if (cat === 'building' || cat === '빌딩' || cat === '건물') return '빌딩';
+  return '빌딩';
+}
+
 /** 수익환원 카드 입력 — 만원 단위 (1천만 미만) */
 export function manwonInputToWon(raw: unknown): number {
   if (raw == null || raw === '') return 0;

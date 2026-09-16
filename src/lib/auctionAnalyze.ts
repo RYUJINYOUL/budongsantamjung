@@ -30,6 +30,10 @@ export interface AuctionAnalyzePrefill {
   linkedReportId: number | null;
   canAnalyze: boolean;
   geocodeMissing: boolean;
+  /** 소유권 지분 매각 — 자동 추정 미제공 */
+  analysisBlocked?: boolean;
+  analysisBlockReason?: string | null;
+  analysisBlockMessage?: string | null;
 }
 
 export interface AuctionAnalyzePrefillResponse {

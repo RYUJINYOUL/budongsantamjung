@@ -76,7 +76,7 @@ import {
     resolveScoreItemWeight,
     formatWeightedScoreLabel,
 } from '../../../lib/landScoreWeights';
-import { resolveEstimateRange } from '../../../lib/analysisV31Helpers';
+import { resolveCategoryDisplayLabel, resolveEstimateRange } from '../../../lib/analysisV31Helpers';
 import { formatRegionalTradeLabel, getRhTargetArea, isRhUnitAnalysis } from '../../../lib/houseRhHelpers';
 import {
     completeActiveAiAnalysis,
@@ -3689,7 +3689,11 @@ export default function AnalysisDetailPage({
                             </span>
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold rounded">
                                 <Building2 className="w-3 h-3 text-emerald-400" />
-                                {report?.category === 'land' ? '토지' : report?.category === 'apartment' ? '아파트' : report?.category === 'house' ? '주택' : '상가'}
+                                {resolveCategoryDisplayLabel(
+                                    report?.category,
+                                    (analysisData?.analysisMetadata || reportData?.analysisMetadata) as Record<string, unknown> | undefined,
+                                    mergedData,
+                                )}
                             </span>
                             {(reportData?.analysisMetadata?.comparables?.length > 0
                                 || analysisData?.analysisMetadata?.comparables?.length > 0) && (

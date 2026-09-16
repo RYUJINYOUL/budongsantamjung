@@ -242,6 +242,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   const [linkedAuctionReportId, setLinkedAuctionReportId] = useState<number | null>(null);
   const [auctionPrefillLoading, setAuctionPrefillLoading] = useState(false);
   const [auctionPrefillError, setAuctionPrefillError] = useState<string | null>(null);
+  const [auctionAnalysisBlocked, setAuctionAnalysisBlocked] = useState<string | null>(null);
   const [auctionContext, setAuctionContext] = useState<AuctionAnalysisContext | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -640,11 +641,23 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     setPendingSpecialNotes(buildAuctionSpecialNotes(ctx));
   }, []);
 
+  const applyAuctionShareGateFromPrefill = useCallback((prefill: AuctionAnalyzePrefill) => {
+    if (prefill.analysisBlocked) {
+      setAuctionAnalysisBlocked(
+        prefill.analysisBlockMessage
+          || '지분 매각 물건은 자동 추정 분석을 제공하지 않습니다.',
+      );
+    } else {
+      setAuctionAnalysisBlocked(null);
+    }
+  }, []);
+
   const applyAuctionPrefillData = useCallback(async (prefill: AuctionAnalyzePrefill) => {
     if (!prefill.category || !prefill.address || prefill.lat == null || prefill.lng == null) {
       setAuctionPrefillError('주소 좌표를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       return false;
     }
+    applyAuctionShareGateFromPrefill(prefill);
     setSelectedAuctionItemId(prefill.auctionItemId);
     setLinkedAuctionReportId(prefill.linkedReportId);
     setSelectedCategory(prefill.category);
@@ -688,7 +701,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
     onLocationSelectRef.current?.(prefill.lat, prefill.lng, prefill.address, polygon);
 
     return true;
-  }, [applyAuctionFormFromPrefill]);
+  }, [applyAuctionFormFromPrefill, applyAuctionShareGateFromPrefill]);
 
   const loadAuctionPrefill = useCallback(async (auctionItemId: number) => {
     if (loadingAuctionPrefillIdRef.current === auctionItemId) return null;
@@ -706,6 +719,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         setSelectedAuctionItemId(auctionItemId);
         setSelectedCategory(data.prefill.category);
         applyAuctionFormFromPrefill(data.prefill as AuctionAnalyzePrefill);
+        applyAuctionShareGateFromPrefill(data.prefill as AuctionAnalyzePrefill);
         return data.prefill as AuctionAnalyzePrefill;
       }
       await applyAuctionPrefillData(data.prefill as AuctionAnalyzePrefill);
@@ -718,12 +732,13 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
       loadingAuctionPrefillIdRef.current = null;
       setAuctionPrefillLoading(false);
     }
-  }, [applyAuctionFormFromPrefill, applyAuctionPrefillData]);
+  }, [applyAuctionFormFromPrefill, applyAuctionPrefillData, applyAuctionShareGateFromPrefill]);
 
   const handleAuctionPick = useCallback(async (item: AuctionListItem) => {
     if (selectedAuctionItemId === item.id && !item.linkedReportId) return;
     setPanelMode('auction');
     setAuctionPrefillError(null);
+    setAuctionAnalysisBlocked(null);
     loadedAuctionPrefillIdRef.current = null;
     if (item.linkedReportId) {
       setSelectedAuctionItemId(item.id);
@@ -826,7 +841,10 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || '오류 발생'); }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || e.message || '오류 발생');
+      }
       const result = await res.json();
       if (result.success && result.reportId) {
         const qs = adminSampleMode ? '?adminSample=1' : '';
@@ -1089,6 +1107,12 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
             {auctionPrefillError && (
               <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
                 <p className="text-xs font-bold text-rose-700">{auctionPrefillError}</p>
+              </div>
+            )}
+            {auctionAnalysisBlocked && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-bold text-amber-900">지분 매각 — 자동 추정 미제공</p>
+                <p className="text-[11px] text-amber-800/90 mt-1 leading-relaxed">{auctionAnalysisBlocked}</p>
               </div>
             )}
             {linkedAuctionReportId && selectedAuctionItemId && (
@@ -1476,6 +1500,7 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               || !selectedCategory
               || !address
               || Boolean(panelMode === 'auction' && linkedAuctionReportId)
+              || Boolean(panelMode === 'auction' && auctionAnalysisBlocked)
             }
             className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-35 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-all shadow-sm shadow-emerald-500/15 flex items-center justify-center gap-2"
           >

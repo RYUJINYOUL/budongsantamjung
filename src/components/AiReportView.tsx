@@ -5,6 +5,8 @@ import { motion, useReducedMotion } from 'framer-motion';
 import PremiumRiskGauge from './PremiumRiskGauge';
 import AnalysisPriceSnapshot from './analysis/AnalysisPriceSnapshot';
 import ReferenceAppraisalBlock from './analysis/ReferenceAppraisalBlock';
+import UnitCompTierSection from './analysis/UnitCompTierSection';
+import { shouldShowUnitCompTierPanel } from '@/lib/unitCompTierHelpers';
 import { extractReferenceAppraisal } from '@/lib/referenceAppraisalHelpers';
 import {
     dedupeScoreItems,
@@ -1059,9 +1061,11 @@ const LandComparableValueSection = ({
     const landMax = landSpectrum?.max ?? 0;
     const hasRange = landMin > 0;
 
-    const title = categoryStr === 'house'
-        ? '인근 실거래 사례와 비교 분석합니다.'
-        : '인근 실거래 사례와 비교 분석합니다.';
+    const title = isUnitComparable
+        ? '추정 실거래 사례로 비교 분석합니다.'
+        : (categoryStr === 'house'
+            ? '인근 실거래 사례와 비교 분석합니다.'
+            : '인근 실거래 사례와 비교 분석합니다.');
     const accent = PRICE_METHOD_ACCENTS.comparables;
 
     const showMapButton = comparables.length > 0 && !!onMapOpen;
@@ -2542,7 +2546,11 @@ const OtUnitIncomeApproachCard = ({
     analysisMeta: Record<string, unknown>;
 }) => {
     const accent = PRICE_METHOD_ACCENTS.income;
-    const marketHint = React.useMemo(() => resolveOtUnitMarketHint(otIncome), [otIncome]);
+    const isSt = analysisMeta.stUnitMode === true;
+    const marketHint = React.useMemo(
+        () => (isSt ? null : resolveOtUnitMarketHint(otIncome)),
+        [otIncome, isSt],
+    );
     const reportRent = React.useMemo(() => resolveOtStUnitReportRentWon(mergedData), [mergedData]);
     const { capRatePct, householdLoanRate, isRoneBased } = React.useMemo(
         () => resolveOtUnitIncomeCapFromContext(mergedData, ai, otIncome),
@@ -2551,15 +2559,13 @@ const OtUnitIncomeApproachCard = ({
 
     const initialDepositMan = React.useMemo(() => {
         if (reportRent.depositWon > 0) return wonToManwonInput(reportRent.depositWon);
-        if (marketHint?.depositWon) return wonToManwonInput(marketHint.depositWon);
         return '';
-    }, [reportRent.depositWon, marketHint?.depositWon]);
+    }, [reportRent.depositWon]);
 
     const initialRentMan = React.useMemo(() => {
         if (reportRent.monthlyRentWon > 0) return wonToManwonInput(reportRent.monthlyRentWon);
-        if (marketHint?.monthlyRentWon) return wonToManwonInput(marketHint.monthlyRentWon);
         return '';
-    }, [reportRent.monthlyRentWon, marketHint?.monthlyRentWon]);
+    }, [reportRent.monthlyRentWon]);
 
     const [depositMan, setDepositMan] = React.useState(initialDepositMan);
     const [rentMan, setRentMan] = React.useState(initialRentMan);
@@ -2598,8 +2604,9 @@ const OtUnitIncomeApproachCard = ({
         setCalcError(null);
     }, [marketHint]);
 
-    const isSt = analysisMeta.stUnitMode === true;
-    const title = isSt ? '상가·호 임대 수익환원 (참고)' : '오피스텔 호 임대 수익환원 (참고)';
+    const title = isSt ? '상가·호 임대 수익환원 (입력 전용)' : '오피스텔 호 임대 수익환원 (참고)';
+    const stOnsiteNotice =
+        '상가·점포는 보증금·월세·공실을 자동 추정하지 않습니다. 현장·임대차·등기 확인 후 직접 입력해 주세요.';
 
     return (
         <PriceReasonMethodCard
@@ -2611,18 +2618,20 @@ const OtUnitIncomeApproachCard = ({
                     {metaChip('수익환원법', accent)}
                     {metaChip('호 단위 · 매매 SSOT 별도', accent)}
                     {capRatePct > 0 && metaChip(`CAP ${capRatePct.toFixed(2)}%`, accent)}
-                    {marketHint?.tierLabel && metaChip(marketHint.tierLabel, accent)}
-                    {marketHint && marketHint.sampleCount > 0 && metaChip(`${marketHint.sampleCount}건`, accent)}
+                    {!isSt && marketHint?.tierLabel && metaChip(marketHint.tierLabel, accent)}
+                    {!isSt && marketHint && marketHint.sampleCount > 0 && metaChip(`${marketHint.sampleCount}건`, accent)}
+                    {isSt && metaChip('현장 확인 필수', accent)}
                 </>
             )}
         >
             <div className="flex flex-col gap-4 px-1">
                 <p className="text-[11px] text-white/45 leading-relaxed">
-                    매매 추정가(실거래 호)와 별도입니다. 호 단위 임대 실거래 매칭이 없을 수 있어 주변 전월세는 참고용이며,
-                    아래에 알고 계신 보증금·월세를 넣고 계산하면 더 정확한 임대 관점 참고가를 볼 수 있습니다.
+                    {isSt
+                        ? stOnsiteNotice
+                        : '매매 추정가(실거래 호)와 별도입니다. 호 단위 임대 실거래 매칭이 없을 수 있어 주변 전월세는 참고용이며, 아래에 알고 계신 보증금·월세를 넣고 계산하면 더 정확한 임대 관점 참고가를 볼 수 있습니다.'}
                 </p>
 
-                {marketHint && (
+                {!isSt && marketHint && (
                     <div
                         className="rounded-2xl p-3 flex flex-col gap-2 text-[11px]"
                         style={{
@@ -2630,7 +2639,7 @@ const OtUnitIncomeApproachCard = ({
                             border: `1px solid ${hexToRgba(accent, 0.18)}`,
                         }}
                     >
-                        <span className="text-white/55 font-bold">주변 전월세 힌트 (자동)</span>
+                        <span className="text-white/55 font-bold">주변 전월세 평균(참고사항)</span>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-white/80">
                             <span>
                                 보증금 {marketHint.depositWon > 0 ? formatEokCompact(marketHint.depositWon) : '—'}
@@ -2644,7 +2653,7 @@ const OtUnitIncomeApproachCard = ({
                             onClick={applyMarketHint}
                             className="self-start text-[11px] font-bold px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/90 transition-colors"
                         >
-                            입력란에 힌트 적용
+                            입력란 평균 적용
                         </button>
                     </div>
                 )}
@@ -2706,11 +2715,6 @@ const OtUnitIncomeApproachCard = ({
                     </div>
                 )}
 
-                {!calcResult && !calcError && marketHint && (
-                    <p className="text-[10px] text-white/30 text-center">
-                        힌트만으로도 「참고가 계산」을 눌러 볼 수 있습니다.
-                    </p>
-                )}
             </div>
         </PriceReasonMethodCard>
     );
@@ -3176,6 +3180,7 @@ export default function AiReportView({
     );
     const [isMapModalOpen, setIsMapModalOpen] = React.useState(false);
     const [mapCustomComparables, setMapCustomComparables] = React.useState<any[] | null>(null);
+    const [mapModalTitle, setMapModalTitle] = React.useState<string | null>(null);
     const [activeAptGroupKey, setActiveAptGroupKey] = React.useState<string | null>(null);
 
     const categoryStr = String(mergedData?.category || 'land');
@@ -3295,6 +3300,18 @@ export default function AiReportView({
             <div className="flex flex-col gap-4">
                 {!opts?.omitMethodCards && (
                     <>
+                        {shouldShowUnitCompTierPanel(meta, mergedData) && (
+                            <UnitCompTierSection
+                                meta={meta}
+                                mergedData={mergedData}
+                                comparables={comparables}
+                                onOpenTierMap={({ markers, mapTitle }) => {
+                                    setMapCustomComparables(markers);
+                                    setMapModalTitle(mapTitle);
+                                    setIsMapModalOpen(true);
+                                }}
+                            />
+                        )}
                         <LandComparableValueSection
                             comparables={comparables}
                             meta={meta}
@@ -3302,7 +3319,11 @@ export default function AiReportView({
                             categoryStr={categoryStr}
                             isBuildingCat={isBuildingCat}
                             regionName={regionName}
-                            onMapOpen={() => setIsMapModalOpen(true)}
+                            onMapOpen={() => {
+                                setMapCustomComparables(null);
+                                setMapModalTitle(null);
+                                setIsMapModalOpen(true);
+                            }}
                         />
                         {!hideLandCohortForUnit && (
                             <OfficialMultiplierSection
@@ -3329,14 +3350,17 @@ export default function AiReportView({
                     estimatedTotalWon={estimatedTotalWon}
                     mergedData={mergedData}
                 />
-                <RegionalTradesReferenceSection
-                    groups={attachedTrades}
-                    onMapOpen={() => {
-                        const allRegionalData = attachedTrades.flatMap(g => Array.isArray(g.data) ? g.data : []);
-                        setMapCustomComparables(allRegionalData);
-                        setIsMapModalOpen(true);
-                    }}
-                />
+                {!shouldShowUnitCompTierPanel(meta, mergedData) && (
+                    <RegionalTradesReferenceSection
+                        groups={attachedTrades}
+                        onMapOpen={() => {
+                            const allRegionalData = attachedTrades.flatMap(g => Array.isArray(g.data) ? g.data : []);
+                            setMapCustomComparables(allRegionalData);
+                            setMapModalTitle('주변 실거래 지도');
+                            setIsMapModalOpen(true);
+                        }}
+                    />
+                )}
                 <PriceSpectrumNarrativeSection
                     narrative={narrative}
                     spectrum={spectrum}
@@ -5017,7 +5041,7 @@ export default function AiReportView({
             {/* Comparable Map Modal */}
             {isMapModalOpen && (
                 <div className="fixed inset-0 z-[999] flex items-end justify-center">
-                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); }} />
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); setMapModalTitle(null); }} />
                     <div className="relative w-full max-w-4xl h-[85vh] bg-white rounded-t-[32px] overflow-hidden flex flex-col z-10 animate-in slide-in-from-bottom duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.35)]">
                         {/* Bottom sheet drag handle indicator */}
                         <div className="w-full flex justify-center pt-3 pb-1.5 bg-gradient-to-r from-sky-50 via-white to-emerald-50 shrink-0">
@@ -5030,7 +5054,8 @@ export default function AiReportView({
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-slate-900 text-base font-black">
-                                        {mapCustomComparables ? '주변 실거래 지도' : '비교사례 위치 지도'}
+                                        {mapModalTitle
+                                            || (mapCustomComparables ? '주변 실거래 지도' : '비교사례 위치 지도')}
                                     </span>
                                     <span className="text-slate-500 text-[11px] font-medium">
                                         마커에 실거래가(억) 표시 · 클릭 시 상세 정보
@@ -5043,7 +5068,7 @@ export default function AiReportView({
                                 </div>
                             </div>
                             <button
-                                onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); }}
+                                onClick={() => { setIsMapModalOpen(false); setMapCustomComparables(null); setMapModalTitle(null); }}
                                 className="p-2 rounded-xl hover:bg-slate-900/5 text-slate-400 hover:text-slate-700 transition-colors"
                             >
                                 <X className="w-5 h-5" />

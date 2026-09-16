@@ -1,3 +1,5 @@
+import { resolveCategoryDisplayLabel } from '../lib/analysisV31Helpers';
+
 /**
  * SeoTextBlock — 크롤러 가독 숨김 텍스트 블록
  *
@@ -74,12 +76,10 @@ export default function SeoTextBlock({ data }: { data: SeoData }) {
     const report = data.report;
 
     const categoryRaw = report?.category || parsed?.category || data.category || '';
-    const categoryLabel =
-        categoryRaw === 'land' ? '토지'
-            : categoryRaw === 'apartment' ? '아파트'
-                : categoryRaw === 'house' ? '주택'
-                    : categoryRaw === 'store' || categoryRaw === 'building' ? '상가'
-                        : categoryRaw || null;
+    const categoryLabel = resolveCategoryDisplayLabel(
+        categoryRaw,
+        (parsed?.analysisMetadata || null) as Record<string, unknown> | null,
+    ) || categoryRaw || null;
 
     // 주소
     const address = data.address || report?.address || parsed?.propertyTitle || '매물';
