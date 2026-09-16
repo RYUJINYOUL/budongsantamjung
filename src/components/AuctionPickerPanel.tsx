@@ -116,7 +116,9 @@ export default function AuctionPickerPanel({ selectedId, onSelect }: AuctionPick
           <p className="text-xs font-extrabold text-slate-900 mt-0.5 line-clamp-2">
             {selectedItem.address}
           </p>
-          <p className="text-[10px] font-bold text-emerald-700 mt-1">선택됨 · 아래에서 분석 진행</p>
+          <p className={`text-[10px] font-bold mt-1 ${selectedItem.analysisBlocked ? 'text-amber-800' : 'text-emerald-700'}`}>
+            {selectedItem.analysisBlocked ? '지분 매각 · 자동 분석 불가' : '선택됨 · 아래에서 분석 진행'}
+          </p>
         </div>
       )}
 
@@ -166,6 +168,7 @@ export default function AuctionPickerPanel({ selectedId, onSelect }: AuctionPick
 
             {items.map((item) => {
               const active = selectedId === item.id;
+              const shareBlocked = Boolean(item.analysisBlocked);
               return (
                 <button
                   key={item.id}
@@ -173,15 +176,19 @@ export default function AuctionPickerPanel({ selectedId, onSelect }: AuctionPick
                   onClick={() => onSelectRef.current(item)}
                   className={`w-full text-left rounded-xl border p-3 transition-all ${
                     active
-                      ? 'border-emerald-400 bg-emerald-50/60 shadow-sm'
-                      : 'border-slate-100 bg-white hover:border-emerald-200'
+                      ? shareBlocked
+                        ? 'border-amber-400 bg-amber-50/50 shadow-sm'
+                        : 'border-emerald-400 bg-emerald-50/60 shadow-sm'
+                      : shareBlocked
+                        ? 'border-amber-100 bg-amber-50/30 hover:border-amber-200'
+                        : 'border-slate-100 bg-white hover:border-emerald-200'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold text-slate-500">
                         {item.usageType} · {item.caseNumber}
-                        {item.linkedReportId ? ' · 분석완료' : ''}
+                        {shareBlocked ? ' · 지분·분석불가' : item.linkedReportId ? ' · 분석완료' : ''}
                       </p>
                       <p className="text-xs font-extrabold text-slate-900 line-clamp-2 mt-0.5">
                         {item.address || '주소 미상'}

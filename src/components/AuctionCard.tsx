@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import type { AuctionListItem } from '../lib/auctionTypes';
-import { formatManwon, formatSaleDate, meritLabelKo, meritStyle } from '../lib/formatAuctionPrice';
+import { formatManwon, formatSaleDate, formatSuggestedBidMan, meritLabelKo, meritStyle } from '../lib/formatAuctionPrice';
 
 export interface AuctionCardProps {
   item: AuctionListItem;
@@ -69,8 +69,8 @@ export default function AuctionCard({ item, href }: AuctionCardProps) {
         </div>
         <div>
           <p className="text-[10px] font-bold text-emerald-600">AI 추천 상한</p>
-          <p className="text-sm font-black text-emerald-700">
-            {formatManwon(analysis?.suggestedBidMan ?? null)}
+          <p className={`text-sm font-black ${analysis?.suggestedBidMan != null ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {formatSuggestedBidMan(analysis?.suggestedBidMan ?? null)}
           </p>
         </div>
       </div>

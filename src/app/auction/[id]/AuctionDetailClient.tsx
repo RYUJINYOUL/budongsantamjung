@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import SideNav from '../../../components/SideNav';
 import type { AuctionDetailResponse, AuctionListItem } from '../../../lib/auctionTypes';
 import { buildAuctionAnalyzeUrl } from '../../../lib/auctionAnalyze';
-import { formatManwon, formatSaleDate, meritLabelKo, meritStyle } from '../../../lib/formatAuctionPrice';
+import { formatManwon, formatSaleDate, formatSuggestedBidMan, meritLabelKo, meritStyle } from '../../../lib/formatAuctionPrice';
 import { makeAnalyzeSlug } from '../../../lib/slug';
 import { PAGE_HEADER_TITLE, PAGE_STICKY_HEADER } from '../../../components/analyzePanelFormStyles';
 
@@ -141,9 +141,12 @@ export default function AuctionDetailClient({ id }: { id: string }) {
                       <p className="text-lg font-black text-slate-700">{formatManwon(item.appraisalPriceMan)}</p>
                     </div>
                     <div className="rounded-xl bg-white p-3 border border-slate-200 col-span-2">
-                      <p className="text-[10px] font-bold text-slate-500">추천 입찰 상한 (규칙)</p>
-                      <p className="text-xl font-black text-slate-800">
-                        {formatManwon(analysis.suggestedBidMan)}
+                      <p className="text-[10px] font-bold text-slate-500">
+                        AI 추천 상한
+                        {analysis.suggestedBidSource === 'detective' ? ' (탐정 분석)' : analysis.suggestedBidSource === 'tier1' ? ' (참고)' : ''}
+                      </p>
+                      <p className={`text-xl font-black ${analysis.suggestedBidMan != null ? 'text-slate-800' : 'text-slate-500'}`}>
+                        {formatSuggestedBidMan(analysis.suggestedBidMan)}
                       </p>
                     </div>
                   </div>

@@ -1,8 +1,9 @@
 export type AuctionMeritLabel = 'high' | 'medium' | 'low';
 
 export interface AuctionPriceAnalysis {
-  analysisType: 'PRICE_ONLY' | 'FULL_RIGHTS';
-  suggestedBidMan: number;
+  analysisType: 'PRICE_ONLY' | 'FULL_RIGHTS' | 'DETECTIVE_REPORT';
+  suggestedBidMan: number | null;
+  suggestedBidSource?: 'detective' | 'tier1' | null;
   fairValueMan: number | null;
   bidRatioPct: number | null;
   meritLabel: AuctionMeritLabel;
@@ -29,6 +30,11 @@ export interface AuctionListItem {
   hasDuplicateCase: boolean;
   priceAnalysis: AuctionPriceAnalysis | null;
   linkedReportId?: number | null;
+  /** 소유권 지분 매각 — 탐정 자동 추정 불가 */
+  analysisBlocked?: boolean;
+  analysisBlockReason?: string | null;
+  analysisBlockMessage?: string | null;
+  canAnalyze?: boolean;
 }
 
 export interface AuctionListResponse {

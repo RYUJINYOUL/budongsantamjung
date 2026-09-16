@@ -756,27 +756,20 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
   }, [applyAuctionFormFromPrefill, applyAuctionPrefillData, applyAuctionShareGateFromPrefill]);
 
   const handleAuctionPick = useCallback(async (item: AuctionListItem) => {
-    if (selectedAuctionItemId === item.id && !item.linkedReportId) return;
+    if (selectedAuctionItemId === item.id && !item.linkedReportId && !item.analysisBlocked) return;
     setPanelMode('auction');
     setAuctionPrefillError(null);
     setAuctionAnalysisBlocked(null);
     setAuctionGeocodeNeedsPin(false);
     loadedAuctionPrefillIdRef.current = null;
-    if (item.linkedReportId) {
-      setSelectedAuctionItemId(item.id);
-      setLinkedAuctionReportId(item.linkedReportId);
-      setAuctionContext({
-        caseNumber: item.caseNumber,
-        courtName: item.courtName,
-        usageType: item.usageType,
-        minPriceMan: item.minPriceMan,
-        appraisalPriceMan: item.appraisalPriceMan,
-        failCount: item.failCount,
-        saleDate: item.saleDate,
-      });
-      return;
+    setSelectedAuctionItemId(item.id);
+    setLinkedAuctionReportId(item.linkedReportId ?? null);
+    if (item.analysisBlocked) {
+      setAuctionAnalysisBlocked(
+        item.analysisBlockMessage
+          || '지분 매각 물건은 자동 추정 분석을 제공하지 않습니다.',
+      );
     }
-    loadedAuctionPrefillIdRef.current = null;
     await loadAuctionPrefill(item.id);
     loadedAuctionPrefillIdRef.current = item.id;
   }, [loadAuctionPrefill, selectedAuctionItemId]);
@@ -1137,7 +1130,22 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
                 <p className="text-[11px] text-amber-800/90 mt-1 leading-relaxed">{auctionAnalysisBlocked}</p>
               </div>
             )}
-            {linkedAuctionReportId && selectedAuctionItemId && (
+            {linkedAuctionReportId && selectedAuctionItemId && auctionAnalysisBlocked && (
+              <section className={`${PANEL_CARD} border-amber-200 bg-amber-50/50`}>
+                <p className={PANEL_SECTION_LABEL}>분석 불가 (지분 매각)</p>
+                <p className={`${PANEL_SECTION_DESC} mt-1`}>
+                  소유권 지분만 매각되는 물건은 탐정 자동 추정을 제공하지 않습니다. 등기·지분 비율 확인 후 별도 검토해 주세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/analyze/${makeAnalyzeSlug(linkedAuctionReportId)}`)}
+                  className="mt-3 w-full py-2.5 rounded-xl border border-amber-300 bg-white text-amber-900 text-xs font-bold hover:bg-amber-50/80"
+                >
+                  연결된 과거 리포트만 보기 (참고)
+                </button>
+              </section>
+            )}
+            {linkedAuctionReportId && selectedAuctionItemId && !auctionAnalysisBlocked && (
               <section className={`${PANEL_CARD} border-emerald-200 bg-emerald-50/40`}>
                 <p className={PANEL_SECTION_LABEL}>탐정 분석 완료</p>
                 <p className={`${PANEL_SECTION_DESC} mt-1`}>이 경매 물건은 이미 정밀 분석 리포트가 연결되어 있습니다.</p>
@@ -1541,6 +1549,8 @@ export default function AnalyzePanel({ onLocationSelect, onLocationClear, onAddi
               listingRegisterMode ? '매물 등록 중...' : '데이터 수집 중...'
             ) : listingRegisterMode ? (
               '매물 등록 → Lite 페이지'
+            ) : panelMode === 'auction' && auctionAnalysisBlocked ? (
+              '지분 매각 — 분석 불가'
             ) : panelMode === 'auction' ? (
               '경매 · 탐정 정밀 분석 시작'
             ) : (

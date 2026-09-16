@@ -1,4 +1,10 @@
 /** 만원 단위 → 표시 문자열 */
+/** AI 추천 상한 — 없으면 분석대기중 */
+export function formatSuggestedBidMan(man: number | null | undefined): string {
+  if (man == null || !Number.isFinite(man)) return '분석대기중';
+  return formatManwon(man);
+}
+
 export function formatManwon(man: number | null | undefined): string {
   if (man == null || !Number.isFinite(man)) return '-';
   if (man >= 10000) {
