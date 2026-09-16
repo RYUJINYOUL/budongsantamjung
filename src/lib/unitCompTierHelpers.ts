@@ -124,7 +124,8 @@ export function resolveMapMarkersForUnitCompTier(
     return Number.isFinite(lat) && Number.isFinite(lng);
   });
   const targetPnu = String(meta.pnu || '').slice(0, 19);
-  const targetAddr = String(meta.target?.address || meta.targetAddress || '');
+  const targetObj = meta.target as Record<string, unknown> | undefined;
+  const targetAddr = String(targetObj?.address ?? meta.targetAddress ?? '');
   const targetJibun = targetAddr.match(/\d+-\d+|\d+/)?.[0] || '';
 
   if (tier === 'same_pnu' || tier === 'same_building') {
