@@ -3,6 +3,7 @@
 import React from 'react';
 import { Layers, CheckCircle2, Map } from 'lucide-react';
 import {
+  filterUnitCompTierRowsForUi,
   formatUnitCompTierAmount,
   parseUnitCompComparison,
   resolveUnitCompFinalSource,
@@ -29,7 +30,7 @@ function tierIndexLabel(i: number) {
   return String.fromCharCode(0x2460 + i);
 }
 
-const MAP_TIER_KEYS = new Set(['same_unit', 'same_pnu', 'same_building', 'regional', 'cohort']);
+const MAP_TIER_KEYS = new Set(['same_unit', 'same_pnu', 'same_building']);
 
 function TierLine({
   index,
@@ -107,12 +108,14 @@ export default function UnitCompTierSection({
 }) {
   if (!shouldShowUnitCompTierPanel(meta, mergedData)) return null;
 
-  const rows = parseUnitCompComparison(meta);
+  const rows = filterUnitCompTierRowsForUi(parseUnitCompComparison(meta));
   if (rows.length === 0) return null;
 
   const finalSource = resolveUnitCompFinalSource(meta);
   const finalLabel = unitCompTierHeadlineLabel(meta);
   const finalWon = Number(meta.estimatedTotalPrice) || Number(meta.weightedTotalPrice) || 0;
+  const finalIsDirectSsot = finalSource === 'same_unit' || finalSource === 'same_building';
+  const showFinalEstimateCard = finalWon > 0 && finalLabel && finalIsDirectSsot;
   const ssotGuidance = resolveUnitCompSsotGuidance(meta);
   const aiForAppraisal = ai || ({ analysisMetadata: meta, referenceAppraisal: meta.referenceAppraisal } as Record<string, unknown>);
 
@@ -145,11 +148,7 @@ export default function UnitCompTierSection({
             호 단위 추정 — 근거 tier (분리 표시)
           </span>
           <p className="text-white/40 text-[11px] leading-relaxed">
-            ① 동일 세대 · ② 동일 건물 · ③ 지역 유사 · ④ 코호트를 분리합니다. 「추정 실거래」 카드는
-            {' '}
-            <span className="text-white/55">최종 tier(예: 동일 건물)</span>
-            {' '}
-            에 해당하는 거래입니다.
+            ① 동일 세대 · ② 동일 건물만 표시합니다. 지역·코호트 tier는 재분석·지도 검증 후 다시 노출합니다.
           </p>
         </div>
       </div>
@@ -172,7 +171,7 @@ export default function UnitCompTierSection({
         <ReferenceAppraisalBlock ai={aiForAppraisal} mergedData={mergedData} compact />
       )}
 
-      {finalWon > 0 && finalLabel && (
+      {showFinalEstimateCard && (
         <div
           className="rounded-xl px-4 py-3"
           style={{
@@ -181,14 +180,11 @@ export default function UnitCompTierSection({
           }}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-300/90">
-            {ssotGuidance ? `참고 추정 (${finalLabel})` : `최종 추정 (${finalLabel})`}
+            최종 추정 ({finalLabel})
           </span>
           <p className="text-2xl font-black mt-0.5 leading-none text-sky-300">
             {formatEokCompact(finalWon)}원
           </p>
-          {ssotGuidance && (
-            <p className="text-[10px] text-white/40 mt-1.5">직접비교 SSOT 아님 · 시장성 참고 tier</p>
-          )}
         </div>
       )}
 
@@ -198,7 +194,7 @@ export default function UnitCompTierSection({
             key={row.tier}
             index={i}
             row={row}
-            isFinal={Boolean(finalSource && row.tier === finalSource)}
+            isFinal={Boolean(finalIsDirectSsot && finalSource && row.tier === finalSource)}
             onMapOpen={onOpenTierMap ? handleMap : undefined}
             meta={meta}
             comparables={comparables}

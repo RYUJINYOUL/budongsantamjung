@@ -13,6 +13,14 @@ export type UnitCompTierRow = {
 
 const DISPLAY_ORDER = ['same_unit', 'same_building', 'regional', 'cohort'] as const;
 
+/** tier 패널에 노출할 tier (③④는 재분석·지도 검증 전까지 UI 비노출) */
+export const UNIT_COMP_TIER_UI_VISIBLE = ['same_unit', 'same_building'] as const;
+
+export function filterUnitCompTierRowsForUi(rows: UnitCompTierRow[]): UnitCompTierRow[] {
+  const allow = new Set<string>(UNIT_COMP_TIER_UI_VISIBLE);
+  return rows.filter((r) => allow.has(r.tier));
+}
+
 /** 구 API same_pnu → same_unit 표시 */
 function normalizeTierKey(tier: string): string {
   if (tier === 'same_pnu') return 'same_unit';
@@ -282,8 +290,8 @@ export function resolveUnitCompSsotGuidance(meta?: Record<string, unknown> | nul
     primary:
       '해당 호에 대한 직접비교 SSOT를 산출하지 못했습니다. 감정평가서·경매 공고 감정가 등 공식·제출 자료를 1차 참고하세요.',
     secondary: marketOnly
-      ? '아래 ③ 지역 유사·④ 코호트(및 R-ONE 시장지표)는 시장성·거래 맥락 참고용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요.'
-      : '인근 실거래·코호트는 보조 참고만 가능합니다. 가격 적정성은 판정 유보·참고 추정으로 서술하세요.',
+      ? '지역·코호트 기반 참고 추정은 시장성 맥락용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요. (재분석 후 tier·지도를 다시 노출할 예정입니다.)'
+      : '가격 적정성은 판정 유보·참고 추정으로 서술하세요.',
   };
 }
 
