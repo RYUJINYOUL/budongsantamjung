@@ -4,6 +4,7 @@ import {
   isUnitCompDirectSsotMissing,
   isUnitCompMarketContextOnly,
   parseUnitCompComparison,
+  resolveMapMarkersForUnitCompTier,
   resolveUnitCompFinalSource,
   resolveUnitCompSsotGuidance,
 } from './unitCompTierHelpers';
@@ -63,6 +64,20 @@ describe('unitCompTierHelpers', () => {
     };
     expect(isUnitCompDirectSsotMissing(meta)).toBe(false);
     expect(resolveUnitCompSsotGuidance(meta)).toBeNull();
+  });
+
+  it('resolveMapMarkersForUnitCompTier prefers server regional markers', () => {
+    const { markers } = resolveMapMarkersForUnitCompTier(
+      'regional',
+      {
+        unitCompRegionalMapMarkers: [
+          { lat: 37.5, lng: 127.0, dealAmount: '35000', jibun: '1-2' },
+        ],
+      },
+      [{ lat: null, lng: null }],
+    );
+    expect(markers).toHaveLength(1);
+    expect(markers[0].jibun).toBe('1-2');
   });
 
   it('formatUnitCompTierAmount shows range when min/max differ', () => {

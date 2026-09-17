@@ -118,7 +118,7 @@ export default function UnitCompTierSection({
 
   const handleMap = (tier: string, tierLabel: string) => {
     if (!onOpenTierMap) return;
-    const { markers, mapLabel } = resolveMapMarkersForUnitCompTier(tier, meta, comparables);
+    const { markers, mapLabel } = resolveMapMarkersForUnitCompTier(tier, meta, comparables, mergedData);
     onOpenTierMap({ tier, tierLabel, markers, mapTitle: mapLabel });
   };
 

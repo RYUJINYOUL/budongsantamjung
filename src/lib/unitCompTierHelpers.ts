@@ -131,19 +131,53 @@ function isSamePnuComparable(
   return false;
 }
 
-/** tier별 지도 마커 (클라이언트 — comp·코호트 샘플) */
-export function resolveMapMarkersForUnitCompTier(
-  tier: string,
-  meta: Record<string, unknown>,
-  comparables: unknown[],
-): { markers: Record<string, unknown>[]; mapLabel: string } {
-  const tierNorm = normalizeTierKey(tier);
-  const comps = (Array.isArray(comparables) ? comparables : []) as Record<string, unknown>[];
-  const withCoords = comps.filter((c) => {
+function withValidCoords(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.filter((c) => {
     const lat = parseFloat(String(c.lat));
     const lng = parseFloat(String(c.lng));
     return Number.isFinite(lat) && Number.isFinite(lng);
   });
+}
+
+function flattenVitalsRegionalTrades(mergedData?: Record<string, unknown> | null): Record<string, unknown>[] {
+  const vitals = mergedData?.vitals as Record<string, unknown> | undefined;
+  const groups = vitals?.regionalTrades;
+  if (!Array.isArray(groups)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const g of groups) {
+    const row = g as Record<string, unknown>;
+    const data = Array.isArray(row.data) ? row.data : [];
+    for (const t of data) {
+      if (t && typeof t === 'object') out.push(t as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
+function flattenUiAttachedRegional(meta: Record<string, unknown>): Record<string, unknown>[] {
+  const groups = meta.uiAttachedRegionalTrades;
+  if (!Array.isArray(groups)) return [];
+  const out: Record<string, unknown>[] = [];
+  for (const g of groups) {
+    const row = g as Record<string, unknown>;
+    const data = Array.isArray(row.data) ? row.data : [];
+    for (const t of data) {
+      if (t && typeof t === 'object') out.push(t as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
+/** tier별 지도 마커 (서버 unitComp*MapMarkers 우선, 스냅샷 vitals fallback) */
+export function resolveMapMarkersForUnitCompTier(
+  tier: string,
+  meta: Record<string, unknown>,
+  comparables: unknown[],
+  mergedData?: Record<string, unknown> | null,
+): { markers: Record<string, unknown>[]; mapLabel: string } {
+  const tierNorm = normalizeTierKey(tier);
+  const comps = (Array.isArray(comparables) ? comparables : []) as Record<string, unknown>[];
+  const withCoords = withValidCoords(comps);
   const targetPnu = String(meta.pnu || '').slice(0, 19);
   const targetObj = meta.target as Record<string, unknown> | undefined;
   const targetAddr = String(targetObj?.address ?? meta.targetAddress ?? '');
@@ -159,22 +193,45 @@ export function resolveMapMarkersForUnitCompTier(
   }
 
   if (tierNorm === 'regional') {
-    return { markers: withCoords, mapLabel: '지역 유사 실거래 지도' };
+    const serverMarkers = Array.isArray(meta.unitCompRegionalMapMarkers)
+      ? (meta.unitCompRegionalMapMarkers as Record<string, unknown>[])
+      : [];
+    const fromServer = withValidCoords(serverMarkers);
+    if (fromServer.length > 0) {
+      return { markers: fromServer, mapLabel: '지역 유사 실거래 지도' };
+    }
+    const fromVitals = withValidCoords(flattenVitalsRegionalTrades(mergedData));
+    const fromAttached = withValidCoords(flattenUiAttachedRegional(meta));
+    const merged = [...fromAttached, ...fromVitals, ...withCoords];
+    const deduped: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    for (const m of merged) {
+      const key = `${m.lat},${m.lng},${m.jibun || ''},${m.dealAmount || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(m);
+    }
+    return { markers: deduped, mapLabel: '지역 유사 실거래 지도' };
   }
 
   if (tierNorm === 'cohort') {
+    const serverCohort = Array.isArray(meta.unitCompCohortMapMarkers)
+      ? (meta.unitCompCohortMapMarkers as Record<string, unknown>[])
+      : [];
+    const fromServer = withValidCoords(serverCohort);
+    if (fromServer.length > 0) {
+      return { markers: fromServer, mapLabel: '공시지가 코호트 표본 지도' };
+    }
     const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
     const obs = opr?.observedRatio as Record<string, unknown> | undefined;
     const samples = (
       (Array.isArray(opr?.samples) && opr!.samples.length > 0)
         ? opr!.samples
-        : (Array.isArray(obs?.cohortSamples) ? obs!.cohortSamples : [])
+        : (Array.isArray(obs?.cohortSamples)
+          ? obs!.cohortSamples
+          : (Array.isArray(obs?.cohortSamplesAll) ? obs!.cohortSamplesAll : []))
     ) as Record<string, unknown>[];
-    const cohortMarkers = samples.filter((s) => {
-      const lat = parseFloat(String(s.lat));
-      const lng = parseFloat(String(s.lng));
-      return Number.isFinite(lat) && Number.isFinite(lng);
-    });
+    const cohortMarkers = withValidCoords(samples);
     return {
       markers: cohortMarkers,
       mapLabel: '공시지가 코호트 표본 지도',
