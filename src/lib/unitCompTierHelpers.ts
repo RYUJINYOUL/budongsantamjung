@@ -13,8 +13,13 @@ export type UnitCompTierRow = {
 
 const DISPLAY_ORDER = ['same_unit', 'same_building', 'regional', 'cohort'] as const;
 
-/** tier 패널에 노출할 tier (③④는 재분석·지도 검증 전까지 UI 비노출) */
-export const UNIT_COMP_TIER_UI_VISIBLE = ['same_unit', 'same_building'] as const;
+/** tier 패널 노출 — OT/RH/ST 호 동일 4-tier (RH 경매 = OT와 동일 UI) */
+export const UNIT_COMP_TIER_UI_VISIBLE = [
+  'same_unit',
+  'same_building',
+  'regional',
+  'cohort',
+] as const;
 
 export function filterUnitCompTierRowsForUi(rows: UnitCompTierRow[]): UnitCompTierRow[] {
   const allow = new Set<string>(UNIT_COMP_TIER_UI_VISIBLE);
@@ -55,14 +60,22 @@ export function parseUnitCompComparison(
   }
 
   const out: UnitCompTierRow[] = [];
+  const emptyTierDefaults: Record<string, { label: string; role: string }> = {
+    same_unit: { label: '동일 세대', role: '동일 필지·층·면적' },
+    same_building: { label: '동일 건물', role: '동일 건물·다필지 포함' },
+    regional: { label: '지역 유사', role: '인근 실거래 참고' },
+    cohort: { label: '공시지가 코호트', role: '공시 기반 참고' },
+  };
+
   for (const key of DISPLAY_ORDER) {
     const row = byTier.get(key);
     if (!row) {
-      if (key === 'same_unit' || key === 'same_building') {
+      const def = emptyTierDefaults[key];
+      if (def) {
         out.push({
           tier: key,
-          label: key === 'same_unit' ? '동일 세대' : '동일 건물',
-          role: key === 'same_unit' ? '동일 필지·층·면적' : '동일 건물·다필지 포함',
+          label: def.label,
+          role: def.role,
           count: 0,
           estimatedTotalWon: null,
           available: false,
@@ -103,11 +116,18 @@ export function shouldShowUnitCompTierPanel(
   if (m.otUnitMode || m.stUnitMode) return true;
   if (m.rhUnitMode === true) return true;
   const track = String(m.priceValuationTrack || '');
-  if (track === 'ot_unit' || track === 'st_unit' || track === 'rh_unit') return true;
+  if (
+    track === 'ot_unit'
+    || track === 'st_unit'
+    || track === 'rh_unit'
+    || track === 'sh_whole'
+    || track === 'rh_unit_fallback'
+  ) return true;
   const ua = (mergedData?.unitAnalysis || m.unitAnalysis) as Record<string, unknown> | undefined;
   if (ua?.otUnitMode || ua?.stUnitMode) return true;
   const ht = m.houseTarget as Record<string, unknown> | undefined;
   if (ht?.isRhUnit === true) return true;
+  if (m.houseShWholeMode === true) return true;
   return false;
 }
 
@@ -290,7 +310,7 @@ export function resolveUnitCompSsotGuidance(meta?: Record<string, unknown> | nul
     primary:
       '해당 호에 대한 직접비교 SSOT를 산출하지 못했습니다. 감정평가서·경매 공고 감정가 등 공식·제출 자료를 1차 참고하세요.',
     secondary: marketOnly
-      ? '지역·코호트 기반 참고 추정은 시장성 맥락용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요. (재분석 후 tier·지도를 다시 노출할 예정입니다.)'
+      ? '③·④ tier는 시장성 참고용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요.'
       : '가격 적정성은 판정 유보·참고 추정으로 서술하세요.',
   };
 }

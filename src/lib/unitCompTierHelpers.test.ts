@@ -8,6 +8,7 @@ import {
   resolveMapMarkersForUnitCompTier,
   resolveUnitCompFinalSource,
   resolveUnitCompSsotGuidance,
+  shouldShowUnitCompTierPanel,
 } from './unitCompTierHelpers';
 
 describe('unitCompTierHelpers', () => {
@@ -67,7 +68,16 @@ describe('unitCompTierHelpers', () => {
     expect(resolveUnitCompSsotGuidance(meta)).toBeNull();
   });
 
-  it('filterUnitCompTierRowsForUi hides regional and cohort', () => {
+  it('shouldShowUnitCompTierPanel for house SH whole', () => {
+    expect(
+      shouldShowUnitCompTierPanel({
+        houseShWholeMode: true,
+        unitCompComparison: [{ tier: 'regional', label: '지역', count: 1 }],
+      }),
+    ).toBe(true);
+  });
+
+  it('filterUnitCompTierRowsForUi shows all four tiers (OT/RH)', () => {
     const rows = parseUnitCompComparison({
       unitCompComparison: [
         { tier: 'same_unit', label: '동일 세대', count: 0 },
@@ -76,7 +86,12 @@ describe('unitCompTierHelpers', () => {
         { tier: 'cohort', label: '코호트', count: 145, estimatedTotalWon: 325_510_000 },
       ],
     });
-    expect(filterUnitCompTierRowsForUi(rows).map((r) => r.tier)).toEqual(['same_unit', 'same_building']);
+    expect(filterUnitCompTierRowsForUi(rows).map((r) => r.tier)).toEqual([
+      'same_unit',
+      'same_building',
+      'regional',
+      'cohort',
+    ]);
   });
 
   it('resolveMapMarkersForUnitCompTier prefers server regional markers', () => {

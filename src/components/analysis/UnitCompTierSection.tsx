@@ -30,7 +30,7 @@ function tierIndexLabel(i: number) {
   return String.fromCharCode(0x2460 + i);
 }
 
-const MAP_TIER_KEYS = new Set(['same_unit', 'same_pnu', 'same_building']);
+const MAP_TIER_KEYS = new Set(['same_unit', 'same_pnu', 'same_building', 'regional', 'cohort']);
 
 function TierLine({
   index,
@@ -108,6 +108,10 @@ export default function UnitCompTierSection({
 }) {
   if (!shouldShowUnitCompTierPanel(meta, mergedData)) return null;
 
+  const isHouseSh =
+    meta.houseShWholeMode === true
+    || meta.priceValuationTrack === 'sh_whole'
+    || meta.priceValuationTrack === 'rh_unit_fallback';
   const rows = filterUnitCompTierRowsForUi(parseUnitCompComparison(meta));
   if (rows.length === 0) return null;
 
@@ -145,10 +149,12 @@ export default function UnitCompTierSection({
         </div>
         <div className="min-w-0 flex-1 flex flex-col gap-2 pt-0.5">
           <span className="text-base font-bold leading-snug text-white">
-            호 단위 추정 — 근거 tier (분리 표시)
+            {isHouseSh ? '주택 추정 — 근거 tier (참고 포함)' : '호 단위 추정 — 근거 tier (분리 표시)'}
           </span>
           <p className="text-white/40 text-[11px] leading-relaxed">
-            ① 동일 세대 · ② 동일 건물만 표시합니다. 지역·코호트 tier는 재분석·지도 검증 후 다시 노출합니다.
+            {isHouseSh
+              ? '①·② 주택·통매 SSOT · ③·④·토지 cohort는 참고. 실거주·투자 여부는 사용자 판단입니다.'
+              : '①·② 직접비교 SSOT · ③·④는 참고(시장성 맥락). OT·RH 경매 호 단위 동일 패널입니다.'}
           </p>
         </div>
       </div>
@@ -203,7 +209,9 @@ export default function UnitCompTierSection({
       </div>
 
       <p className="text-[10px] text-white/30 leading-relaxed">
-        동일 세대 0건이어도 동일 건물 거래가 있으면 ② tier에 표시됩니다. 전용㎡ 기준 실거래만 사용합니다.
+        {isHouseSh
+          ? '①·②는 주택 매매·공시비율 SSOT(해당 시). ③·④·대지 cohort는 참고만 — 한 줄로 합산하지 않습니다.'
+          : '①·②는 전용㎡ 실거래 SSOT. ③·④는 최종 추정에 쓰일 수 있으나 직접비교가 없을 때는 참고만 표시합니다.'}
       </p>
     </div>
   );

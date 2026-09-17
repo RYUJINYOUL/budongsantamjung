@@ -238,6 +238,43 @@ export function resolveOtUnitMarketHint(
   };
 }
 
+/** 단독·연립 vitals regionalTrades 전월세 평균 (수익환원 입력 힌트) */
+export function resolveHouseRentMarketHint(
+  mergedData?: Record<string, unknown> | null,
+  opts?: { rhUnit?: boolean },
+): { depositWon: number; monthlyRentWon: number; sampleCount: number; tradeType: string } | null {
+  const vitals = mergedData?.vitals as Record<string, unknown> | undefined;
+  const groups = vitals?.regionalTrades as Array<{ type?: string; data?: unknown[] }> | undefined;
+  if (!Array.isArray(groups)) return null;
+  const tradeType = opts?.rhUnit ? '연립다세대전월세' : '단독다가구전월세';
+  const group = groups.find((g) => g.type === tradeType);
+  const data = Array.isArray(group?.data) ? group!.data! : [];
+  if (data.length === 0) return null;
+  let depSum = 0;
+  let rentSum = 0;
+  let n = 0;
+  for (const t of data) {
+    const row = t as Record<string, unknown>;
+    const dep = parseWonFromText(row.deposit ?? row.보증금 ?? row.보증금액);
+    const rentRaw = row.monthlyRent ?? row.월세 ?? row.월세금액;
+    const rent = Number(rentRaw) > 0 && Number(rentRaw) < 500_000
+      ? Math.round(Number(rentRaw) * 10_000)
+      : parseWonFromText(rentRaw);
+    if (dep > 0 || rent > 0) {
+      depSum += dep;
+      rentSum += rent;
+      n += 1;
+    }
+  }
+  if (n === 0) return null;
+  return {
+    depositWon: Math.round(depSum / n),
+    monthlyRentWon: Math.round(rentSum / n),
+    sampleCount: n,
+    tradeType,
+  };
+}
+
 export function resolveOtStUnitReportRentWon(
   mergedData?: Record<string, unknown> | null,
 ): { depositWon: number; monthlyRentWon: number } {
