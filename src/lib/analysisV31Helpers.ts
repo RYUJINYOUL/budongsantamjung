@@ -82,6 +82,23 @@ export function isOtStUnitMeta(
   return false;
 }
 
+/** RH·OT·ST 호 — 헤드라인·법원블록 AI 추정가는 cohort(토지) 대신 호 SSOT */
+export function isHoUnitValuationMeta(
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): boolean {
+  const m = meta || {};
+  if (isOtStUnitMeta(m, mergedData)) return true;
+  if (m.rhUnitMode === true) return true;
+  const track = String(m.priceValuationTrack || '');
+  if (track === 'rh_unit') return true;
+  const ht = m.houseTarget as Record<string, unknown> | undefined;
+  if (ht?.isRhUnit === true) return true;
+  const ua = (mergedData?.unitAnalysis || m.unitAnalysis) as Record<string, unknown> | undefined;
+  if (ua?.otUnitMode === true || ua?.stUnitMode === true) return true;
+  return false;
+}
+
 /** 분석 리포트 헤더·SEO — DB category + unit 메타 (엔진 로직과 분리, 표시 전용) */
 export function resolveCategoryDisplayLabel(
   category?: string | null,
@@ -439,6 +456,9 @@ export function resolveCohortEstimateTotal(
   category = 'land',
 ): number {
   const m = meta || {};
+  const hoUnit = isHoUnitValuationMeta(m, mergedData);
+  if (hoUnit) return 0;
+
   const otStUnit = isOtStUnitMeta(m, mergedData);
   if (otStUnit) {
     const hoTotal = resolveOtStUnitEstimateWon(m, mergedData);
@@ -472,6 +492,8 @@ export function resolveCohortEstimateTotal(
 export function buildEstimateRangeLabel(source: string, meta?: Record<string, unknown> | null): string {
   if (source === 'ot_unit') return '오피스텔 호 추정가';
   if (source === 'st_unit') return '상가·점포 호 추정가';
+  if (source === 'rh_unit') return '연립·다세대 호 추정가';
+  if (source === 'estimatedTotalPrice' && meta?.rhUnitMode) return '연립·다세대 호 추정가';
   if (source === 'cohort') return '동일수급권 추정가';
   if (source === 'comparables') {
     if (meta?.otUnitMode || meta?.priceValuationTrack === 'ot_unit') return '오피스텔 호 추정가';
@@ -635,7 +657,9 @@ export function resolveEstimateRange(
 ): EstimateRange {
   const meta = analysisMetadata || {};
   const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
-  const targetArea = getTargetArea(meta, mergedData, category);
+  const hoUnit = isHoUnitValuationMeta(meta, mergedData);
+  const areaCategory = hoUnit ? 'building' : category;
+  const targetArea = getTargetArea(meta, mergedData, areaCategory);
   const buildingWon = Number(meta.buildingResidualValue) || 0;
   const otStUnit = isOtStUnitMeta(meta, mergedData);
 
@@ -651,11 +675,11 @@ export function resolveEstimateRange(
     }
   }
 
-  if (min <= 0) {
-    const cohortTotal = resolveCohortEstimateTotal(meta, mergedData, category);
-    if (cohortTotal > 0) {
-      min = max = cohortTotal;
-      source = 'cohort';
+  if (hoUnit && min <= 0) {
+    const direct = Number(meta.estimatedTotalPrice) || Number(meta.weightedTotalPrice) || 0;
+    if (direct > 0) {
+      min = max = direct;
+      source = meta.rhUnitMode || meta.priceValuationTrack === 'rh_unit' ? 'rh_unit' : 'estimatedTotalPrice';
     }
   }
 
@@ -663,11 +687,19 @@ export function resolveEstimateRange(
   if (min <= 0 && totals.length > 0) {
     min = Math.min(...totals);
     max = Math.max(...totals);
-    source = 'comparables';
+    source = hoUnit && meta.rhUnitMode ? 'rh_unit' : 'comparables';
+  }
+
+  if (!hoUnit && min <= 0) {
+    const cohortTotal = resolveCohortEstimateTotal(meta, mergedData, category);
+    if (cohortTotal > 0) {
+      min = max = cohortTotal;
+      source = 'cohort';
+    }
   }
 
   const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
-  if (!otStUnit && min <= 0 && isCohortOfficialPricing(meta) && opr) {
+  if (!hoUnit && !otStUnit && min <= 0 && isCohortOfficialPricing(meta) && opr) {
     const estPrice = Number(opr.estimatedPrice) || 0;
     const estPerSqm = Number(opr.estimatedPerSqm) || 0;
     if (estPrice > 0) {
@@ -692,7 +724,7 @@ export function resolveEstimateRange(
     }
   }
 
-  if (!otStUnit && min <= 0 && opr) {
+  if (!hoUnit && !otStUnit && min <= 0 && opr) {
     const estPerSqm = Number(opr.estimatedPerSqm) || 0;
     const estPrice = Number(opr.estimatedPrice) || 0;
     if (estPerSqm > 0 && targetArea > 0) {

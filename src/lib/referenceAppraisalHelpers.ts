@@ -1,6 +1,7 @@
 import {
   buildEstimateRangeLabel,
   formatEokCompact,
+  isHoUnitValuationMeta,
   resolveEstimateRange,
 } from './analysisV31Helpers';
 
@@ -45,7 +46,12 @@ export type ServerEstimateDisplay = {
   won: number;
 };
 
-function resolveV31Category(category?: string): 'land' | 'building' {
+function resolveV31Category(
+  category?: string,
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): 'land' | 'building' {
+  if (isHoUnitValuationMeta(meta, mergedData)) return 'building';
   const cat = String(category || 'land').toLowerCase();
   if (cat === 'building' || cat === '빌딩' || cat === 'store' || cat === '상가') return 'building';
   return 'land';
@@ -61,6 +67,8 @@ export function resolveServerEstimateDisplay(
   const priceReas = (ai['5_priceReasonableness'] || {}) as Record<string, unknown>;
   const v31Cat = resolveV31Category(
     options?.category || String(meta.category || meta.propertyCategory || ''),
+    meta,
+    options?.mergedData,
   );
 
   const metaTotal = Number(meta.estimatedTotalPrice) || 0;
