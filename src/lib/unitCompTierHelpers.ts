@@ -11,7 +11,13 @@ export type UnitCompTierRow = {
   available?: boolean;
 };
 
-const DISPLAY_ORDER = ['same_pnu', 'same_building', 'regional', 'cohort'] as const;
+const DISPLAY_ORDER = ['same_unit', 'same_building', 'regional', 'cohort'] as const;
+
+/** 구 API same_pnu → same_unit 표시 */
+function normalizeTierKey(tier: string): string {
+  if (tier === 'same_pnu') return 'same_unit';
+  return tier;
+}
 
 export function parseUnitCompComparison(
   meta?: Record<string, unknown> | null,
@@ -22,14 +28,18 @@ export function parseUnitCompComparison(
   const byTier = new Map<string, UnitCompTierRow>();
   for (const item of raw) {
     const row = item as Record<string, unknown>;
-    const tier = String(row.tier || '');
+    const tier = normalizeTierKey(String(row.tier || ''));
     if (!tier) continue;
+    const existing = byTier.get(tier);
+    const count = Number(row.count) || 0;
+    const estimatedTotalWon = row.estimatedTotalWon != null ? Number(row.estimatedTotalWon) : null;
+    if (existing && tier === 'same_unit' && (existing.count || 0) >= count) continue;
     byTier.set(tier, {
       tier,
       label: String(row.label || tier),
       role: row.role != null ? String(row.role) : undefined,
-      count: Number(row.count) || 0,
-      estimatedTotalWon: row.estimatedTotalWon != null ? Number(row.estimatedTotalWon) : null,
+      count,
+      estimatedTotalWon,
       minWon: row.minWon != null ? Number(row.minWon) : null,
       maxWon: row.maxWon != null ? Number(row.maxWon) : null,
       available: row.available === true,
@@ -39,8 +49,17 @@ export function parseUnitCompComparison(
   const out: UnitCompTierRow[] = [];
   for (const key of DISPLAY_ORDER) {
     const row = byTier.get(key);
-    if (!row) continue;
-    if (key === 'same_building' && (row.count || 0) === 0 && !(row.estimatedTotalWon || 0)) {
+    if (!row) {
+      if (key === 'same_unit' || key === 'same_building') {
+        out.push({
+          tier: key,
+          label: key === 'same_unit' ? '동일 세대' : '동일 건물',
+          role: key === 'same_unit' ? '동일 필지·층·면적' : '동일 건물·다필지 포함',
+          count: 0,
+          estimatedTotalWon: null,
+          available: false,
+        });
+      }
       continue;
     }
     out.push(row);
@@ -62,7 +81,8 @@ export function formatUnitCompTierAmount(row: UnitCompTierRow): string {
 }
 
 export function resolveUnitCompFinalSource(meta?: Record<string, unknown> | null): string {
-  return String(meta?.finalEstimateSource || meta?.unitCompTierUsed || '');
+  const src = String(meta?.finalEstimateSource || meta?.unitCompTierUsed || '');
+  return normalizeTierKey(src);
 }
 
 /** OT/ST/RH — tier 패널 + raw 60건 블록 숨김 */
@@ -117,6 +137,7 @@ export function resolveMapMarkersForUnitCompTier(
   meta: Record<string, unknown>,
   comparables: unknown[],
 ): { markers: Record<string, unknown>[]; mapLabel: string } {
+  const tierNorm = normalizeTierKey(tier);
   const comps = (Array.isArray(comparables) ? comparables : []) as Record<string, unknown>[];
   const withCoords = comps.filter((c) => {
     const lat = parseFloat(String(c.lat));
@@ -128,20 +149,20 @@ export function resolveMapMarkersForUnitCompTier(
   const targetAddr = String(targetObj?.address ?? meta.targetAddress ?? '');
   const targetJibun = targetAddr.match(/\d+-\d+|\d+/)?.[0] || '';
 
-  if (tier === 'same_pnu' || tier === 'same_building') {
+  if (tierNorm === 'same_unit' || tierNorm === 'same_building') {
     const filtered = withCoords.filter((c) => isSamePnuComparable(c, targetPnu, targetJibun));
     const markers = filtered.length > 0 ? filtered : withCoords;
     return {
       markers,
-      mapLabel: tier === 'same_building' ? '동일 건물 실거래 지도' : '동일 PNU/필지 실거래 지도',
+      mapLabel: tierNorm === 'same_building' ? '동일 건물 실거래 지도' : '동일 세대 실거래 지도',
     };
   }
 
-  if (tier === 'regional') {
-    return { markers: withCoords, mapLabel: '인접·유사 실거래 지도' };
+  if (tierNorm === 'regional') {
+    return { markers: withCoords, mapLabel: '지역 유사 실거래 지도' };
   }
 
-  if (tier === 'cohort') {
+  if (tierNorm === 'cohort') {
     const opr = meta.officialPriceRatio as Record<string, unknown> | undefined;
     const obs = opr?.observedRatio as Record<string, unknown> | undefined;
     const samples = (
@@ -163,14 +184,61 @@ export function resolveMapMarkersForUnitCompTier(
   return { markers: withCoords, mapLabel: '비교사례 위치 지도' };
 }
 
+function tierCountFromMeta(meta: Record<string, unknown>, tier: string): number {
+  const rows = parseUnitCompComparison(meta);
+  const row = rows.find((r) => r.tier === tier);
+  return Number(row?.count) || 0;
+}
+
+/** ①·② 동일 세대/건물 실거래 표본 없음 (602 thin sameUnit 케이스는 제외) */
+export function isUnitCompDirectSsotMissing(meta?: Record<string, unknown> | null): boolean {
+  if (!meta) return false;
+  if (meta.unitCompDirectSsotMissing === true) return true;
+  if (meta.unitCompDirectSsotMissing === false) return false;
+  const unitN = tierCountFromMeta(meta, 'same_unit');
+  const bldN = tierCountFromMeta(meta, 'same_building');
+  return unitN < 1 && bldN < 1;
+}
+
+/** 최종 추정이 ③·④만 의미 있는 경우 (시장성 참고) */
+export function isUnitCompMarketContextOnly(meta?: Record<string, unknown> | null): boolean {
+  if (!meta) return false;
+  if (meta.unitCompMarketContextOnly === true) return true;
+  if (!isUnitCompDirectSsotMissing(meta)) return false;
+  const src = resolveUnitCompFinalSource(meta);
+  return src === 'regional' || src === 'cohort';
+}
+
+export type UnitCompSsotGuidance = {
+  showBanner: boolean;
+  title: string;
+  primary: string;
+  secondary: string;
+};
+
+export function resolveUnitCompSsotGuidance(meta?: Record<string, unknown> | null): UnitCompSsotGuidance | null {
+  if (!meta || !isUnitCompDirectSsotMissing(meta)) return null;
+  const marketOnly = isUnitCompMarketContextOnly(meta);
+  return {
+    showBanner: true,
+    title: '동일 세대·동일 건물 실거래 표본 없음',
+    primary:
+      '해당 호에 대한 직접비교 SSOT를 산출하지 못했습니다. 감정평가서·경매 공고 감정가 등 공식·제출 자료를 1차 참고하세요.',
+    secondary: marketOnly
+      ? '아래 ③ 지역 유사·④ 코호트(및 R-ONE 시장지표)는 시장성·거래 맥락 참고용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요.'
+      : '인근 실거래·코호트는 보조 참고만 가능합니다. 가격 적정성은 판정 유보·참고 추정으로 서술하세요.',
+  };
+}
+
 export function unitCompTierHeadlineLabel(meta?: Record<string, unknown> | null): string | null {
   const label = meta?.finalEstimateLabel;
   if (label) return String(label);
   const src = resolveUnitCompFinalSource(meta);
   const map: Record<string, string> = {
-    same_pnu: '동일 PNU/필지',
-    same_building: '동일 건물명',
-    regional: '인접·유사 실거래',
+    same_unit: '동일 세대',
+    same_pnu: '동일 세대',
+    same_building: '동일 건물',
+    regional: '지역 유사',
     cohort: '공시지가 코호트',
   };
   return map[src] || null;

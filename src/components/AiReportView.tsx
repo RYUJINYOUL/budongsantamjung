@@ -3305,6 +3305,7 @@ export default function AiReportView({
                                 meta={meta}
                                 mergedData={mergedData}
                                 comparables={comparables}
+                                ai={ai as Record<string, unknown>}
                                 onOpenTierMap={({ markers, mapTitle }) => {
                                     setMapCustomComparables(markers);
                                     setMapModalTitle(mapTitle);

@@ -84,3 +84,4 @@ build/
 .DS_Store
 **/.DS_Store
 tsconfig.tsbuildinfo
+.env*

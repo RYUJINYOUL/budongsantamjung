@@ -7,11 +7,13 @@ import {
   parseUnitCompComparison,
   resolveUnitCompFinalSource,
   resolveMapMarkersForUnitCompTier,
+  resolveUnitCompSsotGuidance,
   shouldShowUnitCompTierPanel,
   unitCompTierHeadlineLabel,
   type UnitCompTierRow,
 } from '@/lib/unitCompTierHelpers';
 import { formatEokCompact } from '@/lib/analysisV31Helpers';
+import ReferenceAppraisalBlock from './ReferenceAppraisalBlock';
 
 const ACCENT = '#38bdf8';
 
@@ -27,7 +29,7 @@ function tierIndexLabel(i: number) {
   return String.fromCharCode(0x2460 + i);
 }
 
-const MAP_TIER_KEYS = new Set(['same_pnu', 'same_building', 'regional', 'cohort']);
+const MAP_TIER_KEYS = new Set(['same_unit', 'same_pnu', 'same_building', 'regional', 'cohort']);
 
 function TierLine({
   index,
@@ -94,11 +96,13 @@ export default function UnitCompTierSection({
   meta,
   mergedData,
   comparables = [],
+  ai,
   onOpenTierMap,
 }: {
   meta: Record<string, unknown>;
   mergedData?: Record<string, unknown> | null;
   comparables?: unknown[];
+  ai?: Record<string, unknown> | null;
   onOpenTierMap?: (payload: { tier: string; tierLabel: string; markers: Record<string, unknown>[]; mapTitle: string }) => void;
 }) {
   if (!shouldShowUnitCompTierPanel(meta, mergedData)) return null;
@@ -109,6 +113,8 @@ export default function UnitCompTierSection({
   const finalSource = resolveUnitCompFinalSource(meta);
   const finalLabel = unitCompTierHeadlineLabel(meta);
   const finalWon = Number(meta.estimatedTotalPrice) || Number(meta.weightedTotalPrice) || 0;
+  const ssotGuidance = resolveUnitCompSsotGuidance(meta);
+  const aiForAppraisal = ai || ({ analysisMetadata: meta, referenceAppraisal: meta.referenceAppraisal } as Record<string, unknown>);
 
   const handleMap = (tier: string, tierLabel: string) => {
     if (!onOpenTierMap) return;
@@ -139,14 +145,32 @@ export default function UnitCompTierSection({
             호 단위 추정 — 근거 tier (분리 표시)
           </span>
           <p className="text-white/40 text-[11px] leading-relaxed">
-            ① 동일 필지·② 인접·③ 코호트를 분리합니다. 아래 「추정 실거래」 카드의 사례는
+            ① 동일 세대 · ② 동일 건물 · ③ 지역 유사 · ④ 코호트를 분리합니다. 「추정 실거래」 카드는
             {' '}
-            <span className="text-white/55">최종 tier(예: 동일 PNU)</span>
+            <span className="text-white/55">최종 tier(예: 동일 건물)</span>
             {' '}
             에 해당하는 거래입니다.
           </p>
         </div>
       </div>
+
+      {ssotGuidance && (
+        <div
+          className="rounded-xl px-4 py-3 flex flex-col gap-2"
+          style={{
+            background: 'rgba(251, 191, 36, 0.08)',
+            border: '1px solid rgba(251, 191, 36, 0.28)',
+          }}
+        >
+          <p className="text-xs font-bold text-amber-200/95">{ssotGuidance.title}</p>
+          <p className="text-[11px] text-amber-100/80 leading-relaxed">{ssotGuidance.primary}</p>
+          <p className="text-[11px] text-white/45 leading-relaxed">{ssotGuidance.secondary}</p>
+        </div>
+      )}
+
+      {ssotGuidance && aiForAppraisal && (
+        <ReferenceAppraisalBlock ai={aiForAppraisal} mergedData={mergedData} compact />
+      )}
 
       {finalWon > 0 && finalLabel && (
         <div
@@ -157,11 +181,14 @@ export default function UnitCompTierSection({
           }}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-300/90">
-            최종 추정 ({finalLabel})
+            {ssotGuidance ? `참고 추정 (${finalLabel})` : `최종 추정 (${finalLabel})`}
           </span>
           <p className="text-2xl font-black mt-0.5 leading-none text-sky-300">
             {formatEokCompact(finalWon)}원
           </p>
+          {ssotGuidance && (
+            <p className="text-[10px] text-white/40 mt-1.5">직접비교 SSOT 아님 · 시장성 참고 tier</p>
+          )}
         </div>
       )}
 
@@ -180,7 +207,7 @@ export default function UnitCompTierSection({
       </div>
 
       <p className="text-[10px] text-white/30 leading-relaxed">
-        ②·③ tier는 참고용입니다. 계약면적이 아닌 전용㎡ 기준 실거래만 사용합니다.
+        동일 세대 0건이어도 동일 건물 거래가 있으면 ② tier에 표시됩니다. 전용㎡ 기준 실거래만 사용합니다.
       </p>
     </div>
   );
