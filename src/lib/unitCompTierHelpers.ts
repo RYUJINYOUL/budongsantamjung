@@ -106,15 +106,14 @@ export function resolveUnitCompFinalSource(meta?: Record<string, unknown> | null
   return normalizeTierKey(src);
 }
 
-/** OT/ST/RH — tier 패널 + raw 60건 블록 숨김 */
-export function shouldShowUnitCompTierPanel(
+/** SH(통매)·OT·RH·ST 호 단위 — 아파트 「동일단지」 라벨과 구분 */
+export function isHoShOtRhValuationMode(
   meta?: Record<string, unknown> | null,
   mergedData?: Record<string, unknown> | null,
 ): boolean {
   const m = meta || {};
-  if (!Array.isArray(m.unitCompComparison) || m.unitCompComparison.length === 0) return false;
-  if (m.otUnitMode || m.stUnitMode) return true;
-  if (m.rhUnitMode === true) return true;
+  if (m.otUnitMode || m.stUnitMode || m.rhUnitMode === true) return true;
+  if (m.houseShWholeMode === true) return true;
   const track = String(m.priceValuationTrack || '');
   if (
     track === 'ot_unit'
@@ -127,8 +126,17 @@ export function shouldShowUnitCompTierPanel(
   if (ua?.otUnitMode || ua?.stUnitMode) return true;
   const ht = m.houseTarget as Record<string, unknown> | undefined;
   if (ht?.isRhUnit === true) return true;
-  if (m.houseShWholeMode === true) return true;
   return false;
+}
+
+/** OT/ST/RH — tier 패널 + raw 60건 블록 숨김 */
+export function shouldShowUnitCompTierPanel(
+  meta?: Record<string, unknown> | null,
+  mergedData?: Record<string, unknown> | null,
+): boolean {
+  const m = meta || {};
+  if (!Array.isArray(m.unitCompComparison) || m.unitCompComparison.length === 0) return false;
+  return isHoShOtRhValuationMode(m, mergedData);
 }
 
 function compPnuBase(c: Record<string, unknown>): string {
@@ -221,6 +229,11 @@ export function resolveMapMarkersForUnitCompTier(
   }
 
   if (tierNorm === 'regional') {
+    const hoRegionalSsot = meta.otUnitMode === true || meta.rhUnitMode === true || meta.stUnitMode === true
+      || ['ot_unit', 'st_unit', 'rh_unit'].includes(String(meta.priceValuationTrack || ''));
+    if (hoRegionalSsot && withCoords.length > 0) {
+      return { markers: withCoords, mapLabel: '지역 유사 실거래 지도 (SSOT)' };
+    }
     const serverMarkers = Array.isArray(meta.unitCompRegionalMapMarkers)
       ? (meta.unitCompRegionalMapMarkers as Record<string, unknown>[])
       : [];
@@ -308,11 +321,30 @@ export function resolveUnitCompSsotGuidance(meta?: Record<string, unknown> | nul
     showBanner: true,
     title: '동일 세대·동일 건물 실거래 표본 없음',
     primary:
-      '해당 호에 대한 직접비교 SSOT를 산출하지 못했습니다. 감정평가서·경매 공고 감정가 등 공식·제출 자료를 1차 참고하세요.',
+      '최근 36개월 매매 SSOT(①·②)를 산출하지 못했습니다. '
+      + '감정평가서·경매 감정가·네이버부동산·호갱노노 등 공개 시세를 1차 참고하세요. '
+      + '(과거 매매는 RTMS에 있어도 조회·스냅샷 창 밖이면 여기에 잡히지 않을 수 있습니다.)',
     secondary: marketOnly
-      ? '③·④ tier는 시장성 참고용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요.'
+      ? '③ 지역 유사·④ 코호트는 시장성 참고용입니다. 적정 매매가·유사·저·고평가로 단정하지 마세요.'
       : '가격 적정성은 판정 유보·참고 추정으로 서술하세요.',
   };
+}
+
+/** HO 헤드라인 미산출 시 상단 캡션 (relaxation N건 숨김) */
+export function resolveUnitCompHeadlineTierCaption(
+  meta?: Record<string, unknown> | null,
+): string | null {
+  if (!meta || meta.unitCompHoHeadlineMissing !== true) return null;
+  const rows = parseUnitCompComparison(meta);
+  const n = (tier: string) => rows.find((r) => r.tier === tier)?.count || 0;
+  const avail = (tier: string) => rows.find((r) => r.tier === tier)?.available === true;
+  const parts: string[] = ['호 추정 미산출'];
+  if (n('same_unit') < 1 && n('same_building') < 1) {
+    parts.push('36개월·동일 세대/건물 매매 SSOT 없음');
+  }
+  if (!avail('regional')) parts.push('지역 유사(③) 표본 없음');
+  if (!avail('cohort')) parts.push('호 단위 공시 코호트(④) 없음');
+  return parts.join(' · ');
 }
 
 export function unitCompTierHeadlineLabel(meta?: Record<string, unknown> | null): string | null {

@@ -211,7 +211,9 @@ export default function UnitCompTierSection({
       <p className="text-[10px] text-white/30 leading-relaxed">
         {isHouseSh
           ? '①·②는 주택 매매·공시비율 SSOT(해당 시). ③·④·대지 cohort는 참고만 — 한 줄로 합산하지 않습니다.'
-          : '①·②는 전용㎡ 실거래 SSOT. ③·④는 최종 추정에 쓰일 수 있으나 직접비교가 없을 때는 참고만 표시합니다.'}
+          : ssotGuidance
+            ? '①·②는 최근 36개월·동일 필지/건물 매매 SSOT. 없으면 감정·경매·포털 시세 참고. ③은 구 단위 풀+거리 완화 비교, ④는 코호트 참고.'
+            : '①·②는 전용㎡ 실거래 SSOT. ③·④는 직접비교가 없을 때 시장성 참고용입니다.'}
       </p>
     </div>
   );

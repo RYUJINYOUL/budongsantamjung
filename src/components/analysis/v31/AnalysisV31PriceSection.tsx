@@ -10,7 +10,7 @@ import {
   extractPriceMethods,
   formatEokCompact,
   getTargetArea,
-  isOtStUnitMeta,
+  isHoUnitValuationMeta,
 } from '../../../lib/analysisV31Helpers';
 import { buildComparableEmptyCopy, extractPriceMapListItems } from '../../../lib/analysisV31Extractors';
 
@@ -68,7 +68,7 @@ export default function AnalysisV31PriceSection({
   };
 
   let caption = '';
-  if (!isOtStUnitMeta(meta, mergedData) && midTotal > 0 && targetArea > 0) {
+  if (!isHoUnitValuationMeta(meta, mergedData) && midTotal > 0 && targetArea > 0) {
     caption = `보수적 추정 약 ${formatEokCompact(midTotal)}`;
     if (perPyeongMan > 0) caption += ` (평당 ${perPyeongMan.toLocaleString()}만)`;
   }

@@ -35,6 +35,7 @@ import {
     resolveCohortEstimateTotal,
     buildCohortEstimateTitle,
     isOtStUnitMeta,
+    isHoUnitValuationMeta,
     computeOtUnitIncomeReference,
     manwonInputToWon,
     wonToManwonInput,
@@ -1284,7 +1285,7 @@ const BuildingResidualSection = ({
     mergedData: any;
 }) => {
     const [expanded, setExpanded] = React.useState(false);
-    if (meta?.otUnitMode || meta?.stUnitMode) {
+    if (isHoUnitValuationMeta(meta, mergedData)) {
         return null;
     }
     const buildingResidualWon = Number(meta.buildingResidualValue) || 0;
@@ -1610,7 +1611,7 @@ const OfficialMultiplierSection = ({
         setCohortListVisible(COHORT_LIST_INITIAL);
     }, [showAllCohortTrades]);
 
-    if (isOtStUnitMeta(meta, mergedData) || meta?.uiHideLandCohortSection === true) {
+    if (isHoUnitValuationMeta(meta, mergedData) || meta?.uiHideLandCohortSection === true) {
         return null;
     }
 
@@ -1895,10 +1896,20 @@ const OfficialMultiplierSection = ({
         );
     }
 
-    if (opr && (opr.dynamicStatus === 'dynamic' || opr.dynamicStatus === 'fallback')) {
+    const oprAppliedMethod = String(opr?.appliedMethod || '');
+    const oprIsLegacyHardcoded =
+        oprAppliedMethod.includes('보수적폴백')
+        || (opr?.dynamicStatus === 'fallback' && !oprAppliedMethod.includes('실거래중앙값'));
+    const oprShowRatioCard = opr
+        && !oprIsLegacyHardcoded
+        && opr.estimatedPerSqm
+        && (opr.dynamicStatus === 'dynamic' || opr.dynamicStatus === 'median_thin'
+            || (opr.dynamicStatus === 'fallback' && oprAppliedMethod.includes('실거래중앙값')));
+
+    if (oprShowRatioCard) {
         const isDynamic = opr.dynamicStatus === 'dynamic';
         const accent = isDynamic ? PRICE_METHOD_ACCENTS.official : PRICE_METHOD_ACCENTS.regional;
-        const title = isDynamic ? "공시지가 동적 배율 정밀 산출" : "공시지가 보수적 하드코딩 배율";
+        const title = isDynamic ? "공시지가 동적 배율 정밀 산출" : "공시지가 실거래 중앙값 배율(표본 부족)";
         const estimatedTotal = (opr.estimatedPerSqm || 0) * targetArea;
 
         return (
@@ -1908,7 +1919,7 @@ const OfficialMultiplierSection = ({
                 accent={accent}
                 chips={(
                     <>
-                        {metaChip(isDynamic ? '정밀 산출' : '보수적 산출', accent)}
+                        {metaChip(isDynamic ? '정밀 산출' : '참고 산출', accent)}
                         {metaChip(`반경 ${opr.searchRadius || 1000}m`)}
                         {metaChip(`실거래 ${opr.sampleCount || 0}건`)}
                         {opr.samples && opr.samples.length > 0 && (
@@ -1948,7 +1959,7 @@ const OfficialMultiplierSection = ({
                         }}
                     >
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
-                            {isDynamic ? "동적 배율 추정 시세" : "보수적 배율 추정 시세"}
+                            {isDynamic ? "동적 배율 추정 시세" : "중앙값 배율 참고 시세"}
                         </span>
                         <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                             {formatEokCompact(estimatedTotal)}
@@ -1974,7 +1985,7 @@ const OfficialMultiplierSection = ({
                         <p className="text-white/60 text-xs leading-relaxed whitespace-pre-wrap">
                             {isDynamic
                                 ? `반경 ${opr.searchRadius}m 내 유사 실거래 ${opr.sampleCount}건의 공시지가 대비 실제 거래가 배율(중간값 ${opr.appliedMultiplier}배)을 동적으로 추출하여 대상지에 대입한 정밀 산출 결과입니다.`
-                                : `반경 ${opr.searchRadius}m 내 유의미한 실거래 사례가 부족하여(${opr.sampleCount}건), 통계적으로 검증된 보수적 하드코딩 배율(${opr.appliedMultiplier}배)을 안전하게 적용했습니다.`}
+                                : `반경 ${opr.searchRadius}m 내 유효 실거래가 ${opr.sampleCount}건으로 동적 배율 기준(5건)에 미달하여, 확보된 사례의 공시 대비 배율 중앙값(${opr.appliedMultiplier}배)을 참고 적용했습니다.`}
                         </p>
                     </div>
 
@@ -3497,7 +3508,7 @@ export default function AiReportView({
 
         const narrative = spectrum.narrative || '';
         const meta = resolvedAnalysisMetadata;
-        const hideLandCohortForUnit = isOtStUnitMeta(meta, mergedData);
+        const hideLandCohortForUnit = isHoUnitValuationMeta(meta, mergedData);
         const comparables = Array.isArray(meta.comparables) ? meta.comparables : [];
         const attachedTrades = Array.isArray(meta.uiAttachedRegionalTrades) ? meta.uiAttachedRegionalTrades : [];
         const attachedMultiplier = meta.uiAttachedMultiplier;
@@ -4910,6 +4921,9 @@ export default function AiReportView({
                     ),
                 ] as string[]).filter((key) => {
                     if (!inDepth[key] || String(inDepth[key]).trim() === '') return false;
+                    if (key === 'landAndBuildingValue' && isHoUnitValuationMeta(resolvedAnalysisMetadata, mergedData)) {
+                        return false;
+                    }
                     const catMeta = inDepthCategories[key];
                     const label = catMeta?.label || key;
                     return !shouldHideItem(key, categoryStr) && !shouldHideItem(label, categoryStr);

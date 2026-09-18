@@ -53,6 +53,9 @@ describe('unitCompTierHelpers', () => {
     expect(isUnitCompMarketContextOnly(meta)).toBe(true);
     const g = resolveUnitCompSsotGuidance(meta);
     expect(g?.showBanner).toBe(true);
+    expect(g?.primary).toContain('36개월');
+    expect(g?.primary).toContain('네이버부동산');
+    expect(g?.primary).toContain('호갱노노');
     expect(g?.secondary).toContain('③');
   });
 
@@ -106,6 +109,29 @@ describe('unitCompTierHelpers', () => {
     );
     expect(markers).toHaveLength(1);
     expect(markers[0].jibun).toBe('1-2');
+  });
+
+  it('resolveMapMarkersForUnitCompTier OT/RH/ST regional uses SSOT comparables over wide server pool', () => {
+    const ssot = [
+      { lat: 37.48, lng: 126.92, dealAmount: '9000', jibun: '1437-19' },
+      { lat: 37.481, lng: 126.921, dealAmount: '9500', jibun: '1437-20' },
+    ];
+    const { markers, mapLabel } = resolveMapMarkersForUnitCompTier(
+      'regional',
+      {
+        otUnitMode: true,
+        unitCompRegionalMapMarkers: Array.from({ length: 29 }, (_, i) => ({
+          lat: 37.5 + i * 0.001,
+          lng: 127.0,
+          dealAmount: '10000',
+          jibun: `x-${i}`,
+        })),
+      },
+      ssot,
+    );
+    expect(markers).toHaveLength(2);
+    expect(markers[0].jibun).toBe('1437-19');
+    expect(mapLabel).toContain('SSOT');
   });
 
   it('formatUnitCompTierAmount shows range when min/max differ', () => {

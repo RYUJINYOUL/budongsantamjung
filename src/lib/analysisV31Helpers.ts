@@ -317,8 +317,10 @@ export function resolveOtStUnitEstimateWon(
   if (incomeFallback && compN === 0 && incomeEmpty) {
     return 0;
   }
+  if (m.unitCompHoHeadlineMissing === true) return 0;
   const direct = Number(m.estimatedTotalPrice) || Number(m.weightedTotalPrice) || 0;
   if (direct > 0) return direct;
+  if (isHoUnitValuationMeta(m, mergedData)) return 0;
   const comparables = Array.isArray(m.comparables) ? m.comparables : [];
   const area = getTargetArea(m, mergedData, 'building');
   const totals = comparableAdjTotals(comparables, area);
@@ -545,11 +547,10 @@ export function buildCohortMultiplierCaption(
     || priceReas.reliabilityGrade
     || '',
   ).trim();
-  if (isOtStUnitMeta(meta, mergedData)) {
-    const similar = Number(meta.areaSimilarComparableCount) || 0;
-    const compN = Number(meta.comparableCount) || 0;
+  if (isOtStUnitMeta(meta, mergedData) || isHoUnitValuationMeta(meta, mergedData)) {
     const incomeFallback = meta.stUnitIncomeFallback === true
       || meta.valuationPrimary === 'st_unit_income_reference';
+    const compN = Number(meta.comparableCount) || 0;
     const otIncome = meta.otUnitIncome as Record<string, unknown> | undefined;
     const incomeEmpty = !otIncome || otIncome.isEmpty === true;
     if (incomeFallback && compN === 0) {
@@ -559,6 +560,12 @@ export function buildCohortMultiplierCaption(
         confidenceGrade ? `신뢰 ${confidenceGrade}` : '',
       ].filter(Boolean).join(' · ');
     }
+    if (meta.unitCompHoHeadlineMissing === true) {
+      const { resolveUnitCompHeadlineTierCaption } = require('./unitCompTierHelpers');
+      const tierCap = resolveUnitCompHeadlineTierCaption(meta);
+      if (tierCap) return tierCap;
+    }
+    const similar = Number(meta.areaSimilarComparableCount) || 0;
     return [
       '실거래 호 대입',
       similar > 0 ? `면적 유사 ${similar}건` : (compN > 0 ? `비교 ${compN}건` : null),
@@ -675,7 +682,9 @@ export function resolveEstimateRange(
     }
   }
 
-  if (hoUnit && min <= 0) {
+  const hoHeadlineBlocked = meta.unitCompHoHeadlineMissing === true;
+
+  if (hoUnit && min <= 0 && !hoHeadlineBlocked) {
     const direct = Number(meta.estimatedTotalPrice) || Number(meta.weightedTotalPrice) || 0;
     if (direct > 0) {
       min = max = direct;
@@ -684,7 +693,7 @@ export function resolveEstimateRange(
   }
 
   const totals = comparableAdjTotals(comparables, targetArea);
-  if (min <= 0 && totals.length > 0) {
+  if (min <= 0 && totals.length > 0 && !hoHeadlineBlocked) {
     min = Math.min(...totals);
     max = Math.max(...totals);
     source = hoUnit && meta.rhUnitMode ? 'rh_unit' : 'comparables';
@@ -858,11 +867,14 @@ export function extractPriceMethods(
   const sampleCount = Number(opr?.sampleCount ?? meta.comparableCount) || 0;
   const detected = Number(meta.totalDetected ?? meta.detectedCount ?? sampleCount) || sampleCount;
 
+  const hoHeadlineBlocked = meta.unitCompHoHeadlineMissing === true;
   const comparableCard: PriceMethodCardData = {
     label: '실거래 비교',
-    value: compMin > 0
-      ? (compMin === compMax ? formatEokCompact(compMin) : `${formatEokCompact(compMin)}~${formatEokCompact(compMax)}`)
-      : `산출 불가 · ${comparables.length}건`,
+    value: hoHeadlineBlocked
+      ? '미산출'
+      : (compMin > 0
+        ? (compMin === compMax ? formatEokCompact(compMin) : `${formatEokCompact(compMin)}~${formatEokCompact(compMax)}`)
+        : `산출 불가 · ${comparables.length}건`),
     sub: [
       searchRadius > 0 ? `${searchRadius}m` : null,
       detected > 0 ? `${detected}건 탐지` : null,

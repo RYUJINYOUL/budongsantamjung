@@ -1,4 +1,5 @@
 import { formatKoreanCurrency } from './shortsSceneData';
+import { isHoShOtRhValuationMode } from './unitCompTierHelpers';
 
 export type RiskItemFactsContext = {
     mergedData?: Record<string, unknown>;
@@ -152,16 +153,21 @@ function normalizeDealAmountWon(value: unknown): number {
 }
 
 function factsNearbySales(ctx: RiskItemFactsContext): string[] {
+    const md = ctx.mergedData || {};
     const meta = resolveAnalysisMetadata(ctx);
     const comparables = asArray(meta.comparables);
     const facts: string[] = [];
 
     if (comparables.length) {
-        const sameComplex = comparables.filter((c) => Number(c.similarityScore ?? c.score ?? 0) >= 90).length;
-        const label = sameComplex === comparables.length
-            ? `동일단지 ${comparables.length}건`
-            : `비교사례 ${comparables.length}건 (동일단지 ${sameComplex}건)`;
-        facts.push(label);
+        if (isHoShOtRhValuationMode(meta, md)) {
+            facts.push(`비교사례 ${comparables.length}건`);
+        } else {
+            const sameComplex = comparables.filter((c) => Number(c.similarityScore ?? c.score ?? 0) >= 90).length;
+            const label = sameComplex === comparables.length
+                ? `동일단지 ${comparables.length}건`
+                : `비교사례 ${comparables.length}건 (동일단지 ${sameComplex}건)`;
+            facts.push(label);
+        }
     }
 
     const estimated = Number(meta.estimatedTotalPrice || meta.weightedTotalPrice || 0);
@@ -200,6 +206,8 @@ function factsNearbySales(ctx: RiskItemFactsContext): string[] {
 
 function factsTradeVolume(ctx: RiskItemFactsContext): string[] {
     const md = ctx.mergedData || {};
+    const meta = resolveAnalysisMetadata(ctx);
+    const hoUnit = isHoShOtRhValuationMode(meta, md);
     const nearby = asRecord(pickMerged(md, 'nearbyData'));
     const stats = asArray(
         pickMerged(md, 'dealVolumeStats')
@@ -244,7 +252,7 @@ function factsTradeVolume(ctx: RiskItemFactsContext): string[] {
         if (!y || !m) return false;
         return new Date(y, m - 1, 1) >= cutoff;
     }).length;
-    if (unitSales > 0) facts.push(`동일단지 6개월 매매 ${unitSales}건`);
+    if (unitSales > 0 && !hoUnit) facts.push(`동일단지 6개월 매매 ${unitSales}건`);
 
     if (facts.length === 0) {
         const mi = asRecord(pickMerged(md, 'marketIndicators'));
