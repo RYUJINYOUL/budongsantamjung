@@ -111,27 +111,33 @@ describe('unitCompTierHelpers', () => {
     expect(markers[0].jibun).toBe('1-2');
   });
 
-  it('resolveMapMarkersForUnitCompTier OT/RH/ST regional uses SSOT comparables over wide server pool', () => {
-    const ssot = [
-      { lat: 37.48, lng: 126.92, dealAmount: '9000', jibun: '1437-19' },
-      { lat: 37.481, lng: 126.921, dealAmount: '9500', jibun: '1437-20' },
-    ];
+  it('resolveMapMarkersForUnitCompTier HO regional filters comparables (1km·0.5~1.7)', () => {
     const { markers, mapLabel } = resolveMapMarkersForUnitCompTier(
+      'regional',
+      { otUnitMode: true, targetArea: 100 },
+      [
+        { lat: 37.48, lng: 126.92, dealAmount: 900000000, area: 90, distance: 500 },
+        { lat: 37.481, lng: 126.921, dealAmount: 950000000, area: 200, distance: 500 },
+      ],
+    );
+    expect(markers).toHaveLength(1);
+    expect(Number(markers[0].area)).toBe(90);
+    expect(mapLabel).toContain('1km');
+  });
+
+  it('resolveMapMarkersForUnitCompTier HO prefers server regional markers', () => {
+    const { markers } = resolveMapMarkersForUnitCompTier(
       'regional',
       {
         otUnitMode: true,
-        unitCompRegionalMapMarkers: Array.from({ length: 29 }, (_, i) => ({
-          lat: 37.5 + i * 0.001,
-          lng: 127.0,
-          dealAmount: '10000',
-          jibun: `x-${i}`,
-        })),
+        unitCompRegionalMapMarkers: [
+          { lat: 37.5, lng: 127.0, dealAmount: '35000', jibun: '1-2' },
+        ],
       },
-      ssot,
+      [{ lat: 37.48, lng: 126.92, dealAmount: '9000', jibun: '1437-19' }],
     );
-    expect(markers).toHaveLength(2);
-    expect(markers[0].jibun).toBe('1437-19');
-    expect(mapLabel).toContain('SSOT');
+    expect(markers).toHaveLength(1);
+    expect(markers[0].jibun).toBe('1-2');
   });
 
   it('formatUnitCompTierAmount shows range when min/max differ', () => {

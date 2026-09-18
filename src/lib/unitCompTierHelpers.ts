@@ -13,6 +13,40 @@ export type UnitCompTierRow = {
 
 const DISPLAY_ORDER = ['same_unit', 'same_building', 'regional', 'cohort'] as const;
 
+/** tier ③ — 백엔드 unitCompRegionalTierService 와 동일 */
+export const HO_REGIONAL_MAX_DIST_M = 1000;
+export const HO_REGIONAL_AREA_MIN = 0.5;
+export const HO_REGIONAL_AREA_MAX = 1.7;
+
+function compAreaSqm(c: Record<string, unknown>): number {
+  return Number(c.area ?? c.excluUseAr ?? c.exclusiveArea) || 0;
+}
+
+function compDealWonPositive(c: Record<string, unknown>): boolean {
+  const raw = c.dealAmount ?? c.price;
+  const n = Number(raw) || 0;
+  if (n <= 0) return false;
+  return n >= 1_000_000 ? true : n * 10000 > 0;
+}
+
+/** HO tier ③ · 지도 — ≤1km, 면적 0.5~1.7 */
+export function filterHoRegionalTierComparables(
+  comparables: Record<string, unknown>[],
+  targetAreaSqm: number,
+): Record<string, unknown>[] {
+  const targetArea = Number(targetAreaSqm) || 0;
+  return comparables.filter((c) => {
+    const dist = Number(c.distance);
+    if (Number.isFinite(dist) && dist > HO_REGIONAL_MAX_DIST_M) return false;
+    const area = compAreaSqm(c);
+    if (targetArea > 0 && area > 0) {
+      const r = area / targetArea;
+      if (r < HO_REGIONAL_AREA_MIN || r > HO_REGIONAL_AREA_MAX) return false;
+    }
+    return compDealWonPositive(c);
+  });
+}
+
 /** tier 패널 노출 — OT/RH/ST 호 동일 4-tier (RH 경매 = OT와 동일 UI) */
 export const UNIT_COMP_TIER_UI_VISIBLE = [
   'same_unit',
@@ -231,15 +265,24 @@ export function resolveMapMarkersForUnitCompTier(
   if (tierNorm === 'regional') {
     const hoRegionalSsot = meta.otUnitMode === true || meta.rhUnitMode === true || meta.stUnitMode === true
       || ['ot_unit', 'st_unit', 'rh_unit'].includes(String(meta.priceValuationTrack || ''));
-    if (hoRegionalSsot && withCoords.length > 0) {
-      return { markers: withCoords, mapLabel: '지역 유사 실거래 지도 (SSOT)' };
-    }
     const serverMarkers = Array.isArray(meta.unitCompRegionalMapMarkers)
       ? (meta.unitCompRegionalMapMarkers as Record<string, unknown>[])
       : [];
     const fromServer = withValidCoords(serverMarkers);
     if (fromServer.length > 0) {
-      return { markers: fromServer, mapLabel: '지역 유사 실거래 지도' };
+      return {
+        markers: fromServer,
+        mapLabel: hoRegionalSsot ? '지역 유사 실거래 지도 (1km·면적 유사)' : '지역 유사 실거래 지도',
+      };
+    }
+    if (hoRegionalSsot && withCoords.length > 0) {
+      const targetObj = meta.target as Record<string, unknown> | undefined;
+      const targetArea = Number(meta.targetArea ?? targetObj?.area_sqm ?? targetObj?.exclusiveArea_sqm ?? 0);
+      const filtered = withValidCoords(filterHoRegionalTierComparables(withCoords, targetArea));
+      return {
+        markers: filtered.length > 0 ? filtered : withCoords,
+        mapLabel: '지역 유사 실거래 지도 (1km·면적 유사)',
+      };
     }
     const fromVitals = withValidCoords(flattenVitalsRegionalTrades(mergedData));
     const fromAttached = withValidCoords(flattenUiAttachedRegional(meta));
