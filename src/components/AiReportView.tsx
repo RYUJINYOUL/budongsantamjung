@@ -1567,6 +1567,14 @@ const CohortTradeRow = React.memo(function CohortTradeRow({ trade, accent }: { t
                         {!applied && (
                             <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/30">필터 제외</span>
                         )}
+                        {trade.roadSideLabel && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/40">
+                                {trade.roadSideLabel}
+                                {trade.roadTierRelative === 'upper' && ' · 상위'}
+                                {trade.roadTierRelative === 'lower' && ' · 하위'}
+                                {trade.roadTierRelative === 'same' && ' · 동일'}
+                            </span>
+                        )}
                     </div>
                     <p className="text-[11px] text-white/60 truncate mt-0.5">{addr}</p>
                 </div>
@@ -1665,6 +1673,15 @@ const OfficialMultiplierSection = ({
         const hasMapSamples = mapSamples.length > 0;
         const canToggleAllCohort = isFiltered && allSamples.length > appliedSamples.length;
         const hasMoreCohortRows = listSamples.length > visibleListSamples.length;
+        const roadTier = obs?.roadTier as Record<string, unknown> | undefined;
+        const sameGrade = roadTier?.sameGrade as Record<string, unknown> | undefined;
+        const mixedGrade = roadTier?.mixedGrade as Record<string, unknown> | undefined;
+        const maxRef = roadTier?.maxReference as Record<string, unknown> | undefined;
+        const primarySource = String(obs?.primaryEstimateSource || roadTier?.primaryEstimateSource || '');
+        const headlineIsSameGrade = primarySource === 'same_grade_median';
+        const mixedTotal = Number(mixedGrade?.estimatedTotal) || 0;
+        const sameTotal = Number(sameGrade?.estimatedTotal) || 0;
+        const maxRefTotal = Number(maxRef?.estimatedTotal) || 0;
 
         return (
             <PriceReasonMethodCard
@@ -1679,6 +1696,7 @@ const OfficialMultiplierSection = ({
                         {metaChip(levelLabel, accent)}
                         {metaChip(`n=${cohortN}${filteredN ? ` → ${filteredN}` : ''}`, accent)}
                         {obs?.confidenceGrade && metaChip(`신뢰 ${obs.confidenceGrade}`, accent)}
+                        {roadTier?.targetRoadSideLabel && metaChip(String(roadTier.targetRoadSideLabel), accent)}
                         {hojaeSummary && metaChip(hojaeSummary, '#a78bfa')}
                         {hasMapSamples && onMapOpen && (
                             <button
@@ -1715,7 +1733,9 @@ const OfficialMultiplierSection = ({
                         <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: hexToRgba(accent, 0.85) }}>
                             {(isOtSt || isHouseLandRef) && meta.landCohortReference
                                 ? '합필 대지 median 추정 (참고)'
-                                : buildCohortEstimateTitle(hojae, hojae.hojaeTierCapped === true)}
+                                : roadTier
+                                    ? (headlineIsSameGrade ? '기본 추정 (동일 도로등급 median)' : '기본 추정 (동일등급 부재 · 혼합 median)')
+                                    : buildCohortEstimateTitle(hojae, hojae.hojaeTierCapped === true)}
                         </span>
                         <p className="text-2xl font-black mt-0.5 leading-none" style={{ color: accent }}>
                             {estimatedTotal > 0 ? formatEokCompact(estimatedTotal) : ((isOtSt || isHouseLandRef) ? '—' : formatEokCompact(0))}
@@ -1729,6 +1749,40 @@ const OfficialMultiplierSection = ({
                                         : `median ${Number(opr.appliedMultiplier).toFixed(2)}배 적용`,
                                 ].filter(Boolean).join(' · ')}
                             </p>
+                        )}
+                        {roadTier && (
+                            <div className="mt-3 pt-3 border-t border-white/10 space-y-2">
+                                {sameTotal > 0 && headlineIsSameGrade && mixedTotal > 0 && Math.abs(sameTotal - mixedTotal) > 1 && (
+                                    <div className="flex justify-between gap-2 text-[10px]">
+                                        <span className="text-white/40">참고 · 등급 혼합 median</span>
+                                        <span className="text-white/55 font-mono shrink-0">
+                                            {formatEokCompact(mixedTotal)}
+                                            {mixedGrade?.medianRatio != null && ` · ×${Number(mixedGrade.medianRatio).toFixed(2)} (n=${mixedGrade.n ?? '?'})`}
+                                        </span>
+                                    </div>
+                                )}
+                                {!headlineIsSameGrade && mixedTotal > 0 && (
+                                    <p className="text-[9px] text-amber-200/70 leading-relaxed">
+                                        동일 도로등급 표본 없음 — 아래 금액은 similarity 통과 전체 median입니다.
+                                    </p>
+                                )}
+                                {maxRefTotal > 0 && maxRef && (
+                                    <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
+                                        <p className="text-[9px] text-white/35">상단 참고 · 배율 최고 1건 (n=1)</p>
+                                        <p className="text-[10px] text-white/60 mt-0.5">
+                                            {formatEokCompact(maxRefTotal)}
+                                            {maxRef.roadSideLabel && ` · ${String(maxRef.roadSideLabel)}`}
+                                            {maxRef.medianRatio != null && ` · ×${Number(maxRef.medianRatio).toFixed(2)}`}
+                                        </p>
+                                        {maxRef.reasonNote && (
+                                            <p className="text-[9px] text-white/30 mt-1">{String(maxRef.reasonNote)}</p>
+                                        )}
+                                    </div>
+                                )}
+                                {roadTier.warning && (
+                                    <p className="text-[9px] text-white/40 leading-relaxed">{String(roadTier.warning)}</p>
+                                )}
+                            </div>
                         )}
                     </div>
 
